@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   LINKMED · Soluções Médicas — Design Tokens Hospitalares
+   Paleta inspirada diretamente nas cores da logo oficial:
+   - Verde-Lima LinkMed (#A4CE39 -> hsl(77, 60%, 51%))
+   - Verde-Floresta Med (#4E6E3A -> hsl(97, 31%, 33%))
+   - Verde-Esmeralda Médico (#307D54 -> hsl(148, 44%, 34%))
+   Superfícies clínicas puras, alto contraste e estética hospitalar moderna.
+   ============================================================ */
+
+@layer base {
+  :root {
+    --background: 145 33% 98%;           /* #F7FBF8 branco clínico esverdeado sutil */
+    --foreground: 155 32% 14%;           /* #182F25 texto escuro hospitalar */
+
+    --card: 0 0% 100%;
+    --card-foreground: 155 32% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 155 32% 14%;
+
+    /* Verde Hospitalar LinkMed (combinação equilibrada entre #539C6E e #4E6E3A) */
+    --primary: 148 44% 34%;              /* #307D54 */
+    --primary-foreground: 0 0% 100%;
+
+    /* Destaques da marca LinkMed */
+    --brand-lime: 77 60% 48%;            /* #99C230 / #A4CE39 */
+    --brand-forest: 97 31% 33%;          /* #4E6E3A */
+    --brand-sage: 142 31% 47%;           /* #539C6E */
+
+    --secondary: 142 35% 95%;
+    --secondary-foreground: 148 44% 26%;
+
+    --muted: 142 25% 95%;
+    --muted-foreground: 152 16% 42%;
+
+    --accent: 140 38% 92%;
+    --accent-foreground: 148 48% 24%;
+
+    --destructive: 4 72% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 148 58% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 36 86% 48%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 144 24% 88%;
+    --input: 144 24% 87%;
+    --ring: 148 44% 36%;
+
+    --radius: 0.75rem;
+
+    --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  .dark {
+    --background: 155 30% 7%;
+    --foreground: 142 20% 96%;
+
+    --card: 155 26% 10%;
+    --card-foreground: 142 20% 96%;
+
+    --popover: 155 26% 10%;
+    --popover-foreground: 142 20% 96%;
+
+    --primary: 142 52% 48%;
+    --primary-foreground: 155 35% 7%;
+
+    --secondary: 155 22% 15%;
+    --secondary-foreground: 142 20% 94%;
+
+    --muted: 155 22% 14%;
+    --muted-foreground: 148 14% 64%;
+
+    --accent: 155 24% 17%;
+    --accent-foreground: 142 25% 95%;
+
+    --destructive: 4 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 148 58% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 36 86% 56%;
+    --warning-foreground: 0 0% 8%;
+
+    --border: 155 22% 19%;
+    --input: 155 22% 19%;
+    --ring: 142 52% 48%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    text-rendering: optimizeLegibility;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.25);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.45);
+  }
+}
+
+@layer components {
+  .focus-ring {
+    @apply outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring;
+  }
+}

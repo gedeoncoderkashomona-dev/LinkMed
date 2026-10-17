@@ -1,0 +1,35 @@
+import { NextResponse, type NextRequest } from 'next/server';
+
+import { RejectPopUseCase } from '@/core/use-cases/pops';
+import { getRepositories } from '@/infra/db';
+import { requireAuth } from '@/lib/auth/require-auth';
+import { assertCan } from '@/lib/auth/rbac';
+import { apiHandler } from '@/lib/http/api-handler';
+
+export const runtime = 'nodejs';
+
+export const POST = apiHandler(async (req: NextRequest, { params }: { params: { id: string } }) => {
+  const auth = await requireAuth();
+  assertCan(auth.perfil, 'pops:approve'); // Apenas Diretor
+
+  const body = (await req.json().catch(() => ({}))) as { motivo?: string };
+  if (!body.motivo || body.motivo.trim().length < 5) {
+    return NextResponse.json(
+      { error: 'VALIDATION_ERROR', message: 'Motivo de rejeição deve ter ao menos 5 caracteres.' },
+      { status: 422 },
+    );
+  }
+
+  const { popRepository, auditService } = getRepositories();
+  const pop = await new RejectPopUseCase(popRepository, auditService).execute(
+    params.id,
+    auth.sub,
+    body.motivo.trim(),
+    {
+      ip: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+      userAgent: req.headers.get('user-agent'),
+    },
+  );
+
+  return { pop };
+});

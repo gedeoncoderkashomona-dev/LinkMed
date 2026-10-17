@@ -1,0 +1,25 @@
+{
+  "name": "LINKMED — Soluções Médicas",
+  "short_name": "LINKMED",
+  "description": "Sistema de Gestão da Qualidade Regulatória (RDC 665/22) e Assistência Técnica Hospitalar — LINKMED Soluções Médicas.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6FAF7",
+  "theme_color": "#307D54",
+  "orientation": "portrait-primary",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/logo-linkmed.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-linkmed.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
