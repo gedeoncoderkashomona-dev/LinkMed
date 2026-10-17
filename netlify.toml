@@ -4,6 +4,9 @@
 
 [build.environment]
   NODE_VERSION = "20.16.0"
+  # NODE_ENV=production is set in the site env, which makes npm skip
+  # devDependencies (autoprefixer, postcss, tailwindcss, typescript) needed by `next build`.
+  NPM_FLAGS = "--include=dev"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
