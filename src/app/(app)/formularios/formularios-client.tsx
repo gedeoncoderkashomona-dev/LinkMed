@@ -64,7 +64,7 @@ export function FormulariosClient() {
             Checklists e registros da Assistência Técnica e Almoxarifado (POP-020 / RDC 665/22) com herança de dados por OS.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"

@@ -10,13 +10,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+import { APP_VERSION_LABEL } from '@/lib/version';
+
 import { UserMenu } from './user-menu';
 
 interface Props {
   user: PublicUser;
+  onOpenMobile?: () => void;
 }
 
-export function AppHeader({ user }: Props) {
+export function AppHeader({ user, onOpenMobile }: Props) {
   const iniciais = React.useMemo(() => {
     const parts = user.nomeCompleto.trim().split(/\s+/);
     const first = parts[0]?.[0] ?? '';
@@ -25,16 +28,25 @@ export function AppHeader({ user }: Props) {
   }, [user.nomeCompleto]);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/80 bg-background/90 px-4 backdrop-blur-md sm:px-6 lg:px-8 shadow-2xs">
-      {/* Botão menu mobile */}
-      <Button variant="ghost" size="icon" className="md:hidden" aria-label="Abrir menu">
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-2.5 sm:gap-3 border-b border-border/80 bg-background/90 px-3 sm:px-6 lg:px-8 backdrop-blur-md shadow-2xs">
+      {/* Botão menu mobile (smartphones e tablets) */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onOpenMobile}
+        className="md:hidden touch-manipulation h-9 w-9 text-foreground hover:bg-accent"
+        aria-label="Abrir menu de navegação"
+      >
         <Menu className="h-5 w-5" />
       </Button>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-muted-foreground">
+      <div className="min-w-0 flex-1 flex items-center gap-2">
+        <p className="truncate text-xs sm:text-sm font-medium text-muted-foreground">
           Bem-vindo(a), <span className="font-semibold text-foreground">{user.nomeCompleto.split(' ')[0]}</span>
         </p>
+        <span className="hidden xl:inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary border border-primary/20">
+          {APP_VERSION_LABEL}
+        </span>
       </div>
 
       <Badge

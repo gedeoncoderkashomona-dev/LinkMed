@@ -260,7 +260,7 @@ export default function AuditoriaPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button
             variant="outline"
             size="sm"
@@ -493,7 +493,7 @@ export default function AuditoriaPage() {
                   }}
                   className="flex cursor-pointer flex-wrap items-center justify-between gap-3 p-3.5 text-left select-none hover:bg-accent/25"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
                     {aberto ? (
                       <ChevronDown className="h-4 w-4 shrink-0 text-primary" />
                     ) : (

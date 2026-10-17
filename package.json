@@ -1,6 +1,6 @@
 {
   "name": "linkmed",
-  "version": "0.1.0",
+  "version": "1.0.1-beta.1",
   "private": true,
   "description": "Plataforma SGQ e Assistência Técnica Regulatória (RDC 665/22) — LinkMed",
   "scripts": {
