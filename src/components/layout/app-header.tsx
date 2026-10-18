@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 
 import { APP_VERSION_LABEL } from '@/lib/version';
 
+import { ThemeToggle } from './theme-toggle';
 import { UserMenu } from './user-menu';
 
 interface Props {
@@ -56,6 +57,8 @@ export function AppHeader({ user, onOpenMobile }: Props) {
       >
         {PERFIL_SHORT_LABEL[user.perfil] ?? PERFIL_LABEL[user.perfil]}
       </Badge>
+
+      <ThemeToggle />
 
       <Link href="/notificacoes" title="Central de Notificações">
         <Button variant="ghost" size="icon" aria-label="Notificações" className="relative">

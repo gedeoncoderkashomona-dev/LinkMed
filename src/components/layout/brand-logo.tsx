@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 
 import { cn } from '@/lib/utils';
 
@@ -50,35 +51,47 @@ interface BrandLogoProps {
   size?: 'sm' | 'md' | 'lg';
   useFullImage?: boolean;
   className?: string;
+  href?: string | null;
 }
 
 /**
  * Identidade visual oficial LINKMED — Soluções Médicas
  * Suporta modo White-Label caso outra instituição hospitalar personalize o nome.
+ * Clicar na logo redireciona suavemente para a página inicial (/dashboard).
  */
 export function BrandLogo({
   collapsed = false,
   size = 'md',
   useFullImage = false,
   className,
+  href = '/dashboard',
 }: BrandLogoProps) {
   const branding = useWhiteLabelBranding();
   const isDefaultLinkmed =
     branding.instituicaoNome.trim().toUpperCase() === 'LINKMED';
 
   if (useFullImage && isDefaultLinkmed) {
-    return (
-      <div className={cn('flex flex-col items-center', className)}>
+    const fullContent = (
+      <div className={cn('flex flex-col items-center group', className)}>
         <img
           src="/logo-linkmed.jpg"
           alt="LINKMED — Soluções Médicas"
           className={cn(
-            'rounded-xl object-contain',
+            'rounded-xl object-contain transition-transform duration-200 group-hover:scale-[1.02]',
             size === 'lg' ? 'h-24 w-auto' : size === 'md' ? 'h-16 w-auto' : 'h-11 w-auto',
           )}
         />
       </div>
     );
+
+    if (href) {
+      return (
+        <Link href={href} title="Voltar ao início (Painel)">
+          {fullContent}
+        </Link>
+      );
+    }
+    return fullContent;
   }
 
   const iconSizes = {
@@ -87,11 +100,11 @@ export function BrandLogo({
     lg: 'h-14 w-14',
   };
 
-  return (
-    <div className={cn('flex items-center gap-2.5', className)}>
+  const logoContent = (
+    <div className={cn('flex items-center gap-2.5 group select-none', className)}>
       <div
         className={cn(
-          'relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-500/25 bg-white p-1 shadow-sm',
+          'relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-500/25 bg-white p-1 shadow-sm transition-transform duration-200 group-hover:scale-105',
           iconSizes[size],
         )}
       >
@@ -107,7 +120,7 @@ export function BrandLogo({
           {isDefaultLinkmed ? (
             <p
               className={cn(
-                'truncate font-extrabold tracking-tight',
+                'truncate font-extrabold tracking-tight transition-colors group-hover:text-primary',
                 size === 'lg' ? 'text-2xl' : size === 'md' ? 'text-base' : 'text-sm',
               )}
             >
@@ -136,6 +149,16 @@ export function BrandLogo({
       )}
     </div>
   );
+
+  if (href) {
+    return (
+      <Link href={href} title="Voltar ao início (Painel)" className="inline-flex items-center focus:outline-none">
+        {logoContent}
+      </Link>
+    );
+  }
+
+  return logoContent;
 }
 
 interface SplashProps {

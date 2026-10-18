@@ -49,6 +49,21 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                if (localStorage.getItem('linkmed-theme') === 'dark' || (!('linkmed-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
+      </head>
       <body className={`${inter.variable} font-sans`}>
         <Providers>
           {children}

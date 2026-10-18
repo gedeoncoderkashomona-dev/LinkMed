@@ -5,14 +5,17 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowRight,
+  BarChart3,
   CheckCircle2,
   ClipboardList,
   FileText,
+  LayoutDashboard,
   ShieldAlert,
   Tag,
   Wrench,
 } from 'lucide-react';
 
+import { DirectorDashboard } from '@/components/dashboard/director-dashboard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,10 +45,17 @@ export function DashboardPlaceholder() {
     [formsData?.records],
   );
 
-  const ordensServico = React.useMemo(
-    () => aggregateServiceOrders(formsData?.records ?? []).slice(0, 5),
+  const todasOrdensServico = React.useMemo(
+    () => aggregateServiceOrders(formsData?.records ?? []),
     [formsData?.records],
   );
+
+  const ordensServico = React.useMemo(
+    () => todasOrdensServico.slice(0, 5),
+    [todasOrdensServico],
+  );
+
+  const [visaoDiretor, setVisaoDiretor] = React.useState<'estrategica' | 'operacional'>('estrategica');
 
   const totalForms = React.useMemo(() => {
     const c = formsData?.contagens ?? {};
@@ -63,14 +73,52 @@ export function DashboardPlaceholder() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Painel Operacional</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {user?.perfil === 'diretor'
+              ? visaoDiretor === 'estrategica'
+                ? 'Painel Executivo da Diretoria'
+                : 'Painel Operacional de Bancada'
+              : 'Painel Operacional'}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {user
               ? `${PERFIL_LABEL[user.perfil]} · Assistência Técnica, Qualidade e Almoxarifado (RDC 665/22).`
               : 'Carregando visão...'}
           </p>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
+          {user?.perfil === 'diretor' && (
+            <div className="flex items-center gap-1 rounded-lg border border-border/80 bg-card p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setVisaoDiretor('estrategica')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all touch-manipulation',
+                  visaoDiretor === 'estrategica'
+                    ? 'bg-primary text-primary-foreground shadow-2xs'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                )}
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span>Estatísticas & Evolução</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisaoDiretor('operacional')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all touch-manipulation',
+                  visaoDiretor === 'operacional'
+                    ? 'bg-primary text-primary-foreground shadow-2xs'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                )}
+              >
+                <LayoutDashboard className="h-3.5 w-3.5" />
+                <span>Visão de Bancada</span>
+              </button>
+            </div>
+          )}
+
           <Link href="/formularios">
             <Button size="sm" variant="outline">
               <ClipboardList className="h-4 w-4" />
@@ -85,6 +133,18 @@ export function DashboardPlaceholder() {
           </Link>
         </div>
       </div>
+
+      {/* Se o perfil for Diretor e estiver na visão estratégica, renderiza o painel executivo */}
+      {user?.perfil === 'diretor' && visaoDiretor === 'estrategica' ? (
+        <DirectorDashboard
+          totalForms={totalForms}
+          totalPopsVigentes={popsVigentes}
+          totalPops={popsData?.pops.length ?? 0}
+          ncsResumo={resumoNc}
+          ordensServico={todasOrdensServico}
+        />
+      ) : (
+        <>
 
       {/* KPIs Principais */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -388,6 +448,8 @@ export function DashboardPlaceholder() {
           </Card>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
