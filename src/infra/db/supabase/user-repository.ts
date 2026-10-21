@@ -21,6 +21,21 @@ interface UserRow {
   deleted_at: string | null;
 }
 
+const USER_CACHE_TTL_MS = 60_000;
+const userByIdCache = new Map<string, { user: User; expiresAt: number }>();
+const userByEmailCache = new Map<string, { user: User; expiresAt: number }>();
+
+function cacheUser(user: User) {
+  const expiresAt = Date.now() + USER_CACHE_TTL_MS;
+  userByIdCache.set(user.id, { user, expiresAt });
+  userByEmailCache.set(user.email.toLowerCase(), { user, expiresAt });
+}
+
+function invalidateUserCache() {
+  userByIdCache.clear();
+  userByEmailCache.clear();
+}
+
 function toEntity(row: UserRow): User {
   return {
     id: row.id,
@@ -39,6 +54,11 @@ function toEntity(row: UserRow): User {
 
 export class SupabaseUserRepository implements UserRepository {
   async findById(id: string): Promise<User | null> {
+    const cached = userByIdCache.get(id);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.user;
+    }
+
     const { data, error } = await supabaseAdmin
       .from('users')
       .select('*')
@@ -47,19 +67,29 @@ export class SupabaseUserRepository implements UserRepository {
       .maybeSingle();
 
     if (error || !data) return null;
-    return toEntity(data as UserRow);
+    const entity = toEntity(data as UserRow);
+    cacheUser(entity);
+    return entity;
   }
 
   async findByEmail(email: string): Promise<User | null> {
+    const key = email.toLowerCase();
+    const cached = userByEmailCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.user;
+    }
+
     const { data, error } = await supabaseAdmin
       .from('users')
       .select('*')
-      .eq('email', email.toLowerCase())
+      .eq('email', key)
       .is('deleted_at', null)
       .maybeSingle();
 
     if (error || !data) return null;
-    return toEntity(data as UserRow);
+    const entity = toEntity(data as UserRow);
+    cacheUser(entity);
+    return entity;
   }
 
   async findByCpf(cpf: string): Promise<User | null> {
@@ -71,7 +101,9 @@ export class SupabaseUserRepository implements UserRepository {
       .maybeSingle();
 
     if (error || !data) return null;
-    return toEntity(data as UserRow);
+    const entity = toEntity(data as UserRow);
+    cacheUser(entity);
+    return entity;
   }
 
   async list(): Promise<User[]> {
@@ -82,7 +114,9 @@ export class SupabaseUserRepository implements UserRepository {
       .order('nome_completo', { ascending: true });
 
     if (error || !data) return [];
-    return (data as UserRow[]).map(toEntity);
+    const list = (data as UserRow[]).map(toEntity);
+    for (const u of list) cacheUser(u);
+    return list;
   }
 
   async create(input: CreateUserInput): Promise<User> {
@@ -113,7 +147,10 @@ export class SupabaseUserRepository implements UserRepository {
       throw new Error(`Falha ao inserir usuário no Supabase: ${error.message}`);
     }
 
-    return toEntity(data as UserRow);
+    invalidateUserCache();
+    const entity = toEntity(data as UserRow);
+    cacheUser(entity);
+    return entity;
   }
 
   async update(id: string, input: UpdateUserInput): Promise<User> {
@@ -140,7 +177,10 @@ export class SupabaseUserRepository implements UserRepository {
       throw new Error(`Falha ao atualizar usuário no Supabase: ${error.message}`);
     }
 
-    return toEntity(data as UserRow);
+    invalidateUserCache();
+    const entity = toEntity(data as UserRow);
+    cacheUser(entity);
+    return entity;
   }
 
   async softDelete(id: string): Promise<void> {
@@ -152,5 +192,6 @@ export class SupabaseUserRepository implements UserRepository {
     if (error) {
       throw new Error(`Falha ao excluir usuário no Supabase: ${error.message}`);
     }
+    invalidateUserCache();
   }
 }

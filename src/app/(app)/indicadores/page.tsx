@@ -123,6 +123,9 @@ export default function IndicadoresPage() {
       assistencia_tecnica: ncs.filter((n) => n.origem === 'assistencia_tecnica').length,
       almoxarifado: ncs.filter((n) => n.origem === 'almoxarifado').length,
       qualidade: ncs.filter((n) => n.origem === 'qualidade').length,
+      vendas: ncs.filter((n) => n.origem === 'vendas').length,
+      diretoria: ncs.filter((n) => n.origem === 'diretoria').length,
+      financeiro: ncs.filter((n) => n.origem === 'financeiro').length,
     };
 
     return { resumo, taxaResolucao, porSeveridade, porOrigem };
@@ -423,18 +426,30 @@ export default function IndicadoresPage() {
               NCs por Setor de Origem
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2.5 text-xs">
-            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <span className="font-medium">Assistência Técnica (POP-020)</span>
+          <CardContent className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center justify-between rounded-md border border-border px-2.5 py-1.5">
+              <span className="truncate font-medium">Assistência Técnica</span>
               <Badge variant="outline">{ncStats.porOrigem.assistencia_tecnica}</Badge>
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <span className="font-medium">Almoxarifado / Recebimento (POP-010)</span>
+            <div className="flex items-center justify-between rounded-md border border-border px-2.5 py-1.5">
+              <span className="truncate font-medium">Almoxarifado</span>
               <Badge variant="outline">{ncStats.porOrigem.almoxarifado}</Badge>
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <span className="font-medium">Gestão da Qualidade (SGQ)</span>
+            <div className="flex items-center justify-between rounded-md border border-border px-2.5 py-1.5">
+              <span className="truncate font-medium">Qualidade</span>
               <Badge variant="outline">{ncStats.porOrigem.qualidade}</Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border px-2.5 py-1.5">
+              <span className="truncate font-medium">Vendas</span>
+              <Badge variant="outline">{ncStats.porOrigem.vendas}</Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border px-2.5 py-1.5">
+              <span className="truncate font-medium">Diretoria</span>
+              <Badge variant="outline">{ncStats.porOrigem.diretoria}</Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border px-2.5 py-1.5">
+              <span className="truncate font-medium">Financeiro</span>
+              <Badge variant="outline">{ncStats.porOrigem.financeiro}</Badge>
             </div>
           </CardContent>
         </Card>

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import type { PublicUser } from '@/core/domain/entities/user';
 
@@ -15,8 +16,14 @@ interface Props {
 }
 
 export function AppShell({ user, children }: Props) {
+  const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+
+  // Hidrata imediatamente o cache do usuário logado para evitar roundtrip extra (/api/auth/me) no mobile e desktop
+  React.useMemo(() => {
+    queryClient.setQueryData(['auth', 'me'], user);
+  }, [queryClient, user]);
 
   return (
     <div className="flex min-h-screen bg-background">

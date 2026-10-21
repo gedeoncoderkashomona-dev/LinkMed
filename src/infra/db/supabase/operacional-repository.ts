@@ -97,18 +97,38 @@ interface AuditStoreRow<T> {
 
 const FORM_COLS = '*, criador:users(nome_completo)';
 
+let hasFormRecordsTable: boolean | null = null;
+let hasNcsTable: boolean | null = null;
+let hasTrainingsTable: boolean | null = null;
+
+const userNamesCache = new Map<string, { nome: string; expiresAt: number }>();
+
 async function fetchUserNamesMap(userIds: string[]): Promise<Map<string, string>> {
   const unique = Array.from(new Set(userIds.filter(Boolean)));
   const map = new Map<string, string>();
   if (unique.length === 0) return map;
 
+  const now = Date.now();
+  const missing: string[] = [];
+  for (const id of unique) {
+    const cached = userNamesCache.get(id);
+    if (cached && cached.expiresAt > now) {
+      map.set(id, cached.nome);
+    } else {
+      missing.push(id);
+    }
+  }
+
+  if (missing.length === 0) return map;
+
   const { data } = await supabaseAdmin
     .from('users')
     .select('id, nome_completo')
-    .in('id', unique);
+    .in('id', missing);
 
   for (const row of (data ?? []) as Array<{ id: string; nome_completo: string }>) {
     map.set(row.id, row.nome_completo);
+    userNamesCache.set(row.id, { nome: row.nome_completo, expiresAt: now + 60_000 });
   }
   return map;
 }
@@ -305,20 +325,26 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
   }
 
   async listFormRecords(filter: ListFormRecordsFilter = {}): Promise<FormRecord[]> {
-    let query = supabaseAdmin
-      .from('form_records')
-      .select(FORM_COLS)
-      .is('deleted_at', null)
-      .order('data_ref', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(filter.limit ?? 200);
+    if (hasFormRecordsTable !== false) {
+      let query = supabaseAdmin
+        .from('form_records')
+        .select(FORM_COLS)
+        .is('deleted_at', null)
+        .order('data_ref', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(filter.limit ?? 200);
 
-    if (filter.tipo) query = query.eq('tipo', filter.tipo);
-    if (filter.desde) query = query.gte('data_ref', filter.desde);
+      if (filter.tipo) query = query.eq('tipo', filter.tipo);
+      if (filter.desde) query = query.gte('data_ref', filter.desde);
 
-    const { data, error } = await query;
-    if (!error && data) {
-      return (data as unknown as FormRecordRow[]).map(toFormRecord);
+      const { data, error } = await query;
+      if (!error && data) {
+        hasFormRecordsTable = true;
+        return (data as unknown as FormRecordRow[]).map(toFormRecord);
+      }
+      if (error?.code === 'PGRST205') {
+        hasFormRecordsTable = false;
+      }
     }
 
     // Fallback: consulta registros persistidos em audit_logs (__db_form_record__)
@@ -464,16 +490,22 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
   }
 
   async listNcs(origem?: NcOrigem): Promise<Nc[]> {
-    let query = supabaseAdmin
-      .from('ncs')
-      .select('*')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
-    if (origem) query = query.eq('origem', origem);
+    if (hasNcsTable !== false) {
+      let query = supabaseAdmin
+        .from('ncs')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+      if (origem) query = query.eq('origem', origem);
 
-    const { data, error } = await query;
-    if (!error && data) {
-      return (data as NcRow[]).map(toNc);
+      const { data, error } = await query;
+      if (!error && data) {
+        hasNcsTable = true;
+        return (data as NcRow[]).map(toNc);
+      }
+      if (error?.code === 'PGRST205') {
+        hasNcsTable = false;
+      }
     }
 
     const { data: storeRows } = await supabaseAdmin
@@ -675,16 +707,22 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
   }
 
   async listTreinamentos(tipo?: TreinamentoTipo): Promise<Treinamento[]> {
-    let query = supabaseAdmin
-      .from('trainings')
-      .select('*, criador:users(nome_completo)')
-      .is('deleted_at', null)
-      .order('data_realizacao', { ascending: false });
-    if (tipo) query = query.eq('tipo', tipo);
+    if (hasTrainingsTable !== false) {
+      let query = supabaseAdmin
+        .from('trainings')
+        .select('*, criador:users(nome_completo)')
+        .is('deleted_at', null)
+        .order('data_realizacao', { ascending: false });
+      if (tipo) query = query.eq('tipo', tipo);
 
-    const { data, error } = await query;
-    if (!error && data) {
-      return (data as unknown as TreinamentoRow[]).map(toTreinamento);
+      const { data, error } = await query;
+      if (!error && data) {
+        hasTrainingsTable = true;
+        return (data as unknown as TreinamentoRow[]).map(toTreinamento);
+      }
+      if (error?.code === 'PGRST205') {
+        hasTrainingsTable = false;
+      }
     }
 
     let storeQuery = supabaseAdmin
