@@ -7,12 +7,13 @@ export interface PopDetailOutput {
   versaoVigente: PopVersion | null;
   versoes: PopVersion[];
   changeRequests: PopChangeRequest[];
+  leituraConfirmadaPorMim?: boolean;
 }
 
 export class GetPopUseCase {
   constructor(private readonly pops: PopRepository) {}
 
-  async execute(id: string): Promise<PopDetailOutput> {
+  async execute(id: string, userId?: string): Promise<PopDetailOutput> {
     const pop = await this.pops.findById(id);
     if (!pop) throw new NotFoundError('POP não encontrado.');
 
@@ -22,11 +23,17 @@ export class GetPopUseCase {
       this.pops.listChangeRequests(id),
     ]);
 
+    const leituraConfirmadaPorMim =
+      versaoVigente && userId
+        ? await this.pops.hasConfirmed(versaoVigente.id, userId)
+        : false;
+
     return {
       pop,
       versaoVigente,
       versoes,
       changeRequests,
+      leituraConfirmadaPorMim,
     };
   }
 }

@@ -30,6 +30,9 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
   const [descricao, setDescricao] = React.useState('');
   const [setor, setSetor] = React.useState<Setor>('qualidade');
   const [periodicidade, setPeriodicidade] = React.useState(24);
+  const [elaboradoPor, setElaboradoPor] = React.useState('Vanessa Ribeiro (Gestão da Qualidade)');
+  const [revisadoPor, setRevisadoPor] = React.useState('Marina Lopes (Responsável Técnica)');
+  const [aprovadoPorNome, setAprovadoPorNome] = React.useState('Pedro Costa (Diretoria)');
   const [arquivo, setArquivo] = React.useState<File | null>(null);
   const create = useCreatePop();
 
@@ -38,6 +41,9 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
     setDescricao('');
     setSetor('qualidade');
     setPeriodicidade(24);
+    setElaboradoPor('Vanessa Ribeiro (Gestão da Qualidade)');
+    setRevisadoPor('Marina Lopes (Responsável Técnica)');
+    setAprovadoPorNome('Pedro Costa (Diretoria)');
     setArquivo(null);
   }
 
@@ -62,9 +68,12 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
         descricao: descricao || null,
         setor,
         periodicidadeRevisaoMeses: periodicidade,
+        elaboradoPor: elaboradoPor.trim() || null,
+        revisadoPor: revisadoPor.trim() || null,
+        aprovadoPorNome: aprovadoPorNome.trim() || null,
         arquivo,
       });
-      toast.success('POP criado como rascunho.');
+      toast.success('POP criado com os responsáveis registrados!');
       reset();
       onOpenChange(false);
     } catch (err) {
@@ -74,18 +83,18 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Subir POP</DialogTitle>
           <DialogDescription>
-            O arquivo precisa ser PDF (até 20 MB). O sistema gera o código sequencial e
-            calcula o hash SHA-256 automaticamente.
+            O arquivo precisa ser PDF (até 20 MB). Informe os responsáveis pela elaboração,
+            revisão e aprovação (RDC 665/22).
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="titulo">Título</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="titulo">Título *</Label>
             <Input
               id="titulo"
               value={titulo}
@@ -96,8 +105,8 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="setor">Setor</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="setor">Setor *</Label>
               <SelectNative
                 id="setor"
                 value={setor}
@@ -110,7 +119,7 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
                 ))}
               </SelectNative>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label htmlFor="periodicidade">Revisão (meses)</Label>
               <Input
                 id="periodicidade"
@@ -123,7 +132,46 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2.5">
+            <p className="text-xs font-semibold text-foreground">
+              Responsáveis pelo POP (Elaboração, Revisão e Aprovação)
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="pop-elaborado" className="text-xs">
+                Responsável pela Elaboração *
+              </Label>
+              <Input
+                id="pop-elaborado"
+                value={elaboradoPor}
+                onChange={(e) => setElaboradoPor(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pop-revisado" className="text-xs">
+                Responsável pela Revisão *
+              </Label>
+              <Input
+                id="pop-revisado"
+                value={revisadoPor}
+                onChange={(e) => setRevisadoPor(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pop-aprovado" className="text-xs">
+                Responsável pela Aprovação *
+              </Label>
+              <Input
+                id="pop-aprovado"
+                value={aprovadoPorNome}
+                onChange={(e) => setAprovadoPorNome(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
             <Label htmlFor="descricao">Descrição (opcional)</Label>
             <Textarea
               id="descricao"
@@ -133,11 +181,11 @@ export function UploadPopDialog({ open, onOpenChange }: Props) {
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="arquivo">Arquivo PDF</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="arquivo">Arquivo PDF *</Label>
             <label
               htmlFor="arquivo"
-              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/40 px-4 py-6 text-center transition-colors hover:border-primary/50 hover:bg-muted"
+              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/40 px-4 py-5 text-center transition-colors hover:border-primary/50 hover:bg-muted"
             >
               <UploadCloud className="h-6 w-6 text-muted-foreground" />
               <span className="text-sm font-medium">

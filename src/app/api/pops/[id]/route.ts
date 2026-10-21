@@ -8,9 +8,9 @@ import { apiHandler } from '@/lib/http/api-handler';
 export const runtime = 'nodejs';
 
 export const GET = apiHandler(async (_req: NextRequest, { params }: { params: { id: string } }) => {
-  await requireAuth();
+  const auth = await requireAuth();
 
   const { popRepository } = getRepositories();
-  const detail = await new GetPopUseCase(popRepository).execute(params.id);
+  const detail = await new GetPopUseCase(popRepository).execute(params.id, auth.sub);
   return detail;
 });

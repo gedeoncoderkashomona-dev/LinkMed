@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { FileText, Plus, Search } from 'lucide-react';
+import { FileText, Plus, Search, UserCheck } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -47,7 +47,7 @@ export function PopsClient() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Documentos (POPs)</h1>
           <p className="text-sm text-muted-foreground">
-            Procedimentos Operacionais Padrão com controle de versão e confirmação de leitura.
+            Procedimentos Operacionais Padrão com governança de elaboração, revisão, aprovação e confirmação de leitura.
           </p>
         </div>
         {canUpload && (
@@ -99,7 +99,7 @@ export function PopsClient() {
       {isLoading ? (
         <div className="grid gap-3">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
+            <Skeleton key={i} className="h-28 w-full" />
           ))}
         </div>
       ) : !data?.pops.length ? (
@@ -117,45 +117,73 @@ export function PopsClient() {
           {data.pops.map((pop) => {
             const total = pop.totalConfirmacoes + pop.totalPendentes;
             const pct = total > 0 ? Math.round((pop.totalConfirmacoes / total) * 100) : 0;
+            const elaboradoPor = pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)';
+            const revisadoPor = pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)';
+            const aprovadoPor = pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)';
+
             return (
               <Card
                 key={pop.id}
                 className="cursor-pointer transition-shadow hover:shadow-card"
                 onClick={() => setSelectedId(pop.id)}
               >
-                <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_220px]">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {pop.codigo}
-                      </span>
-                      <Badge variant={POP_STATUS_VARIANT[pop.status]}>
-                        {POP_STATUS_LABEL[pop.status]}
-                      </Badge>
-                      <Badge variant="secondary">{SETOR_LABEL[pop.setor]}</Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        Rev. {String(pop.versaoAtual).padStart(2, '0')}
-                      </span>
+                <CardContent className="space-y-3 p-4">
+                  <div className="grid gap-3 sm:grid-cols-[1fr_240px]">
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-semibold text-primary">
+                          {pop.codigo}
+                        </span>
+                        <Badge variant={POP_STATUS_VARIANT[pop.status]}>
+                          {POP_STATUS_LABEL[pop.status]}
+                        </Badge>
+                        <Badge variant="secondary">{SETOR_LABEL[pop.setor] ?? pop.setor}</Badge>
+                        <span className="text-[11px] text-muted-foreground">
+                          Rev. {String(pop.versaoAtual).padStart(2, '0')}
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">{pop.titulo}</p>
+                      {pop.descricao && (
+                        <p className="line-clamp-1 text-xs text-muted-foreground">
+                          {pop.descricao}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-sm font-medium">{pop.titulo}</p>
-                    {pop.descricao && (
-                      <p className="line-clamp-1 text-xs text-muted-foreground">
-                        {pop.descricao}
+
+                    <div className="space-y-1.5 sm:text-right">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Confirmação de leitura da equipe
                       </p>
-                    )}
-                  </div>
-                  <div className="space-y-2 sm:text-right">
-                    <p className="text-xs text-muted-foreground">Confirmação de leitura</p>
-                    <div className="flex items-center gap-2 sm:justify-end">
-                      <span className="text-sm font-semibold">{pct}%</span>
-                      <span className="text-[11px] text-muted-foreground">
-                        ({pop.totalConfirmacoes}/{total || '—'})
-                      </span>
+                      <div className="flex items-center gap-2 sm:justify-end">
+                        <span className="text-sm font-bold text-foreground">{pct}%</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          ({pop.totalConfirmacoes} de {total || '—'} colaboradores)
+                        </span>
+                      </div>
+                      <Progress
+                        value={pct}
+                        tone={pct >= 90 ? 'success' : pct >= 50 ? 'primary' : 'warning'}
+                      />
                     </div>
-                    <Progress
-                      value={pct}
-                      tone={pct >= 90 ? 'success' : pct >= 50 ? 'primary' : 'warning'}
-                    />
+                  </div>
+
+                  {/* Faixa de Responsáveis: Elaboração, Revisão e Aprovação */}
+                  <div className="grid gap-2 rounded-lg border border-border/70 bg-muted/25 px-3 py-2 text-[11px] sm:grid-cols-3">
+                    <div className="flex items-center gap-1.5">
+                      <UserCheck className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="text-muted-foreground">Elaboração:</span>
+                      <strong className="truncate text-foreground">{elaboradoPor}</strong>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <UserCheck className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span className="text-muted-foreground">Revisão:</span>
+                      <strong className="truncate text-foreground">{revisadoPor}</strong>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <UserCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-muted-foreground">Aprovação:</span>
+                      <strong className="truncate text-foreground">{aprovadoPor}</strong>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

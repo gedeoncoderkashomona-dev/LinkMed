@@ -3,12 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
+  AvaliacaoEficaciaParticipante,
   FormRecord,
   Nc,
   NcOrigem,
   NcResumo,
   NcSeveridade,
   NcStatus,
+  ParticipanteReg008,
   Treinamento,
   TreinamentoTipo,
 } from '@/core/domain/entities/operacional';
@@ -26,10 +28,28 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { credentials: 'include', ...init });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
       message?: string;
       details?: Record<string, string>;
     };
-    throw new ApiValidationError(body?.message ?? 'Erro inesperado.', body?.details);
+    const isFieldValidationError =
+      res.status === 422 &&
+      body?.details &&
+      typeof body.details === 'object' &&
+      !('reason' in body.details);
+    if (isFieldValidationError) {
+      throw new ApiValidationError(
+        body?.message ?? 'Preencha os campos obrigatórios.',
+        body.details,
+      );
+    }
+    const reason =
+      body?.details && typeof body.details === 'object' && 'reason' in body.details
+        ? String(body.details.reason)
+        : undefined;
+    throw new Error(
+      reason ? `${body?.message ?? 'Erro'} (${reason})` : (body?.message ?? 'Erro inesperado.'),
+    );
   }
   return res.json() as Promise<T>;
 }
@@ -92,6 +112,13 @@ export function useCreateNc() {
     mutationFn: (input: {
       titulo: string;
       descricao?: string | null;
+      causa?: string | null;
+      acaoImediata?: string | null;
+      identificacaoEquipamento?: string | null;
+      equipamentoNaoSeAplica?: boolean;
+      elaboradoPor?: string | null;
+      revisadoPor?: string | null;
+      aprovadoPor?: string | null;
       origem: NcOrigem;
       severidade: NcSeveridade;
     }) =>
@@ -117,7 +144,7 @@ export function useUpdateNcStatus() {
   });
 }
 
-// ----- Treinamentos --------------------------------------------------------
+// ----- Treinamentos (REG-008) ----------------------------------------------
 
 export function useTreinamentos() {
   return useQuery({
@@ -138,10 +165,41 @@ export function useCreateTreinamento() {
       dataRealizacao: string;
       validadeAte?: string | null;
       participantes: string[];
+      participantesDetalhados?: ParticipanteReg008[];
       observacoes?: string | null;
+      conteudo?: string | null;
+      localTreinamento?: string | null;
+      horarioInicial?: string | null;
+      horarioFinal?: string | null;
+      avaliadoPor?: string | null;
+      dataAvaliacao?: string | null;
+      assinaturaAvaliador?: string | null;
+      avaliacoesEficacia?: AvaliacaoEficaciaParticipante[];
+      elaboradoPor?: string | null;
+      revisadoPor?: string | null;
+      aprovadoPor?: string | null;
     }) =>
       fetchJson<{ treinamento: Treinamento }>('/api/treinamentos', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['treinamentos'] }),
+  });
+}
+
+export function useUpdateTreinamentoEficacia() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      id: string;
+      avaliadoPor: string;
+      dataAvaliacao: string;
+      assinaturaAvaliador: string;
+      avaliacoesEficacia: AvaliacaoEficaciaParticipante[];
+    }) =>
+      fetchJson<{ treinamento: Treinamento }>('/api/treinamentos', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       }),

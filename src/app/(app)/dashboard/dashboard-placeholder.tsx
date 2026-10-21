@@ -119,12 +119,6 @@ export function DashboardPlaceholder() {
             </div>
           )}
 
-          <Link href="/formularios">
-            <Button size="sm" variant="outline">
-              <ClipboardList className="h-4 w-4" />
-              Formulários (REGs)
-            </Button>
-          </Link>
           <Link href="/equipamentos">
             <Button size="sm">
               <Wrench className="h-4 w-4" />

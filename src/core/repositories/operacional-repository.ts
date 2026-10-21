@@ -1,10 +1,12 @@
 import type {
+  AvaliacaoEficaciaParticipante,
   FormRecord,
   Nc,
   NcResumo,
   NcStatus,
   NcOrigem,
   NcSeveridade,
+  ParticipanteReg008,
   Treinamento,
   TreinamentoTipo,
 } from '@/core/domain/entities/operacional';
@@ -29,6 +31,13 @@ export interface ListFormRecordsFilter {
 export interface CreateNcInput {
   titulo: string;
   descricao: string | null;
+  causa?: string | null;
+  acaoImediata?: string | null;
+  identificacaoEquipamento?: string | null;
+  equipamentoNaoSeAplica?: boolean;
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPor?: string | null;
   origem: NcOrigem;
   severidade: NcSeveridade;
   responsavelId: string | null;
@@ -45,8 +54,28 @@ export interface CreateTreinamentoInput {
   dataRealizacao: string;
   validadeAte: string | null;
   participantes: string[];
+  participantesDetalhados?: ParticipanteReg008[];
   observacoes: string | null;
+  conteudo?: string | null;
+  localTreinamento?: string | null;
+  horarioInicial?: string | null;
+  horarioFinal?: string | null;
+  avaliadoPor?: string | null;
+  dataAvaliacao?: string | null;
+  assinaturaAvaliador?: string | null;
+  avaliacoesEficacia?: AvaliacaoEficaciaParticipante[];
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPor?: string | null;
   criadoPor: string;
+}
+
+export interface UpdateTreinamentoEficaciaInput {
+  id: string;
+  avaliadoPor: string;
+  dataAvaliacao: string;
+  assinaturaAvaliador: string;
+  avaliacoesEficacia: AvaliacaoEficaciaParticipante[];
 }
 
 /** Persistência dos módulos operacionais (formulários, NCs, treinamentos). */
@@ -63,4 +92,5 @@ export interface OperacionalRepository {
 
   createTreinamento(input: CreateTreinamentoInput): Promise<Treinamento>;
   listTreinamentos(tipo?: TreinamentoTipo): Promise<Treinamento[]>;
+  updateTreinamentoEficacia?(input: UpdateTreinamentoEficaciaInput): Promise<Treinamento | null>;
 }

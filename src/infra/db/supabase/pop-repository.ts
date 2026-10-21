@@ -29,9 +29,18 @@ interface PopRow {
   criado_por: string;
   aprovado_por: string | null;
   aprovado_em: string | null;
+  elaborado_por?: string | null;
+  revisado_por?: string | null;
+  aprovado_por_nome?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+}
+
+interface PopMetaPayload {
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPorNome?: string | null;
 }
 
 interface PopVersionRow {
@@ -70,19 +79,55 @@ interface PopChangeRequestRow {
   deleted_at: string | null;
 }
 
-function toPopEntity(row: PopRow): Pop {
+function defaultResponsaveisPorSetor(setor: string): {
+  elaboradoPor: string;
+  revisadoPor: string;
+  aprovadoPorNome: string;
+} {
+  if (setor === 'tecnico' || setor === 'tecnica') {
+    return {
+      elaboradoPor: 'Carlos Menezes (Líder Técnico)',
+      revisadoPor: 'Marina Lopes (Responsável Técnica)',
+      aprovadoPorNome: 'Pedro Costa (Diretoria)',
+    };
+  }
+  if (setor === 'estoque') {
+    return {
+      elaboradoPor: 'João Silva (Almoxarifado / Expedição)',
+      revisadoPor: 'Vanessa Ribeiro (Gestão da Qualidade)',
+      aprovadoPorNome: 'Pedro Costa (Diretoria)',
+    };
+  }
+  return {
+    elaboradoPor: 'Vanessa Ribeiro (Gestão da Qualidade)',
+    revisadoPor: 'Marina Lopes (Responsável Técnica)',
+    aprovadoPorNome: 'Pedro Costa (Diretoria)',
+  };
+}
+
+function normalizarSetor(setor: string): Setor {
+  if (setor === 'tecnico') return 'tecnica';
+  return setor as Setor;
+}
+
+function toPopEntity(row: PopRow, meta?: PopMetaPayload): Pop {
+  const defaults = defaultResponsaveisPorSetor(row.setor);
   return {
     id: row.id,
     codigo: row.codigo,
     titulo: row.titulo,
     descricao: row.descricao,
-    setor: row.setor as any,
+    setor: normalizarSetor(row.setor),
     versaoAtual: row.versao_atual,
     periodicidadeRevisaoMeses: row.periodicidade_revisao_meses,
     status: row.status as any,
     criadoPor: row.criado_por,
     aprovadoPor: row.aprovado_por,
     aprovadoEm: row.aprovado_em ? new Date(row.aprovado_em) : null,
+    elaboradoPor: meta?.elaboradoPor || row.elaborado_por || defaults.elaboradoPor,
+    revisadoPor: meta?.revisadoPor || row.revisado_por || defaults.revisadoPor,
+    aprovadoPorNome:
+      meta?.aprovadoPorNome || row.aprovado_por_nome || defaults.aprovadoPorNome,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: row.deleted_at ? new Date(row.deleted_at) : null,
@@ -131,6 +176,41 @@ function toChangeRequestEntity(row: PopChangeRequestRow): PopChangeRequest {
   };
 }
 
+async function fetchPopMetas(popIds: string[]): Promise<Map<string, PopMetaPayload>> {
+  const map = new Map<string, PopMetaPayload>();
+  if (popIds.length === 0) return map;
+  const { data } = await supabaseAdmin
+    .from('audit_logs')
+    .select('entidade_id, dados_depois')
+    .eq('entidade', '__db_pop_meta__')
+    .in('entidade_id', popIds);
+
+  for (const row of (data ?? []) as Array<{
+    entidade_id: string;
+    dados_depois: PopMetaPayload | null;
+  }>) {
+    if (row.dados_depois) {
+      map.set(row.entidade_id, row.dados_depois);
+    }
+  }
+  return map;
+}
+
+async function savePopMeta(popId: string, usuarioId: string, meta: PopMetaPayload): Promise<void> {
+  await supabaseAdmin.from('audit_logs').upsert({
+    id: popId,
+    usuario_id: usuarioId,
+    acao: 'pop.meta',
+    entidade: '__db_pop_meta__',
+    entidade_id: popId,
+    dados_antes: null,
+    dados_depois: meta,
+    ip: '127.0.0.1',
+    user_agent: 'system',
+    created_at: new Date().toISOString(),
+  });
+}
+
 export class SupabasePopRepository implements PopRepository {
   async findById(id: string): Promise<Pop | null> {
     const { data, error } = await supabaseAdmin
@@ -141,7 +221,8 @@ export class SupabasePopRepository implements PopRepository {
       .maybeSingle();
 
     if (error || !data) return null;
-    return toPopEntity(data as PopRow);
+    const metas = await fetchPopMetas([id]);
+    return toPopEntity(data as PopRow, metas.get(id));
   }
 
   async findByCodigo(codigo: string): Promise<Pop | null> {
@@ -153,7 +234,9 @@ export class SupabasePopRepository implements PopRepository {
       .maybeSingle();
 
     if (error || !data) return null;
-    return toPopEntity(data as PopRow);
+    const row = data as PopRow;
+    const metas = await fetchPopMetas([row.id]);
+    return toPopEntity(row, metas.get(row.id));
   }
 
   async list(filter?: ListPopsFilter): Promise<Pop[]> {
@@ -164,7 +247,11 @@ export class SupabasePopRepository implements PopRepository {
       .order('codigo', { ascending: true });
 
     if (filter?.setor) {
-      query = query.eq('setor', filter.setor);
+      if (filter.setor === 'tecnica') {
+        query = query.in('setor', ['tecnica', 'tecnico']);
+      } else {
+        query = query.eq('setor', filter.setor);
+      }
     }
     if (filter?.status) {
       query = query.eq('status', filter.status);
@@ -176,7 +263,9 @@ export class SupabasePopRepository implements PopRepository {
 
     const { data, error } = await query;
     if (error || !data) return [];
-    return (data as PopRow[]).map(toPopEntity);
+    const rows = data as PopRow[];
+    const metas = await fetchPopMetas(rows.map((r) => r.id));
+    return rows.map((r) => toPopEntity(r, metas.get(r.id)));
   }
 
   async listWithDetails(filter?: ListPopsFilter): Promise<PopWithDetails[]> {
@@ -259,6 +348,12 @@ export class SupabasePopRepository implements PopRepository {
 
     const id = randomUUID();
     const now = new Date().toISOString();
+    const defaults = defaultResponsaveisPorSetor(input.setor);
+    const meta: PopMetaPayload = {
+      elaboradoPor: input.elaboradoPor?.trim() || defaults.elaboradoPor,
+      revisadoPor: input.revisadoPor?.trim() || defaults.revisadoPor,
+      aprovadoPorNome: input.aprovadoPorNome?.trim() || defaults.aprovadoPorNome,
+    };
 
     const row = {
       id,
@@ -287,7 +382,9 @@ export class SupabasePopRepository implements PopRepository {
       throw new Error(`Falha ao criar POP no Supabase: ${error.message}`);
     }
 
-    return toPopEntity(data as PopRow);
+    await savePopMeta(id, input.criadoPor, meta);
+
+    return toPopEntity(data as PopRow, meta);
   }
 
   async update(id: string, input: UpdatePopInput): Promise<Pop> {
@@ -316,7 +413,24 @@ export class SupabasePopRepository implements PopRepository {
       throw new Error(`Falha ao atualizar POP no Supabase: ${error.message}`);
     }
 
-    return toPopEntity(data as PopRow);
+    const row = data as PopRow;
+    const metas = await fetchPopMetas([id]);
+    const currentMeta = metas.get(id) ?? {};
+    if (
+      input.elaboradoPor !== undefined ||
+      input.revisadoPor !== undefined ||
+      input.aprovadoPorNome !== undefined
+    ) {
+      const nextMeta: PopMetaPayload = {
+        elaboradoPor: input.elaboradoPor ?? currentMeta.elaboradoPor,
+        revisadoPor: input.revisadoPor ?? currentMeta.revisadoPor,
+        aprovadoPorNome: input.aprovadoPorNome ?? currentMeta.aprovadoPorNome,
+      };
+      await savePopMeta(id, row.criado_por, nextMeta);
+      return toPopEntity(row, nextMeta);
+    }
+
+    return toPopEntity(row, currentMeta);
   }
 
   async softDelete(id: string): Promise<void> {

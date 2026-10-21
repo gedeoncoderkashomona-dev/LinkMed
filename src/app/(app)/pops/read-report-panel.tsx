@@ -1,6 +1,7 @@
 'use client';
 
-import { CheckCircle2, Clock, Info } from 'lucide-react';
+import * as React from 'react';
+import { CheckCircle2, Clock } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,26 +12,25 @@ import { useReadReport } from '@/hooks/use-pops';
 
 interface Props {
   popId: string;
-  /** Se false, mostra apenas o resumo (sem nomes). Padrão: só Diretor/Gestor. */
   canSeeReport: boolean;
 }
 
 export function ReadReportPanel({ popId, canSeeReport }: Props) {
   const { data, isLoading } = useReadReport(canSeeReport ? popId : null);
 
-  if (!canSeeReport) {
-    return (
-      <Card>
-        <CardContent className="flex items-start gap-2 p-4 text-xs text-muted-foreground">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            Apenas o Diretor e o Gestor da Qualidade podem ver o relatório detalhado
-            de quem leu e quem falta ler.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  // Resumo por setor para que o Gestor e Diretor vejam imediatamente quais setores leram
+  const resumoPorSetor = React.useMemo(() => {
+    if (!data) return [];
+    const map = new Map<string, { lidos: number; total: number }>();
+    for (const u of [...data.lidos, ...data.pendentes]) {
+      const setorNome = u.setor || 'Geral';
+      const atual = map.get(setorNome) ?? { lidos: 0, total: 0 };
+      atual.total += 1;
+      if (u.confirmadoEm) atual.lidos += 1;
+      map.set(setorNome, atual);
+    }
+    return Array.from(map.entries());
+  }, [data]);
 
   if (isLoading || !data) {
     return (
@@ -49,19 +49,40 @@ export function ReadReportPanel({ popId, canSeeReport }: Props) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="space-y-2 p-4">
+        <CardContent className="space-y-3 p-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Cobertura de leitura</p>
-            <span className="text-sm font-semibold">{pct}%</span>
+            <p className="text-sm font-medium">Cobertura geral de leitura</p>
+            <span className="text-sm font-semibold">
+              {pct}% ({data.totalConfirmado}/{data.totalEsperado})
+            </span>
           </div>
           <Progress
             value={pct}
             tone={pct >= 90 ? 'success' : pct >= 50 ? 'primary' : 'warning'}
           />
           <p className="text-[11px] text-muted-foreground">
-            {data.totalConfirmado} de {data.totalEsperado} colaboradores ativos leram a versão
-            vigente (Rev. {String(data.versaoVigente.numeroVersao).padStart(2, '0')}).
+            {data.totalConfirmado} de {data.totalEsperado} colaboradores ativos confirmaram a
+            leitura da versão vigente (Rev.{' '}
+            {String(data.versaoVigente.numeroVersao).padStart(2, '0')}).
           </p>
+
+          {/* Resumo por Setor (Assistência Técnica, Almoxarifado, Qualidade) */}
+          <div className="grid gap-2 border-t border-border pt-3 sm:grid-cols-3">
+            {resumoPorSetor.map(([setorNome, st]) => {
+              const sPct = st.total > 0 ? Math.round((st.lidos / st.total) * 100) : 0;
+              return (
+                <div
+                  key={setorNome}
+                  className="rounded-lg border border-border/70 bg-muted/20 p-2 text-xs"
+                >
+                  <p className="truncate font-semibold text-foreground">{setorNome}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    <strong>{st.lidos}</strong> de <strong>{st.total}</strong> leram ({sPct}%)
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </CardContent>
       </Card>
 
@@ -78,14 +99,16 @@ export function ReadReportPanel({ popId, canSeeReport }: Props) {
             {data.lidos.map((u) => (
               <div
                 key={u.userId}
-                className="flex items-center justify-between rounded-lg border border-border p-2.5"
+                className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-medium">{u.nomeCompleto}</p>
-                  <p className="truncate text-[10px] text-muted-foreground">{u.email}</p>
+                  <p className="truncate text-xs font-semibold">{u.nomeCompleto}</p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {u.setor ?? PERFIL_LABEL[u.perfil as Perfil] ?? u.perfil}
+                  </p>
                 </div>
                 <div className="text-right">
-                  <Badge variant="secondary" className="text-[10px]">
+                  <Badge variant="success" className="text-[10px]">
                     {PERFIL_LABEL[u.perfil as Perfil] ?? u.perfil}
                   </Badge>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
@@ -115,7 +138,9 @@ export function ReadReportPanel({ popId, canSeeReport }: Props) {
               >
                 <div className="min-w-0">
                   <p className="truncate text-xs font-medium">{u.nomeCompleto}</p>
-                  <p className="truncate text-[10px] text-muted-foreground">{u.email}</p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {u.setor ?? PERFIL_LABEL[u.perfil as Perfil] ?? u.perfil}
+                  </p>
                 </div>
                 <Badge variant="secondary" className="text-[10px]">
                   {PERFIL_LABEL[u.perfil as Perfil] ?? u.perfil}

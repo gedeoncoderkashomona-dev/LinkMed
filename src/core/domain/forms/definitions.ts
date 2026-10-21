@@ -70,6 +70,12 @@ export interface FormAlertaDef {
   mensagem: string;
 }
 
+export interface ResponsaveisDocumento {
+  elaboradoPor: string;
+  revisadoPor: string;
+  aprovadoPor: string;
+}
+
 export interface FormDef {
   tipo: FormTipo;
   reg: string | null;
@@ -80,6 +86,8 @@ export interface FormDef {
   perfis: Perfil[];
   /** Campo (em `dados`) que representa a data de referência do registro. */
   campoData: string;
+  /** Responsáveis oficiais pela elaboração, revisão e aprovação do formulário. */
+  responsaveis: ResponsaveisDocumento;
   secoes: SectionDef[];
   subtipos?: SubtipoDef[];
   alerta?: FormAlertaDef;
@@ -94,6 +102,48 @@ const PERFIS_AT_ALMOX: Perfil[] = ['diretor', 'gestor', 'tecnico', 'estoquista']
 
 const hojeDefault = '__hoje__';
 export const DEFAULT_HOJE = hojeDefault;
+
+export const RESPONSAVEIS_PADRAO_AT: ResponsaveisDocumento = {
+  elaboradoPor: 'Vanessa Ribeiro (Gestão da Qualidade)',
+  revisadoPor: 'Marina Lopes (Responsável Técnica)',
+  aprovadoPor: 'Pedro Costa (Diretoria)',
+};
+
+export const RESPONSAVEIS_PADRAO_ALMOX: ResponsaveisDocumento = {
+  elaboradoPor: 'João Silva / Vanessa Ribeiro (Qualidade)',
+  revisadoPor: 'Marina Lopes (Responsável Técnica)',
+  aprovadoPor: 'Pedro Costa (Diretoria)',
+};
+
+function secaoResponsaveis(resp: ResponsaveisDocumento = RESPONSAVEIS_PADRAO_AT): SectionDef {
+  return {
+    titulo: 'Responsáveis pelo Documento (Elaboração, Revisão e Aprovação)',
+    descricao: 'Governança documental obrigatória conforme RDC 665/2022 (ANVISA).',
+    campos: [
+      {
+        name: 'elaborado_por',
+        label: 'Elaborado por (Responsável pela Elaboração)',
+        type: 'text',
+        required: true,
+        defaultValue: resp.elaboradoPor,
+      },
+      {
+        name: 'revisado_por',
+        label: 'Revisado por (Responsável pela Revisão)',
+        type: 'text',
+        required: true,
+        defaultValue: resp.revisadoPor,
+      },
+      {
+        name: 'aprovado_por',
+        label: 'Aprovado por (Responsável pela Aprovação)',
+        type: 'text',
+        required: true,
+        defaultValue: resp.aprovadoPor,
+      },
+    ],
+  };
+}
 
 function cnc(name: string, label: string, extra: Partial<FieldDef> = {}): FieldDef {
   return { name, label, type: 'cnc', required: true, ...extra };
@@ -211,6 +261,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica', 'almoxarifado'],
     perfis: PERFIS_AT_ALMOX,
     campoData: 'data_liberacao',
+    responsaveis: RESPONSAVEIS_PADRAO_ALMOX,
     secoes: [
       {
         titulo: 'Identificação do equipamento',
@@ -243,6 +294,7 @@ export const FORM_DEFS: FormDef[] = [
           { name: 'data_liberacao', label: 'Data da liberação', type: 'date', required: true, defaultValue: hojeDefault },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_ALMOX),
     ],
   },
   {
@@ -253,6 +305,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     secoes: [
       {
         titulo: '1. Identificação',
@@ -275,6 +328,7 @@ export const FORM_DEFS: FormDef[] = [
           { name: 'assinatura_tecnico', label: 'Assinatura do técnico (nome)', type: 'text', required: true },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_AT),
     ],
   },
   {
@@ -285,6 +339,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data_abertura',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     secoes: [
       {
         titulo: '1. Identificação',
@@ -341,6 +396,7 @@ export const FORM_DEFS: FormDef[] = [
           { name: 'assinatura_tecnico', label: 'Assinatura do técnico (nome)', type: 'text', required: true },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_AT),
     ],
   },
   {
@@ -351,6 +407,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data_calibracao',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     secoes: [
       {
         titulo: '1. Identificação do equipamento',
@@ -425,6 +482,7 @@ export const FORM_DEFS: FormDef[] = [
           { name: 'supervisor_tecnico', label: 'Supervisor técnico (nome)', type: 'text', required: true },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_AT),
     ],
   },
   {
@@ -435,6 +493,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data_entrada',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     secoes: [
       {
         titulo: '1. Identificação',
@@ -452,12 +511,12 @@ export const FORM_DEFS: FormDef[] = [
       {
         key: 'olidef',
         label: 'OLIDEF',
-        secoes: [...OLIDEF_ITENS, ...procedimentosManutencao()],
+        secoes: [...OLIDEF_ITENS, ...procedimentosManutencao(), secaoResponsaveis(RESPONSAVEIS_PADRAO_AT)],
       },
       {
         key: 'teb',
         label: 'TEB',
-        secoes: [...TEB_ITENS, ...procedimentosManutencao()],
+        secoes: [...TEB_ITENS, ...procedimentosManutencao(), secaoResponsaveis(RESPONSAVEIS_PADRAO_AT)],
       },
     ],
   },
@@ -469,6 +528,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     alerta: { mensagem: 'Realizada 1x por semana, sempre no início da semana.' },
     secoes: [
       {
@@ -482,6 +542,7 @@ export const FORM_DEFS: FormDef[] = [
           { name: 'observacoes', label: 'Observações', type: 'textarea' },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_AT),
     ],
   },
   {
@@ -492,6 +553,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     secoes: [
       {
         titulo: 'Monitoramento',
@@ -513,6 +575,7 @@ export const FORM_DEFS: FormDef[] = [
           { name: 'observacoes', label: 'Observações', type: 'textarea' },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_AT),
     ],
   },
   {
@@ -523,6 +586,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     alerta: { mensagem: 'Registrar duas vezes ao dia (manhã e tarde).' },
     secoes: [
       {
@@ -558,6 +622,7 @@ export const FORM_DEFS: FormDef[] = [
           },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_AT),
     ],
   },
   {
@@ -568,6 +633,7 @@ export const FORM_DEFS: FormDef[] = [
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data_calibracao',
+    responsaveis: RESPONSAVEIS_PADRAO_AT,
     alerta: { mensagem: 'Alerta 60 dias antes do vencimento da calibração.' },
     secoes: [
       {
@@ -582,6 +648,7 @@ export const FORM_DEFS: FormDef[] = [
           { name: 'laboratorio', label: 'Laboratório', type: 'text' },
         ],
       },
+      secaoResponsaveis(RESPONSAVEIS_PADRAO_AT),
     ],
   },
 ];
@@ -668,6 +735,18 @@ function vazio(v: unknown): boolean {
   return v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 }
 
+function obterValorComDefault(campo: FieldDef, dados: Record<string, unknown>): unknown {
+  const valor = dados[campo.name];
+  if (
+    vazio(valor) &&
+    campo.defaultValue !== undefined &&
+    campo.defaultValue !== DEFAULT_HOJE
+  ) {
+    return campo.defaultValue;
+  }
+  return valor;
+}
+
 /** Valida os dados contra a definição. Retorna mapa campo → mensagem. */
 export function validarDados(
   def: FormDef,
@@ -683,7 +762,7 @@ export function validarDados(
 
   for (const campo of getCampos(def, subtipo)) {
     if (!campoVisivel(campo, dados)) continue;
-    const valor = dados[campo.name];
+    const valor = obterValorComDefault(campo, dados);
 
     if (campo.required && (campo.type === 'checkbox' ? false : vazio(valor))) {
       erros[campo.name] = 'Campo obrigatório.';
@@ -718,7 +797,7 @@ export function sanitizarDados(
   const limpo: Record<string, unknown> = {};
   for (const campo of getCampos(def, subtipo)) {
     if (!campoVisivel(campo, dados)) continue;
-    const valor = dados[campo.name];
+    const valor = obterValorComDefault(campo, dados);
     if (campo.type === 'checkbox') {
       limpo[campo.name] = Boolean(valor);
     } else if (!vazio(valor)) {

@@ -67,6 +67,7 @@ export class SupabaseAuditRepository implements AuditRepository {
     const { data, error } = await supabaseAdmin
       .from('audit_logs')
       .select('*')
+      .not('entidade', 'like', '__db_%')
       .order('created_at', { ascending: false })
       .limit(limit);
 

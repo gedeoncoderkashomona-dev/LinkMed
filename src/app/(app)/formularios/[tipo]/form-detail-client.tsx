@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Sparkles,
   Tag,
+  UserCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -381,6 +382,43 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
           <Badge variant={statusPrevia === 'conforme' ? 'success' : 'destructive'}>
             {STATUS_REGISTRO_LABEL[statusPrevia]}
           </Badge>
+        </div>
+      </div>
+
+      {/* Cabeçalho Oficial de Governança: Elaboração, Revisão e Aprovação */}
+      <div className="grid gap-2.5 rounded-xl border border-border/80 bg-card p-3.5 text-xs shadow-2xs sm:grid-cols-3">
+        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+          <UserCheck className="h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium text-muted-foreground">
+              Responsável pela Elaboração
+            </p>
+            <p className="truncate font-semibold text-foreground">
+              {String(dados.elaborado_por || def.responsaveis.elaboradoPor)}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+          <UserCheck className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium text-muted-foreground">
+              Responsável pela Revisão
+            </p>
+            <p className="truncate font-semibold text-foreground">
+              {String(dados.revisado_por || def.responsaveis.revisadoPor)}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+          <UserCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium text-muted-foreground">
+              Responsável pela Aprovação
+            </p>
+            <p className="truncate font-semibold text-foreground">
+              {String(dados.aprovado_por || def.responsaveis.aprovadoPor)}
+            </p>
+          </div>
         </div>
       </div>
 

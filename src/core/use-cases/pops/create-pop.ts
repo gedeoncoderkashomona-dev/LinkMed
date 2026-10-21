@@ -11,6 +11,9 @@ export interface CreatePopInput {
   setor: Setor;
   periodicidadeRevisaoMeses?: number;
   criadoPor: string;
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPorNome?: string | null;
   arquivo: {
     nome: string;
     tamanho: number;
@@ -50,6 +53,9 @@ export class CreatePopUseCase {
       setor: input.setor,
       periodicidadeRevisaoMeses: input.periodicidadeRevisaoMeses ?? 24,
       criadoPor: input.criadoPor,
+      elaboradoPor: input.elaboradoPor ?? null,
+      revisadoPor: input.revisadoPor ?? null,
+      aprovadoPorNome: input.aprovadoPorNome ?? null,
     });
 
     await this.pops.createVersion({

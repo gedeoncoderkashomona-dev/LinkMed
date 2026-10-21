@@ -20,6 +20,16 @@ export interface ReadReportOutput {
   pendentes: ReadReportEntry[];
 }
 
+function inferirSetorUsuario(perfil: string, email: string): string {
+  if (perfil === 'tecnico') return 'Assistência Técnica';
+  if (perfil === 'estoquista') return 'Almoxarifado / Estoque';
+  if (perfil === 'gestor') {
+    return email.includes('rt') ? 'Assistência Técnica (RT)' : 'Gestão da Qualidade';
+  }
+  if (perfil === 'diretor') return 'Diretoria';
+  return 'Geral';
+}
+
 export class GetReadReportUseCase {
   constructor(
     private readonly pops: PopRepository,
@@ -48,7 +58,7 @@ export class GetReadReportUseCase {
         nomeCompleto: u.nomeCompleto,
         email: u.email,
         perfil: u.perfil,
-        setor: null,
+        setor: inferirSetorUsuario(u.perfil, u.email),
         confirmadoEm: confirmadoEm ?? null,
       };
 

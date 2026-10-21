@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 import { ListPopsUseCase, CreatePopUseCase } from '@/core/use-cases/pops';
 import { getRepositories } from '@/infra/db';
-import { hashService, signatureService } from '@/infra/crypto';
+import { hashService } from '@/infra/crypto';
 import { storageService } from '@/infra/storage';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { assertCan } from '@/lib/auth/rbac';
@@ -38,6 +38,9 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const descricao = (formData.get('descricao') as string) || null;
   const setor = formData.get('setor') as Setor;
   const periodicidade = Number(formData.get('periodicidadeRevisaoMeses') || '24');
+  const elaboradoPor = (formData.get('elaboradoPor') as string) || null;
+  const revisadoPor = (formData.get('revisadoPor') as string) || null;
+  const aprovadoPorNome = (formData.get('aprovadoPorNome') as string) || null;
   const file = formData.get('arquivo') as File | null;
 
   if (!titulo || !setor || !file) {
@@ -61,6 +64,9 @@ export const POST = apiHandler(async (req: NextRequest) => {
     setor,
     periodicidadeRevisaoMeses: periodicidade,
     criadoPor: auth.sub,
+    elaboradoPor,
+    revisadoPor,
+    aprovadoPorNome,
     arquivo: {
       nome: file.name,
       tamanho: file.size,

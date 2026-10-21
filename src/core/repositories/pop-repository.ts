@@ -14,6 +14,9 @@ export interface CreatePopInput {
   setor: Setor;
   periodicidadeRevisaoMeses?: number;
   criadoPor: string;
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPorNome?: string | null;
 }
 
 export interface CreatePopVersionInput {
@@ -34,6 +37,9 @@ export interface UpdatePopInput {
   aprovadoPor?: string | null;
   aprovadoEm?: Date | null;
   versaoAtual?: number;
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPorNome?: string | null;
 }
 
 export interface ListPopsFilter {

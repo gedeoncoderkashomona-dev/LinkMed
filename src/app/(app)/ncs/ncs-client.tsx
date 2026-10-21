@@ -4,6 +4,8 @@ import * as React from 'react';
 import {
   CheckCircle2,
   Clock,
+  Cpu,
+  FileCheck2,
   Play,
   Plus,
   RotateCcw,
@@ -49,12 +51,25 @@ export function NcsClient() {
   const [busca, setBusca] = React.useState('');
   const [dialogAberto, setDialogAberto] = React.useState(false);
 
-  // Estado do modal de nova NC
+  // Estado do modal de nova NC (REG-020)
   const [titulo, setTitulo] = React.useState('');
   const [descricao, setDescricao] = React.useState('');
+  const [causa, setCausa] = React.useState('');
+  const [acaoImediata, setAcaoImediata] = React.useState('');
+  const [identificacaoEquipamento, setIdentificacaoEquipamento] = React.useState('');
+  const [equipamentoNaoSeAplica, setEquipamentoNaoSeAplica] = React.useState(false);
   const [origem, setOrigem] = React.useState<NcOrigem>('assistencia_tecnica');
   const [severidade, setSeveridade] = React.useState<NcSeveridade>('moderada');
+  const [elaboradoPor, setElaboradoPor] = React.useState('Gestão da Qualidade');
+  const [revisadoPor, setRevisadoPor] = React.useState('Responsável Técnico');
+  const [aprovadoPor, setAprovadoPor] = React.useState('Diretoria Operacional');
   const [erroForm, setErroForm] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (user?.nomeCompleto && elaboradoPor === 'Gestão da Qualidade') {
+      setElaboradoPor(user.nomeCompleto);
+    }
+  }, [user?.nomeCompleto, elaboradoPor]);
 
   const { data, isLoading } = useNcs(origemFiltro || undefined);
   const createNc = useCreateNc();
@@ -71,7 +86,10 @@ export function NcsClient() {
       return (
         nc.codigo.toLowerCase().includes(q) ||
         nc.titulo.toLowerCase().includes(q) ||
-        (nc.descricao && nc.descricao.toLowerCase().includes(q))
+        (nc.descricao && nc.descricao.toLowerCase().includes(q)) ||
+        (nc.causa && nc.causa.toLowerCase().includes(q)) ||
+        (nc.acaoImediata && nc.acaoImediata.toLowerCase().includes(q)) ||
+        (nc.identificacaoEquipamento && nc.identificacaoEquipamento.toLowerCase().includes(q))
       );
     });
   }, [data?.ncs, statusFiltro, busca]);
@@ -83,15 +101,34 @@ export function NcsClient() {
       setErroForm('Informe um título com pelo menos 3 caracteres.');
       return;
     }
+    if (!equipamentoNaoSeAplica && !identificacaoEquipamento.trim()) {
+      setErroForm(
+        'Informe a identificação do equipamento ou marque a opção "Não se aplica".',
+      );
+      return;
+    }
     try {
       await createNc.mutateAsync({
         titulo: titulo.trim(),
         descricao: descricao.trim() || null,
+        causa: causa.trim() || null,
+        acaoImediata: acaoImediata.trim() || null,
+        identificacaoEquipamento: equipamentoNaoSeAplica
+          ? 'Não se aplica'
+          : identificacaoEquipamento.trim(),
+        equipamentoNaoSeAplica,
         origem,
         severidade,
+        elaboradoPor: elaboradoPor.trim() || 'Gestão da Qualidade',
+        revisadoPor: revisadoPor.trim() || 'Responsável Técnico',
+        aprovadoPor: aprovadoPor.trim() || 'Diretoria Operacional',
       });
       setTitulo('');
       setDescricao('');
+      setCausa('');
+      setAcaoImediata('');
+      setIdentificacaoEquipamento('');
+      setEquipamentoNaoSeAplica(false);
       setDialogAberto(false);
     } catch (err) {
       setErroForm(err instanceof Error ? err.message : 'Erro ao registrar NC.');
@@ -113,7 +150,7 @@ export function NcsClient() {
             Não Conformidades (POP-012 / REG-020)
           </h1>
           <p className="text-sm text-muted-foreground">
-            Registro e acompanhamento de Não Conformidades da Assistência Técnica, Almoxarifado e Qualidade.
+            Registro e acompanhamento de Não Conformidades por setor (Assistência Técnica, Almoxarifado, Vendas, Diretoria, Qualidade e Financeiro).
           </p>
         </div>
         {canCreate && (
@@ -122,6 +159,25 @@ export function NcsClient() {
             Abrir Não Conformidade
           </Button>
         )}
+      </div>
+
+      {/* Cabeçalho de Governança Documental REG-020 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-xs">
+        <div className="flex items-center gap-2 font-semibold text-primary">
+          <FileCheck2 className="h-4 w-4" />
+          <span>REG-020 — Controle de Não Conformidade (RDC 665/22)</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-4 text-muted-foreground">
+          <span>
+            <strong className="text-foreground">Elaborado por:</strong> Gestão da Qualidade
+          </span>
+          <span>
+            <strong className="text-foreground">Revisado por:</strong> Responsável Técnico
+          </span>
+          <span>
+            <strong className="text-foreground">Aprovado por:</strong> Diretoria Operacional
+          </span>
+        </div>
       </div>
 
       {/* Cards de Resumo */}
@@ -183,11 +239,11 @@ export function NcsClient() {
 
       {/* Filtros */}
       <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_200px_200px]">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_220px_200px]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por código (NC-2026-...) ou título..."
+              placeholder="Buscar por código (NC-2026-...), título, equipamento ou causa..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="pl-9"
@@ -197,7 +253,7 @@ export function NcsClient() {
             value={origemFiltro}
             onChange={(e) => setOrigemFiltro(e.target.value as NcOrigem | '')}
           >
-            <option value="">Todas as origens</option>
+            <option value="">Todos os setores de origem</option>
             {NC_ORIGENS.map((o) => (
               <option key={o} value={o}>
                 {NC_ORIGEM_LABEL[o]}
@@ -222,7 +278,7 @@ export function NcsClient() {
       {isLoading ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
           ))}
         </div>
       ) : ncsFiltradas.length === 0 ? (
@@ -239,92 +295,142 @@ export function NcsClient() {
         <div className="grid gap-3">
           {ncsFiltradas.map((nc) => (
             <Card key={nc.id}>
-              <CardContent className="flex flex-wrap items-start justify-between gap-4 p-4">
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="default" className="font-mono">
-                      {nc.codigo}
-                    </Badge>
-                    <Badge
-                      variant={
-                        nc.status === 'concluida'
-                          ? 'success'
-                          : nc.status === 'em_andamento'
-                            ? 'warning'
-                            : 'destructive'
-                      }
-                    >
-                      {NC_STATUS_LABEL[nc.status]}
-                    </Badge>
-                    <Badge
-                      variant={
-                        nc.severidade === 'grave'
-                          ? 'destructive'
-                          : nc.severidade === 'moderada'
-                            ? 'warning'
-                            : 'secondary'
-                      }
-                    >
-                      Severidade: {NC_SEVERIDADE_LABEL[nc.severidade]}
-                    </Badge>
-                    <Badge variant="outline">{NC_ORIGEM_LABEL[nc.origem]}</Badge>
+              <CardContent className="space-y-3 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="default" className="font-mono">
+                        {nc.codigo}
+                      </Badge>
+                      <Badge
+                        variant={
+                          nc.status === 'concluida'
+                            ? 'success'
+                            : nc.status === 'em_andamento'
+                              ? 'warning'
+                              : 'destructive'
+                        }
+                      >
+                        {NC_STATUS_LABEL[nc.status]}
+                      </Badge>
+                      <Badge
+                        variant={
+                          nc.severidade === 'grave'
+                            ? 'destructive'
+                            : nc.severidade === 'moderada'
+                              ? 'warning'
+                              : 'secondary'
+                        }
+                      >
+                        Severidade: {NC_SEVERIDADE_LABEL[nc.severidade]}
+                      </Badge>
+                      <Badge variant="outline">
+                        Setor: {NC_ORIGEM_LABEL[nc.origem] ?? nc.origem}
+                      </Badge>
+                      <Badge variant="secondary" className="gap-1">
+                        <Cpu className="h-3 w-3" />
+                        Equipamento:{' '}
+                        {nc.equipamentoNaoSeAplica || !nc.identificacaoEquipamento
+                          ? 'Não se aplica (Documental / Processo)'
+                          : nc.identificacaoEquipamento}
+                      </Badge>
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">{nc.titulo}</p>
                   </div>
-                  <p className="text-sm font-semibold text-foreground">{nc.titulo}</p>
-                  {nc.descricao && (
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      {nc.descricao}
-                    </p>
+
+                  {canAdvance && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {nc.status === 'aberta' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={updateStatus.isPending}
+                          onClick={() =>
+                            updateStatus.mutate({ id: nc.id, status: 'em_andamento' })
+                          }
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          Iniciar tratativa
+                        </Button>
+                      )}
+                      {nc.status !== 'concluida' && (
+                        <Button
+                          size="sm"
+                          disabled={updateStatus.isPending}
+                          onClick={() =>
+                            updateStatus.mutate({ id: nc.id, status: 'concluida' })
+                          }
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Concluir NC
+                        </Button>
+                      )}
+                      {nc.status === 'concluida' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={updateStatus.isPending}
+                          onClick={() =>
+                            updateStatus.mutate({ id: nc.id, status: 'em_andamento' })
+                          }
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Reabrir
+                        </Button>
+                      )}
+                    </div>
                   )}
-                  <p className="text-[11px] text-muted-foreground">
+                </div>
+
+                {/* Campos separados: Descrição Detalhada, Causa e Ação Imediata */}
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      1. Descrição Detalhada
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-foreground">
+                      {nc.descricao || '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      2. Causa (Análise de Causa)
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-foreground">
+                      {nc.causa || 'Em análise pela área responsável'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/20 p-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      3. Ação Imediata
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-foreground">
+                      {nc.acaoImediata || 'Isolamento/segregação e notificação imediata'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>
+                      <strong>Elaborado por:</strong> {nc.elaboradoPor || 'Gestão da Qualidade'}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      <strong>Revisado por:</strong> {nc.revisadoPor || 'Responsável Técnico'}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      <strong>Aprovado por:</strong> {nc.aprovadoPor || 'Diretoria Operacional'}
+                    </span>
+                  </div>
+                  <span>
                     Aberta em {new Date(nc.createdAt).toLocaleDateString('pt-BR')}
                     {nc.concluidaEm
                       ? ` · Concluída em ${new Date(nc.concluidaEm).toLocaleDateString('pt-BR')}`
                       : ''}
-                  </p>
+                  </span>
                 </div>
-
-                {canAdvance && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {nc.status === 'aberta' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={updateStatus.isPending}
-                        onClick={() =>
-                          updateStatus.mutate({ id: nc.id, status: 'em_andamento' })
-                        }
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                        Iniciar tratativa
-                      </Button>
-                    )}
-                    {nc.status !== 'concluida' && (
-                      <Button
-                        size="sm"
-                        disabled={updateStatus.isPending}
-                        onClick={() =>
-                          updateStatus.mutate({ id: nc.id, status: 'concluida' })
-                        }
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Concluir NC
-                      </Button>
-                    )}
-                    {nc.status === 'concluida' && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={updateStatus.isPending}
-                        onClick={() =>
-                          updateStatus.mutate({ id: nc.id, status: 'em_andamento' })
-                        }
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        Reabrir
-                      </Button>
-                    )}
-                  </div>
-                )}
               </CardContent>
             </Card>
           ))}
@@ -333,11 +439,11 @@ export function NcsClient() {
 
       {/* Modal de Nova NC */}
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Abrir Não Conformidade (RNC / REG-020)</DialogTitle>
             <DialogDescription>
-              Registre a ocorrência para acompanhamento, retrabalho e plano de ação.
+              Registre a ocorrência separando Descrição Detalhada, Causa e Ação Imediata, além da identificação do equipamento (ou Não se aplica).
             </DialogDescription>
           </DialogHeader>
 
@@ -354,7 +460,7 @@ export function NcsClient() {
                 id="nc-titulo"
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Ex: Equipamento reprovado na verificação de calibração REG-030"
+                placeholder="Ex: Desvio de calibração ou falha documental identificada"
                 required
               />
             </div>
@@ -391,15 +497,115 @@ export function NcsClient() {
               </div>
             </div>
 
+            {/* Identificação do Equipamento + Opção Não se aplica */}
+            <div className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="nc-equipamento" className="font-semibold">
+                  Identificação do equipamento *
+                </Label>
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-primary">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-border accent-primary"
+                    checked={equipamentoNaoSeAplica}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setEquipamentoNaoSeAplica(checked);
+                      if (checked) {
+                        setIdentificacaoEquipamento('Não se aplica');
+                      } else if (identificacaoEquipamento === 'Não se aplica') {
+                        setIdentificacaoEquipamento('');
+                      }
+                    }}
+                  />
+                  Não se aplica (NC Documental / Processo Administrativo)
+                </label>
+              </div>
+              <Input
+                id="nc-equipamento"
+                disabled={equipamentoNaoSeAplica}
+                value={
+                  equipamentoNaoSeAplica
+                    ? 'Não se aplica (Não Conformidade Documental / Processo)'
+                    : identificacaoEquipamento
+                }
+                onChange={(e) => setIdentificacaoEquipamento(e.target.value)}
+                placeholder="Informe Modelo, Nº de Série, TAG ou Nº da OS (Ex: Incubadora Olidef · NS: OLD-8841)"
+              />
+            </div>
+
+            {/* Campos separados: Descrição detalhada, Causa e Ação imediata */}
             <div className="space-y-1.5">
-              <Label htmlFor="nc-descricao">Descrição detalhada / Causa / Ação imediata</Label>
+              <Label htmlFor="nc-descricao">1. Descrição detalhada *</Label>
               <Textarea
                 id="nc-descricao"
-                rows={4}
+                rows={3}
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
-                placeholder="Descreva o desvio identificado, número de série/OS e ações imediatas..."
+                placeholder="Descreva detalhadamente a Não Conformidade evidenciada..."
+                required
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="nc-causa">2. Causa *</Label>
+              <Textarea
+                id="nc-causa"
+                rows={2}
+                value={causa}
+                onChange={(e) => setCausa(e.target.value)}
+                placeholder="Informe a causa identificada ou hipótese de causa raiz do desvio..."
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="nc-acao-imediata">3. Ação imediata *</Label>
+              <Textarea
+                id="nc-acao-imediata"
+                rows={2}
+                value={acaoImediata}
+                onChange={(e) => setAcaoImediata(e.target.value)}
+                placeholder="Descreva a ação imediata ou contenção adotada (segregação, correção documental, etc.)..."
+                required
+              />
+            </div>
+
+            {/* Governança Documental: Elaborado / Revisado / Aprovado */}
+            <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label htmlFor="nc-elab" className="text-xs">
+                  Elaborado por *
+                </Label>
+                <Input
+                  id="nc-elab"
+                  value={elaboradoPor}
+                  onChange={(e) => setElaboradoPor(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="nc-rev" className="text-xs">
+                  Revisado por *
+                </Label>
+                <Input
+                  id="nc-rev"
+                  value={revisadoPor}
+                  onChange={(e) => setRevisadoPor(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="nc-aprov" className="text-xs">
+                  Aprovado por *
+                </Label>
+                <Input
+                  id="nc-aprov"
+                  value={aprovadoPor}
+                  onChange={(e) => setAprovadoPor(e.target.value)}
+                  required
+                />
+              </div>
             </div>
 
             <DialogFooter>

@@ -32,12 +32,12 @@ const PERMISSIONS: Record<Permission, Perfil[]> = {
   'dashboard:consolidated': ['diretor', 'gestor'],
   'pops:upload': ['diretor', 'gestor'],
   'pops:approve': ['diretor'],
-  'pops:read:report': ['diretor', 'gestor'],
+  'pops:read:report': ['diretor', 'gestor', 'tecnico', 'estoquista'],
   'ncs:advance': ['diretor', 'gestor'],
   'ncs:create': ['diretor', 'gestor', 'tecnico', 'estoquista'],
   'ncs:approve:grave': ['diretor'],
   'forms:create': ['diretor', 'gestor', 'tecnico', 'estoquista'],
-  'trainings:create': ['diretor', 'gestor'],
+  'trainings:create': ['diretor', 'gestor', 'tecnico', 'estoquista'],
   'settings:manage': ['diretor', 'gestor'],
 };
 

@@ -11,6 +11,7 @@ import {
   Layers,
   Search,
   Tag,
+  UserCheck,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -224,6 +225,36 @@ export function FormulariosClient() {
                 </CardHeader>
 
                 <CardContent className="space-y-3 pt-0">
+                  <div className="rounded-lg border border-border/70 bg-muted/25 px-2.5 py-2 text-[10px] space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <UserCheck className="h-3 w-3 text-primary" />
+                        Elaboração:
+                      </span>
+                      <strong className="truncate text-foreground">
+                        {form.responsaveis.elaboradoPor}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <UserCheck className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                        Revisão:
+                      </span>
+                      <strong className="truncate text-foreground">
+                        {form.responsaveis.revisadoPor}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <UserCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                        Aprovação:
+                      </span>
+                      <strong className="truncate text-foreground">
+                        {form.responsaveis.aprovadoPor}
+                      </strong>
+                    </div>
+                  </div>
+
                   {form.alerta && (
                     <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                       <Info className="h-3.5 w-3.5 shrink-0" />

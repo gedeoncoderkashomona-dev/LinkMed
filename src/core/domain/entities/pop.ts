@@ -17,6 +17,9 @@ export interface Pop {
   criadoPor: string;
   aprovadoPor: string | null;
   aprovadoEm: Date | null;
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPorNome?: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;

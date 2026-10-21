@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Send,
   ShieldCheck,
+  UserCheck,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -88,7 +89,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
   const handleConfirmRead = async () => {
     try {
       await confirmRead.mutateAsync(popId);
-      toast.success('Leitura confirmada — evidência registrada.');
+      toast.success('Leitura confirmada — evidência registrada na aba Leituras.');
       void refetch();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro.');
@@ -156,7 +157,9 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                   <Badge variant={POP_STATUS_VARIANT[data.pop.status]}>
                     {POP_STATUS_LABEL[data.pop.status]}
                   </Badge>
-                  <Badge variant="secondary">{SETOR_LABEL[data.pop.setor]}</Badge>
+                  <Badge variant="secondary">
+                    {SETOR_LABEL[data.pop.setor] ?? data.pop.setor}
+                  </Badge>
                   <span className="text-[11px] text-muted-foreground">
                     Rev. {String(data.pop.versaoAtual).padStart(2, '0')} ·{' '}
                     {data.pop.periodicidadeRevisaoMeses}m
@@ -177,9 +180,45 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
             <Skeleton className="h-24 w-full" />
           </div>
         ) : (
-          <div className="flex-1 p-5">
+          <div className="flex-1 p-5 space-y-4">
+            {/* Quadro Oficial de Governança: Elaboração, Revisão e Aprovação */}
+            <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 text-xs">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-primary">
+                Responsáveis pelo Documento (RDC 665/2022)
+              </p>
+              <div className="grid gap-2.5 sm:grid-cols-3">
+                <div className="rounded-lg border border-border/80 bg-background p-2.5">
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                    <UserCheck className="h-3 w-3 text-primary" />
+                    Elaborado por
+                  </span>
+                  <p className="mt-0.5 font-semibold text-foreground">
+                    {data.pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/80 bg-background p-2.5">
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                    <UserCheck className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    Revisado por
+                  </span>
+                  <p className="mt-0.5 font-semibold text-foreground">
+                    {data.pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/80 bg-background p-2.5">
+                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                    <UserCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                    Aprovado por
+                  </span>
+                  <p className="mt-0.5 font-semibold text-foreground">
+                    {data.pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Ações contextuais */}
-            <div className="mb-4 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {data.versaoVigente && (
                 <Button variant="outline" size="sm" asChild>
                   <a
@@ -188,7 +227,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                     rel="noreferrer"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    Abrir PDF
+                    Abrir PDF Oficial
                   </a>
                 </Button>
               )}
@@ -205,20 +244,27 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                 </Button>
               )}
               {data.pop.status === 'publicado' && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleConfirmRead}
-                  disabled={confirmRead.isPending}
-                >
-                  <Check className="h-3.5 w-3.5" />
-                  Confirmar leitura
-                </Button>
+                data.leituraConfirmadaPorMim ? (
+                  <Badge variant="success" className="gap-1.5 px-3 py-1.5 text-xs">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Leitura confirmada por você
+                  </Badge>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={handleConfirmRead}
+                    disabled={confirmRead.isPending}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    {confirmRead.isPending ? 'Confirmando...' : 'Confirmar leitura'}
+                  </Button>
+                )
               )}
             </div>
 
             {data.pop.descricao && (
-              <p className="mb-4 whitespace-pre-line text-sm text-muted-foreground">
+              <p className="whitespace-pre-line text-sm text-muted-foreground">
                 {data.pop.descricao}
               </p>
             )}
@@ -231,7 +277,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                 </TabsTrigger>
                 <TabsTrigger value="leituras">
                   <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                  Leituras
+                  Leituras por Setor
                 </TabsTrigger>
                 <TabsTrigger value="sugestoes">
                   <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
@@ -287,7 +333,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
 
               {/* Leituras */}
               <TabsContent value="leituras">
-                <ReadReportPanel popId={data.pop.id} canSeeReport={isDiretor || isGestor} />
+                <ReadReportPanel popId={data.pop.id} canSeeReport />
               </TabsContent>
 
               {/* Sugestões */}

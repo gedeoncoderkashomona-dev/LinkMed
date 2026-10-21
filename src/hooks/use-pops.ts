@@ -44,6 +44,7 @@ export interface PopDetail {
   versaoVigente: PopVersion | null;
   versoes: PopVersion[];
   changeRequests: PopChangeRequest[];
+  leituraConfirmadaPorMim?: boolean;
 }
 
 export function usePop(id: string | null) {
@@ -87,6 +88,9 @@ export function useCreatePop() {
       descricao?: string | null;
       setor: Setor;
       periodicidadeRevisaoMeses: number;
+      elaboradoPor?: string | null;
+      revisadoPor?: string | null;
+      aprovadoPorNome?: string | null;
       arquivo: File;
     }) => {
       const form = new FormData();
@@ -94,6 +98,9 @@ export function useCreatePop() {
       if (input.descricao) form.append('descricao', input.descricao);
       form.append('setor', input.setor);
       form.append('periodicidadeRevisaoMeses', String(input.periodicidadeRevisaoMeses));
+      if (input.elaboradoPor) form.append('elaboradoPor', input.elaboradoPor);
+      if (input.revisadoPor) form.append('revisadoPor', input.revisadoPor);
+      if (input.aprovadoPorNome) form.append('aprovadoPorNome', input.aprovadoPorNome);
       form.append('arquivo', input.arquivo);
       return fetchJson<{ pop: Pop }>('/api/pops', { method: 'POST', body: form });
     },

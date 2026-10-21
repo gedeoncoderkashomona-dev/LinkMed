@@ -12,6 +12,13 @@ export const runtime = 'nodejs';
 const createSchema = z.object({
   titulo: z.string().trim().min(3, 'Informe um título.').max(255),
   descricao: z.string().trim().max(4000).nullish(),
+  causa: z.string().trim().max(4000).nullish(),
+  acaoImediata: z.string().trim().max(4000).nullish(),
+  identificacaoEquipamento: z.string().trim().max(255).nullish(),
+  equipamentoNaoSeAplica: z.boolean().optional().default(false),
+  elaboradoPor: z.string().trim().max(255).nullish(),
+  revisadoPor: z.string().trim().max(255).nullish(),
+  aprovadoPor: z.string().trim().max(255).nullish(),
   origem: z.enum(NC_ORIGENS),
   severidade: z.enum(NC_SEVERIDADES),
 });
@@ -41,6 +48,15 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const nc = await operacionalRepository.createNc({
     titulo: body.titulo,
     descricao: body.descricao || null,
+    causa: body.causa || null,
+    acaoImediata: body.acaoImediata || null,
+    identificacaoEquipamento: body.equipamentoNaoSeAplica
+      ? 'Não se aplica (NC Documental / Processo)'
+      : body.identificacaoEquipamento || 'Não se aplica',
+    equipamentoNaoSeAplica: Boolean(body.equipamentoNaoSeAplica),
+    elaboradoPor: body.elaboradoPor || null,
+    revisadoPor: body.revisadoPor || null,
+    aprovadoPor: body.aprovadoPor || null,
     origem: body.origem,
     severidade: body.severidade,
     responsavelId: null,
@@ -57,7 +73,12 @@ export const POST = apiHandler(async (req: NextRequest) => {
     'Nc',
     nc.id,
     null,
-    { codigo: nc.codigo, severidade: nc.severidade, origem: nc.origem },
+    {
+      codigo: nc.codigo,
+      severidade: nc.severidade,
+      origem: nc.origem,
+      identificacaoEquipamento: nc.identificacaoEquipamento,
+    },
   );
 
   return { nc };
