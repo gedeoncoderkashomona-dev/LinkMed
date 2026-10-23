@@ -7,6 +7,7 @@ import {
   type NotaEficacia,
   type ParticipanteReg008,
 } from '@/core/domain/entities/operacional';
+import { canEditGovernance, RESPONSAVEIS_PADRAO_AT } from '@/core/domain/forms/definitions';
 import { getRepositories } from '@/infra/db';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { assertCan } from '@/lib/auth/rbac';
@@ -81,6 +82,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
   assertCan(auth.perfil, 'trainings:create');
   const body = createSchema.parse(await req.json());
 
+  const podeEditarGov = canEditGovernance(auth.perfil);
   const { operacionalRepository, auditService } = getRepositories();
   const treinamento = await operacionalRepository.createTreinamento({
     titulo: body.titulo,
@@ -109,9 +111,15 @@ export const POST = apiHandler(async (req: NextRequest) => {
       interesseNovosConceitos: a.interesseNovosConceitos as NotaEficacia,
       execucaoConformeProcedimentos: a.execucaoConformeProcedimentos as NotaEficacia,
     })) as AvaliacaoEficaciaParticipante[],
-    elaboradoPor: body.elaboradoPor || null,
-    revisadoPor: body.revisadoPor || null,
-    aprovadoPor: body.aprovadoPor || null,
+    elaboradoPor: podeEditarGov
+      ? body.elaboradoPor || RESPONSAVEIS_PADRAO_AT.elaboradoPor
+      : RESPONSAVEIS_PADRAO_AT.elaboradoPor,
+    revisadoPor: podeEditarGov
+      ? body.revisadoPor || RESPONSAVEIS_PADRAO_AT.revisadoPor
+      : RESPONSAVEIS_PADRAO_AT.revisadoPor,
+    aprovadoPor: podeEditarGov
+      ? body.aprovadoPor || RESPONSAVEIS_PADRAO_AT.aprovadoPor
+      : RESPONSAVEIS_PADRAO_AT.aprovadoPor,
     criadoPor: auth.sub,
   });
 

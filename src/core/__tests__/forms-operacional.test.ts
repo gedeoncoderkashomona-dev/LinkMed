@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   avaliarConformidade,
   campoVisivel,
+  canEditGovernance,
   FORM_DEFS,
   getCampos,
   getFormDef,
@@ -249,5 +250,59 @@ describe('Máquina de Estados da OS e Etiquetas Coloridas REG-016 (Fase 5)', () 
     expect(hydrated.numero_os).toBe('OS-2026-500');
     expect(hydrated.cliente).toBe('Hospital Santa Casa');
     expect(hydrated.etiqueta_violeta).toBe('C');
+  });
+
+  it('bloqueia edição de responsáveis em formulários operacionais para usuários comuns (RDC 665/22)', () => {
+    // 1. Verificação de permissões do RBAC de governança
+    expect(canEditGovernance('diretor')).toBe(true);
+    expect(canEditGovernance('gestor')).toBe(true);
+    expect(canEditGovernance('tecnico')).toBe(false);
+    expect(canEditGovernance('estoquista')).toBe(false);
+    expect(canEditGovernance('auditor' as any)).toBe(false);
+    expect(canEditGovernance(undefined)).toBe(false);
+
+    const reg022 = getFormDef('inspecao-recebimento')!;
+
+    // 2. Técnico tenta adulterar elaborado_por, revisado_por e aprovado_por
+    const dadosTentativaFraude = {
+      numero_os: 'OS-2026-999',
+      cliente: 'Hospital Central',
+      equipamento: 'Desfibrilador',
+      marca: 'Instramed',
+      modelo: 'CardioMax',
+      numero_serie: 'CMD-1010',
+      elaborado_por: 'Tentativa Fraude Técnico',
+      revisado_por: 'Tentativa Fraude Técnico',
+      aprovado_por: 'Tentativa Fraude Técnico',
+    };
+
+    const dadosSanitizadosTecnico = sanitizarDados(
+      reg022,
+      null,
+      dadosTentativaFraude,
+      'tecnico',
+    );
+
+    // Deve forçar os valores padrão de governança
+    expect(dadosSanitizadosTecnico.elaborado_por).toBe(reg022.responsaveis.elaboradoPor);
+    expect(dadosSanitizadosTecnico.revisado_por).toBe(reg022.responsaveis.revisadoPor);
+    expect(dadosSanitizadosTecnico.aprovado_por).toBe(reg022.responsaveis.aprovadoPor);
+
+    // 3. Diretor ou Qualidade (gestor) pode atualizar a governança
+    const dadosSanitizadosDiretor = sanitizarDados(
+      reg022,
+      null,
+      {
+        ...dadosTentativaFraude,
+        elaborado_por: 'Qualidade Homologada',
+        revisado_por: 'RT Homologado',
+        aprovado_por: 'Diretoria Executiva',
+      },
+      'diretor',
+    );
+
+    expect(dadosSanitizadosDiretor.elaborado_por).toBe('Qualidade Homologada');
+    expect(dadosSanitizadosDiretor.revisado_por).toBe('RT Homologado');
+    expect(dadosSanitizadosDiretor.aprovado_por).toBe('Diretoria Executiva');
   });
 });

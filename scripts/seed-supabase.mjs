@@ -690,6 +690,44 @@ async function seed() {
     }
   }
 
+  // Garantir a presença do POP-020 (Realização de Assistência Técnica de Equipamentos)
+  const pop020Id = '10000000-0000-4000-8000-000000000020';
+  const { error: errPop020 } = await supabase.from('pops').upsert(
+    {
+      id: pop020Id,
+      codigo: 'POP-020',
+      titulo: 'Realização de Assistência Técnica de Equipamentos',
+      descricao:
+        'Procedimento Operacional Padrão para realização de calibração, manutenção preventiva, corretiva e ensaios de segurança elétrica em equipamentos eletromédicos conforme RDC 665/22 e normas técnicas aplicáveis.',
+      setor: 'tecnica',
+      versao_atual: 1,
+      periodicidade_revisao_meses: 24,
+      status: 'publicado',
+      criado_por: '00000000-0000-4000-8000-000000000002',
+      aprovado_por: '00000000-0000-4000-8000-000000000001',
+      aprovado_em: '2026-01-30T10:00:00.000Z',
+    },
+    { onConflict: 'id' },
+  );
+  if (errPop020) console.error('Erro ao inserir POP-020:', errPop020);
+  else console.log('✓ POP-020 inserido/atualizado com sucesso');
+
+  await supabase.from('pop_versions').upsert(
+    {
+      id: '20000000-0000-4000-8000-000000000020',
+      pop_id: pop020Id,
+      numero_versao: 1,
+      arquivo_url: `/api/pops/${pop020Id}/file`,
+      arquivo_nome: 'POP-020-Realizacao-Assistencia-Tecnica-Equipamentos.pdf',
+      arquivo_tamanho: 24576,
+      hash_arquivo: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      status: 'vigente',
+      publicado_em: '2026-01-30T10:00:00.000Z',
+      criado_por: '00000000-0000-4000-8000-000000000002',
+    },
+    { onConflict: 'id' },
+  );
+
   // Metadados de governança para todos os POPs existentes
   const { data: allPops } = await supabase
     .from('pops')
@@ -697,11 +735,23 @@ async function seed() {
   for (const p of allPops ?? []) {
     const metaLogId = String(p.id).replace(/^.{8}/, '30000000');
     const elaboradoPor =
-      p.setor === 'tecnico' || p.setor === 'tecnica'
-        ? 'Carlos Menezes (Líder Técnico)'
-        : p.setor === 'estoque'
-          ? 'João Silva (Controle de Estoque)'
-          : 'Vanessa Ribeiro (Gestão da Qualidade)';
+      p.codigo === 'POP-020'
+        ? 'Vanessa Rodrigues'
+        : p.setor === 'tecnico' || p.setor === 'tecnica'
+          ? 'Carlos Menezes (Líder Técnico)'
+          : p.setor === 'estoque'
+            ? 'João Silva (Controle de Estoque)'
+            : 'Vanessa Ribeiro (Gestão da Qualidade)';
+
+    const revisadoPor =
+      p.codigo === 'POP-020'
+        ? 'Rosemeri Costa'
+        : 'Marina Lopes (Responsável Técnica)';
+
+    const aprovadoPorNome =
+      p.codigo === 'POP-020'
+        ? 'Pedro Costa'
+        : 'Pedro Costa (Diretoria Operacional)';
 
     const { error } = await supabase.from('audit_logs').upsert(
       {
@@ -713,8 +763,8 @@ async function seed() {
         dados_antes: null,
         dados_depois: {
           elaboradoPor,
-          revisadoPor: 'Marina Lopes (Responsável Técnica)',
-          aprovadoPorNome: 'Pedro Costa (Diretoria Operacional)',
+          revisadoPor,
+          aprovadoPorNome,
         },
         ip: '127.0.0.1',
         user_agent: 'seed-supabase',

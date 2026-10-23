@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { DirectorDashboard } from '@/components/dashboard/director-dashboard';
+import { OsDossierDialog } from '@/components/operacional/os-dossier-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +57,7 @@ export function DashboardPlaceholder() {
   );
 
   const [visaoDiretor, setVisaoDiretor] = React.useState<'estrategica' | 'operacional'>('estrategica');
+  const [dossierOs, setDossierOs] = React.useState<string | null>(null);
 
   const totalForms = React.useMemo(() => {
     const c = formsData?.contagens ?? {};
@@ -282,9 +284,14 @@ export function DashboardPlaceholder() {
                       >
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-semibold text-primary">
+                            <button
+                              type="button"
+                              onClick={() => setDossierOs(os.numeroOs)}
+                              className="font-mono font-semibold text-primary underline hover:text-primary/80 cursor-pointer"
+                              title="Clique para abrir o Dossiê completo desta OS"
+                            >
                               OS {os.numeroOs}
-                            </span>
+                            </button>
                             <span className="font-medium text-foreground">
                               {os.equipamento || 'Equipamento'}
                             </span>
@@ -444,6 +451,13 @@ export function DashboardPlaceholder() {
       </div>
         </>
       )}
+
+      {/* Dossiê completo ao clicar na OS */}
+      <OsDossierDialog
+        osChaveOuNumero={dossierOs}
+        open={Boolean(dossierOs)}
+        onOpenChange={(open) => !open && setDossierOs(null)}
+      />
     </div>
   );
 }

@@ -37,6 +37,8 @@ export interface FieldDef {
   defaultValue?: string | number | boolean;
   /** Dica exibida sob o campo. */
   hint?: string;
+  /** Campo restrito à governança: apenas Qualidade (gestor) e Diretor podem editar. */
+  governanceOnly?: boolean;
 }
 
 export interface SectionDef {
@@ -115,10 +117,19 @@ export const RESPONSAVEIS_PADRAO_ALMOX: ResponsaveisDocumento = {
   aprovadoPor: 'Pedro Costa (Diretoria)',
 };
 
+/**
+ * Define se o perfil logado possui permissão para alterar quem elaborou,
+ * revisou e aprovou os POPs e Formulários (exclusivo para Qualidade e Diretor).
+ */
+export function canEditGovernance(perfil?: Perfil | null): boolean {
+  return perfil === 'diretor' || perfil === 'gestor';
+}
+
 function secaoResponsaveis(resp: ResponsaveisDocumento = RESPONSAVEIS_PADRAO_AT): SectionDef {
   return {
     titulo: 'Responsáveis pelo Documento (Elaboração, Revisão e Aprovação)',
-    descricao: 'Governança documental obrigatória conforme RDC 665/2022 (ANVISA).',
+    descricao:
+      'Governança documental obrigatória conforme RDC 665/2022 (ANVISA). Edição restrita à Qualidade e Diretoria.',
     campos: [
       {
         name: 'elaborado_por',
@@ -126,6 +137,7 @@ function secaoResponsaveis(resp: ResponsaveisDocumento = RESPONSAVEIS_PADRAO_AT)
         type: 'text',
         required: true,
         defaultValue: resp.elaboradoPor,
+        governanceOnly: true,
       },
       {
         name: 'revisado_por',
@@ -133,6 +145,7 @@ function secaoResponsaveis(resp: ResponsaveisDocumento = RESPONSAVEIS_PADRAO_AT)
         type: 'text',
         required: true,
         defaultValue: resp.revisadoPor,
+        governanceOnly: true,
       },
       {
         name: 'aprovado_por',
@@ -140,6 +153,7 @@ function secaoResponsaveis(resp: ResponsaveisDocumento = RESPONSAVEIS_PADRAO_AT)
         type: 'text',
         required: true,
         defaultValue: resp.aprovadoPor,
+        governanceOnly: true,
       },
     ],
   };
@@ -788,15 +802,22 @@ export function validarDados(
   return erros;
 }
 
-/** Remove do payload campos desconhecidos/ocultos e normaliza tipos. */
+/** Remove do payload campos desconhecidos/ocultos, normaliza tipos e aplica bloqueio de governança por perfil. */
 export function sanitizarDados(
   def: FormDef,
   subtipo: string | null | undefined,
   dados: Record<string, unknown>,
+  perfil?: Perfil | null,
 ): Record<string, unknown> {
   const limpo: Record<string, unknown> = {};
+  const bloquearGovernanca = perfil !== undefined && !canEditGovernance(perfil);
+
   for (const campo of getCampos(def, subtipo)) {
     if (!campoVisivel(campo, dados)) continue;
+    if (bloquearGovernanca && campo.governanceOnly && campo.defaultValue !== undefined) {
+      limpo[campo.name] = String(campo.defaultValue).trim();
+      continue;
+    }
     const valor = obterValorComDefault(campo, dados);
     if (campo.type === 'checkbox') {
       limpo[campo.name] = Boolean(valor);

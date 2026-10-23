@@ -181,9 +181,10 @@ async function fetchPopMetas(popIds: string[]): Promise<Map<string, PopMetaPaylo
   if (popIds.length === 0) return map;
   const { data } = await supabaseAdmin
     .from('audit_logs')
-    .select('entidade_id, dados_depois')
+    .select('entidade_id, dados_depois, created_at')
     .eq('entidade', '__db_pop_meta__')
-    .in('entidade_id', popIds);
+    .in('entidade_id', popIds)
+    .order('created_at', { ascending: true });
 
   for (const row of (data ?? []) as Array<{
     entidade_id: string;
@@ -197,18 +198,22 @@ async function fetchPopMetas(popIds: string[]): Promise<Map<string, PopMetaPaylo
 }
 
 async function savePopMeta(popId: string, usuarioId: string, meta: PopMetaPayload): Promise<void> {
-  await supabaseAdmin.from('audit_logs').upsert({
-    id: popId,
-    usuario_id: usuarioId,
-    acao: 'pop.meta',
-    entidade: '__db_pop_meta__',
-    entidade_id: popId,
-    dados_antes: null,
-    dados_depois: meta,
-    ip: '127.0.0.1',
-    user_agent: 'system',
-    created_at: new Date().toISOString(),
-  });
+  const metaLogId = String(popId).replace(/^.{8}/, '30000000');
+  await supabaseAdmin.from('audit_logs').upsert(
+    {
+      id: metaLogId,
+      usuario_id: usuarioId,
+      acao: 'POP_META_UPSERT',
+      entidade: '__db_pop_meta__',
+      entidade_id: popId,
+      dados_antes: null,
+      dados_depois: meta,
+      ip: '127.0.0.1',
+      user_agent: 'system',
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
 }
 
 export class SupabasePopRepository implements PopRepository {

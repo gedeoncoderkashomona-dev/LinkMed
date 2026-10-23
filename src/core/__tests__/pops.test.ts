@@ -307,4 +307,59 @@ describe('Casos de Uso — Gestão de POPs (Fase 2)', () => {
     });
     expect(resp.status).toBe('aprovada');
   });
+
+  it('valida conteúdo oficial do POP-020 (RDC 665/22) e geração de PDF fiel de 4 páginas', async () => {
+    const { POP_020_META, POP_020_REGISTROS_TABLE, POP_020_REVISOES, POP_020_SECOES } =
+      await import('@/core/domain/pops/pop-020-content');
+    const { gerarPdfPop020Oficial } = await import('@/core/domain/pops/pop-pdf-generator');
+
+    // 1. Metadados estritos do POP-020
+    expect(POP_020_META.codigo).toBe('POP-020');
+    expect(POP_020_META.titulo).toBe(
+      'POP-020 - Realização de Assistência Técnica de Equipamentos',
+    );
+    expect(POP_020_META.titulo.toLowerCase()).not.toContain('salete85');
+    expect(POP_020_META.setor).toBe('tecnica');
+    expect(POP_020_META.versaoLabel).toBe('01');
+    expect(POP_020_META.elaboradoPor).toContain('Vanessa Rodrigues');
+    expect(POP_020_META.revisadoPor).toContain('Rosemeri Costa');
+    expect(POP_020_META.aprovadoPor).toContain('Pedro Costa');
+
+    // 2. Seções oficiais obrigatórias
+    expect(POP_020_SECOES.length).toBeGreaterThanOrEqual(10);
+    const titulos = POP_020_SECOES.map((s) => s.titulo);
+    expect(titulos.some((t) => t.includes('OBJETIVO'))).toBe(true);
+    expect(titulos.some((t) => t.includes('REFERÊNCIAS') || t.includes('REFERENCIAS'))).toBe(true);
+    expect(titulos.some((t) => t.includes('ABRANGÊNCIA') || t.includes('ABRANGENCIA'))).toBe(true);
+    expect(titulos.some((t) => t.includes('RESPONSABILIDADES'))).toBe(true);
+    expect(titulos.some((t) => t.includes('DEFINIÇÕES') || t.includes('DEFINICOES'))).toBe(true);
+    expect(titulos.some((t) => t.includes('PROCEDIMENTO'))).toBe(true);
+
+    // 3. Tabela de Registros da Qualidade (Seção 8)
+    expect(POP_020_REGISTROS_TABLE.length).toBeGreaterThanOrEqual(8);
+    const regs = POP_020_REGISTROS_TABLE.map((r) => r.identificacao);
+    expect(regs.some((r) => r.includes('REG-009'))).toBe(true);
+    expect(regs.some((r) => r.includes('REG-016'))).toBe(true);
+    expect(regs.some((r) => r.includes('REG-017'))).toBe(true);
+    expect(regs.some((r) => r.includes('REG-020'))).toBe(true);
+    expect(regs.some((r) => r.includes('REG-022'))).toBe(true);
+    expect(regs.some((r) => r.includes('REG-030'))).toBe(true);
+    expect(regs.some((r) => r.includes('REG-034'))).toBe(true);
+    expect(regs.some((r) => r.includes('REG-035'))).toBe(true);
+
+    // 4. Histórico de Revisões (Seção 9)
+    expect(POP_020_REVISOES).toHaveLength(2);
+    expect(POP_020_REVISOES[1]!.numero).toBe('01');
+    expect(POP_020_REVISOES[1]!.data).toBe('30/01/2026');
+
+    // 5. Geração de PDF Oficial fiel de 4 páginas
+    const pdfBuf = gerarPdfPop020Oficial('test-hash-1234567890');
+    expect(pdfBuf).toBeInstanceOf(Buffer);
+    const pdfStr = pdfBuf.toString('utf8');
+    expect(pdfStr.startsWith('%PDF-1.4')).toBe(true);
+    expect(pdfStr.includes('%%EOF')).toBe(true);
+    expect(pdfStr).toContain('/Count 4'); // Exatamente 4 páginas
+    expect(pdfStr).toContain('POP-020');
+    expect(pdfStr).not.toContain('Salete85');
+  });
 });

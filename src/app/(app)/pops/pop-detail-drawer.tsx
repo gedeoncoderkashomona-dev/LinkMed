@@ -5,9 +5,12 @@ import {
   Check,
   CheckCircle2,
   Download,
+  Edit2,
   FileText,
   History,
+  Lock,
   MessageSquare,
+  Save,
   Send,
   ShieldCheck,
   UserCheck,
@@ -17,6 +20,7 @@ import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,6 +32,11 @@ import {
   SETOR_LABEL,
   type ChangeRequestStatus,
 } from '@/core/domain/enums/pop';
+import {
+  POP_020_REGISTROS_TABLE,
+  POP_020_REVISOES,
+  POP_020_SECOES,
+} from '@/core/domain/pops/pop-020-content';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import {
   useApprovePop,
@@ -58,10 +67,54 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
 
   const [crText, setCrText] = React.useState('');
   const [responseText, setResponseText] = React.useState<Record<string, string>>({});
+  const [editandoGov, setEditandoGov] = React.useState(false);
+  const [editElaborado, setEditElaborado] = React.useState('');
+  const [editRevisado, setEditRevisado] = React.useState('');
+  const [editAprovado, setEditAprovado] = React.useState('');
+  const [salvandoGov, setSalvandoGov] = React.useState(false);
 
   const canUpload = user ? can(user.perfil, 'pops:upload') : false;
   const isDiretor = user?.perfil === 'diretor';
   const isGestor = user?.perfil === 'gestor';
+  const podeEditarGov = isDiretor || isGestor;
+
+  React.useEffect(() => {
+    if (data?.pop) {
+      setEditElaborado(data.pop.elaboradoPor || 'Vanessa Ribeiro (Gestão da Qualidade)');
+      setEditRevisado(data.pop.revisadoPor || 'Marina Lopes (Responsável Técnica)');
+      setEditAprovado(data.pop.aprovadoPorNome || 'Pedro Costa (Diretoria)');
+    }
+  }, [data?.pop]);
+
+  const handleSalvarGov = async () => {
+    if (!editElaborado.trim() || !editRevisado.trim() || !editAprovado.trim()) {
+      toast.error('Preencha todos os responsáveis.');
+      return;
+    }
+    setSalvandoGov(true);
+    try {
+      const res = await fetch(`/api/pops/${popId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          elaboradoPor: editElaborado.trim(),
+          revisadoPor: editRevisado.trim(),
+          aprovadoPorNome: editAprovado.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Falha ao salvar responsáveis.');
+      }
+      toast.success('Responsáveis pelo POP atualizados com sucesso!');
+      setEditandoGov(false);
+      void refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar.');
+    } finally {
+      setSalvandoGov(false);
+    }
+  };
 
   const handlePublish = async () => {
     try {
@@ -182,39 +235,115 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
         ) : (
           <div className="flex-1 p-5 space-y-4">
             {/* Quadro Oficial de Governança: Elaboração, Revisão e Aprovação */}
-            <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 text-xs">
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-primary">
-                Responsáveis pelo Documento (RDC 665/2022)
-              </p>
-              <div className="grid gap-2.5 sm:grid-cols-3">
-                <div className="rounded-lg border border-border/80 bg-background p-2.5">
-                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                    <UserCheck className="h-3 w-3 text-primary" />
-                    Elaborado por
-                  </span>
-                  <p className="mt-0.5 font-semibold text-foreground">
-                    {data.pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)'}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border/80 bg-background p-2.5">
-                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                    <UserCheck className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                    Revisado por
-                  </span>
-                  <p className="mt-0.5 font-semibold text-foreground">
-                    {data.pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)'}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-border/80 bg-background p-2.5">
-                  <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                    <UserCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                    Aprovado por
-                  </span>
-                  <p className="mt-0.5 font-semibold text-foreground">
-                    {data.pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)'}
-                  </p>
-                </div>
+            <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 text-xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
+                  Responsáveis pelo Documento (RDC 665/2022)
+                </p>
+                {podeEditarGov ? (
+                  !editandoGov ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditandoGov(true)}
+                      className="h-6 gap-1 px-2 text-[10px] text-primary"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                      Alterar Responsáveis
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditandoGov(false)}
+                        className="h-6 px-2 text-[10px]"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSalvarGov}
+                        disabled={salvandoGov}
+                        className="h-6 gap-1 px-2 text-[10px]"
+                      >
+                        <Save className="h-3 w-3" />
+                        Salvar
+                      </Button>
+                    </div>
+                  )
+                ) : (
+                  <Badge variant="secondary" className="gap-1 text-[10px] text-muted-foreground">
+                    <Lock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    Bloqueado · Apenas Qualidade e Diretor
+                  </Badge>
+                )}
               </div>
+
+              {!editandoGov ? (
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/80 bg-background p-2.5">
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                      <UserCheck className="h-3 w-3 text-primary" />
+                      Elaborado por
+                    </span>
+                    <p className="mt-0.5 font-semibold text-foreground">
+                      {data.pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/80 bg-background p-2.5">
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                      <UserCheck className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                      Revisado por
+                    </span>
+                    <p className="mt-0.5 font-semibold text-foreground">
+                      {data.pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/80 bg-background p-2.5">
+                    <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                      <UserCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                      Aprovado por
+                    </span>
+                    <p className="mt-0.5 font-semibold text-foreground">
+                      {data.pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">
+                      Elaborado por
+                    </label>
+                    <Input
+                      value={editElaborado}
+                      onChange={(e) => setEditElaborado(e.target.value)}
+                      className="h-8 text-xs bg-background"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">
+                      Revisado por
+                    </label>
+                    <Input
+                      value={editRevisado}
+                      onChange={(e) => setEditRevisado(e.target.value)}
+                      className="h-8 text-xs bg-background"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-muted-foreground">
+                      Aprovado por
+                    </label>
+                    <Input
+                      value={editAprovado}
+                      onChange={(e) => setEditAprovado(e.target.value)}
+                      className="h-8 text-xs bg-background"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Ações contextuais */}
@@ -269,8 +398,19 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
               </p>
             )}
 
-            <Tabs defaultValue="versoes">
-              <TabsList className="grid w-full grid-cols-3">
+            <Tabs defaultValue={data.pop.codigo === 'POP-020' ? 'procedimento' : 'versoes'}>
+              <TabsList
+                className={cn(
+                  'grid w-full',
+                  data.pop.codigo === 'POP-020' ? 'grid-cols-4' : 'grid-cols-3',
+                )}
+              >
+                {data.pop.codigo === 'POP-020' && (
+                  <TabsTrigger value="procedimento">
+                    <FileText className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                    Procedimento
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="versoes">
                   <History className="mr-1.5 h-3.5 w-3.5" />
                   Versões
@@ -284,6 +424,110 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                   Sugestões ({data.changeRequests.length})
                 </TabsTrigger>
               </TabsList>
+
+              {/* Procedimento Oficial na Íntegra (POP-020) */}
+              {data.pop.codigo === 'POP-020' && (
+                <TabsContent value="procedimento" className="space-y-4 pt-1">
+                  <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-3">
+                    <div>
+                      <p className="text-xs font-semibold text-primary">
+                        POP-020 — Realização de Assistência Técnica de Equipamentos
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Documento oficial da Assistência Técnica em estrita conformidade com a RDC 665/2022.
+                      </p>
+                    </div>
+                    <Button size="sm" asChild>
+                      <a href={`/api/pops/${data.pop.id}/file`} target="_blank" rel="noreferrer">
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Abrir PDF Oficial
+                      </a>
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4 max-h-[550px] overflow-y-auto pr-1">
+                    {POP_020_SECOES.map((sec) => (
+                      <div
+                        key={sec.numero}
+                        className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-1.5"
+                      >
+                        <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
+                          {sec.titulo}
+                        </h3>
+                        {sec.paragrafos.map((p, idx) => (
+                          <p key={idx} className="leading-relaxed text-muted-foreground">
+                            {p}
+                          </p>
+                        ))}
+                      </div>
+                    ))}
+
+                    {/* Tabela de Registros da Qualidade */}
+                    <div className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-2">
+                      <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
+                        8. CONTROLE DE REGISTROS DA QUALIDADE
+                      </h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-[11px] border border-border">
+                          <thead className="bg-muted text-foreground">
+                            <tr>
+                              <th className="p-2 border border-border">Identificação</th>
+                              <th className="p-2 border border-border">Armazenamento</th>
+                              <th className="p-2 border border-border">Acesso</th>
+                              <th className="p-2 border border-border">Proteção</th>
+                              <th className="p-2 border border-border">Recuperação</th>
+                              <th className="p-2 border border-border">Retenção</th>
+                              <th className="p-2 border border-border">Disposição</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {POP_020_REGISTROS_TABLE.map((row, idx) => (
+                              <tr key={idx} className="border-t border-border">
+                                <td className="p-2 font-mono font-medium border border-border">
+                                  {row.identificacao}
+                                </td>
+                                <td className="p-2 border border-border">{row.armazenamento}</td>
+                                <td className="p-2 border border-border">{row.acesso}</td>
+                                <td className="p-2 border border-border">{row.protecao}</td>
+                                <td className="p-2 border border-border">{row.recuperacao}</td>
+                                <td className="p-2 border border-border">{row.retencao}</td>
+                                <td className="p-2 border border-border">{row.disposicao}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Histórico de Revisões */}
+                    <div className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-2">
+                      <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
+                        9. HISTÓRICO DE REVISÕES
+                      </h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-[11px] border border-border">
+                          <thead className="bg-muted text-foreground">
+                            <tr>
+                              <th className="p-2 border border-border">Data</th>
+                              <th className="p-2 border border-border">Nº Revisão</th>
+                              <th className="p-2 border border-border">Histórico das Modificações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {POP_020_REVISOES.map((rev, idx) => (
+                              <tr key={idx} className="border-t border-border">
+                                <td className="p-2 font-mono border border-border">{rev.data}</td>
+                                <td className="p-2 font-semibold border border-border">{rev.numero}</td>
+                                <td className="p-2 border border-border">{rev.historico}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+              )}
 
               {/* Versões */}
               <TabsContent value="versoes" className="space-y-2">

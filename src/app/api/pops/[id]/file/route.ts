@@ -1,41 +1,24 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { SETOR_LABEL } from '@/core/domain/enums/pop';
+import {
+  adicionarCabecalhoRodapePop,
+  gerarPdfMultiPaginas,
+  gerarPdfPop020Oficial,
+  quebrarLinhas,
+  sanitizarTextoPdf,
+  type LinhaPdf,
+} from '@/core/domain/pops/pop-pdf-generator';
 import { getRepositories } from '@/infra/db';
 import { storageService } from '@/infra/storage';
 import { requireAuth } from '@/lib/auth/require-auth';
 
 export const runtime = 'nodejs';
 
-function sanitizarTextoPdf(texto: string): string {
-  return texto
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[()\\]/g, '')
-    .replace(/[^\x20-\x7E]/g, ' ');
-}
-
-function quebrarLinhas(texto: string, maxCols = 82): string[] {
-  const palavras = sanitizarTextoPdf(texto).split(/\s+/).filter(Boolean);
-  const linhas: string[] = [];
-  let atual = '';
-  for (const p of palavras) {
-    if ((atual + ' ' + p).trim().length > maxCols) {
-      if (atual) linhas.push(atual);
-      atual = p;
-    } else {
-      atual = (atual ? atual + ' ' : '') + p;
-    }
-  }
-  if (atual) linhas.push(atual);
-  return linhas;
-}
-
 /**
- * Gera um documento PDF válido (ISO 32000-1) para POPs simulados/seed quando o binário
- * não estiver no bucket externo, evitando qualquer erro 404 na visualização.
+ * Gera um documento PDF válido (ISO 32000-1) para outros POPs simulados/seed.
  */
-function gerarPdfPopOficial(params: {
+function gerarPdfPopGenerico(params: {
   codigo: string;
   titulo: string;
   setor: string;
@@ -48,85 +31,54 @@ function gerarPdfPopOficial(params: {
   hashArquivo: string;
   publicadoEm: string;
 }): Buffer {
-  const linhasConteudo: Array<{ font: 'F1' | 'F2'; size: number; y: number; text: string }> = [];
-  let y = 760;
+  const paginas: LinhaPdf[][] = [[]];
+  const linhas = paginas[0]!;
 
-  const addLine = (text: string, font: 'F1' | 'F2' = 'F1', size = 10, step = 15) => {
-    linhasConteudo.push({ font, size, y, text: sanitizarTextoPdf(text) });
+  adicionarCabecalhoRodapePop(linhas, 1, 1, {
+    codigo: params.codigo,
+    titulo: params.titulo,
+    versao: `0${params.versao}`,
+    elaboradoPor: params.elaboradoPor,
+    revisadoPor: params.revisadoPor,
+    aprovadoPor: params.aprovadoPor,
+  });
+
+  let y = 755;
+  const add = (text: string, font: 'F1' | 'F2' = 'F1', size = 9.5, step = 14) => {
+    linhas.push({ font, size, y, text: sanitizarTextoPdf(text) });
     y -= step;
   };
 
-  addLine('LINKMED SOLUCOES MEDICAS - SISTEMA DE GESTAO DA QUALIDADE (RDC 665/2022)', 'F2', 11, 18);
-  addLine('PROCEDIMENTO OPERACIONAL PADRAO (DOCUMENTO OFICIAL CONTROLADO)', 'F2', 13, 22);
-  addLine('----------------------------------------------------------------------------------------', 'F1', 9, 16);
-
-  addLine(`CODIGO DO DOCUMENTO: ${params.codigo}     |     REVISAO: 0${params.versao}     |     SETOR: ${params.setor}`, 'F2', 10, 16);
-  addLine(`TITULO: ${params.titulo}`, 'F2', 11, 18);
-  addLine(`PERIODICIDADE DE REVISAO: ${params.periodicidadeMeses} meses     |     DATA DE VIGENCIA: ${params.publicadoEm}`, 'F1', 9, 18);
-
-  addLine('----------------------------------------------------------------------------------------', 'F1', 9, 16);
-  addLine('GOVERNANCA E RESPONSAVEIS PELO DOCUMENTO (RDC 665/22):', 'F2', 10, 16);
-  addLine(`  * ELABORADO POR: ${params.elaboradoPor}`, 'F1', 10, 15);
-  addLine(`  * REVISADO POR:  ${params.revisadoPor}`, 'F1', 10, 15);
-  addLine(`  * APROVADO POR:  ${params.aprovadoPor}`, 'F1', 10, 18);
-
-  addLine('----------------------------------------------------------------------------------------', 'F1', 9, 16);
-  addLine('1. OBJETIVO E ESCOPO DO PROCEDIMENTO', 'F2', 11, 16);
-  for (const l of quebrarLinhas(params.descricao || 'Procedimento operacional padrao estabelecido conforme Boas Praticas de Fabricacao e Assistencia Tecnica (RDC 665/2022 - ANVISA).')) {
-    addLine(`   ${l}`, 'F1', 10, 14);
+  add('1. OBJETIVO E ESCOPO DO PROCEDIMENTO', 'F2', 10, 15);
+  for (const l of quebrarLinhas(params.descricao || 'Procedimento operacional padrao estabelecido conforme Boas Praticas de Fabricacao e Assistencia Tecnica (RDC 665/2022 - ANVISA).', 88)) {
+    add(`   ${l}`, 'F1', 9, 13);
   }
   y -= 8;
 
-  addLine('2. DIRETRIZES OPERACIONAIS E REGISTROS VINCULADOS', 'F2', 11, 16);
-  addLine('   2.1. Todo colaborador envolvido na atividade deve confirmar a leitura deste POP.', 'F1', 10, 14);
-  addLine('   2.2. Os registros operacionais (REGs) devem ser preenchidos em tempo real no sistema.', 'F1', 10, 14);
-  addLine('   2.3. Qualquer desvio ou anomalia deve gerar abertura de Nao Conformidade (REG-020).', 'F1', 10, 14);
-  addLine('   2.4. Equipamentos na bancada devem portar a etiqueta fisica correspondente (REG-016).', 'F1', 10, 14);
-  addLine('   2.5. Instrumentos de medicao devem possuir certificado de calibracao RBC vigente.', 'F1', 10, 20);
+  add('2. SETOR RESPONSAVEL E PERIODICIDADE DE REVISAO', 'F2', 10, 15);
+  add(`   Setor de Aplicacao: ${params.setor}`, 'F1', 9, 13);
+  add(`   Periodicidade de Revisao Vigente: a cada ${params.periodicidadeMeses} meses`, 'F1', 9, 13);
+  add(`   Data de Publicacao: ${params.publicadoEm}`, 'F1', 9, 13);
+  y -= 8;
 
-  addLine('3. HISTORICO DE REVISOES', 'F2', 11, 16);
-  addLine('   Rev. 00 - 01/04/2025 - Elaboracao inicial do documento no SGQ.', 'F1', 9, 14);
-  addLine(`   Rev. 0${params.versao} - ${params.publicadoEm} - Adequacao do processo e controle eletronico RDC 665/22.`, 'F1', 9, 20);
+  add('3. DIRETRIZES DE EXECUCAO E BOAS PRATICAS', 'F2', 10, 15);
+  add('   * Cumprimento integral dos passos descritos nas instrucoes tecnicas de trabalho;', 'F1', 8.5, 12);
+  add('   * Preenchimento fidedigno e contemporaneo de todos os registros (REGs) aplicaveis;', 'F1', 8.5, 12);
+  add('   * Notificacao imediata da Gestao da Qualidade em caso de desvios ou nao conformidades;', 'F1', 8.5, 12);
+  add('   * Uso obrigatorio dos EPIs e equipamentos calibrados com certificados RBC.', 'F1', 8.5, 12);
+  y -= 12;
 
-  addLine('----------------------------------------------------------------------------------------', 'F1', 9, 14);
-  addLine(`ASSINATURA CRIPTOGRAFICA SHA-256: ${params.hashArquivo}`, 'F1', 8, 12);
-  addLine('DOCUMENTO CONTROLADO DIGITALMENTE PELA PLATAFORMA REGULA-ON / LINKMED.', 'F1', 8, 12);
+  add('4. CONTROLE DE AUTENTICIDADE E ASSINATURA ELETRONICA', 'F2', 9.5, 14);
+  add(`   Hash SHA-256 do Documento Original: ${params.hashArquivo}`, 'F1', 7.5, 11);
+  add('   Documento validado eletronicamente no SGQ LinkMed conforme resolucao ANVISA RDC 665/2022.', 'F1', 7.5, 11);
 
-  const streamCommands = [
-    'BT',
-    ...linhasConteudo.map(
-      (item) => `/${item.font} ${item.size} Tf 1 0 0 1 48 ${item.y} Tm (${item.text}) Tj`,
-    ),
-    'ET',
-  ].join('\n');
-
-  const objects: string[] = [
-    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
-    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n',
-    `4 0 obj\n<< /Length ${Buffer.byteLength(streamCommands, 'utf8')} >>\nstream\n${streamCommands}\nendstream\nendobj\n`,
-    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
-    '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
-  ];
-
-  let pdf = '%PDF-1.4\n';
-  const offsets: number[] = [0];
-  for (const obj of objects) {
-    offsets.push(Buffer.byteLength(pdf, 'utf8'));
-    pdf += obj;
-  }
-
-  const xrefOffset = Buffer.byteLength(pdf, 'utf8');
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (let i = 1; i < offsets.length; i += 1) {
-    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
-  }
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-
-  return Buffer.from(pdf, 'utf8');
+  return gerarPdfMultiPaginas(paginas);
 }
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
     await requireAuth();
 
@@ -155,21 +107,30 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       const base64Data = dataUrl.split(',')[1] || '';
       pdfBuffer = Buffer.from(base64Data, 'base64');
     } else {
-      pdfBuffer = gerarPdfPopOficial({
-        codigo: pop.codigo,
-        titulo: pop.titulo,
-        setor: SETOR_LABEL[pop.setor] ?? pop.setor,
-        versao: version.numeroVersao,
-        periodicidadeMeses: pop.periodicidadeRevisaoMeses,
-        descricao: pop.descricao ?? '',
-        elaboradoPor: pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)',
-        revisadoPor: pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)',
-        aprovadoPor: pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)',
-        hashArquivo: version.hashArquivo,
-        publicadoEm: version.publicadoEm
-          ? new Date(version.publicadoEm).toLocaleDateString('pt-BR')
-          : new Date(version.createdAt).toLocaleDateString('pt-BR'),
-      });
+      const isPop020 =
+        pop.codigo === 'POP-020' ||
+        pop.codigo.includes('020') ||
+        pop.titulo.toLowerCase().includes('assistencia tecnica');
+
+      if (isPop020) {
+        pdfBuffer = gerarPdfPop020Oficial(version.hashArquivo);
+      } else {
+        pdfBuffer = gerarPdfPopGenerico({
+          codigo: pop.codigo,
+          titulo: pop.titulo,
+          setor: SETOR_LABEL[pop.setor] ?? pop.setor,
+          versao: version.numeroVersao,
+          periodicidadeMeses: pop.periodicidadeRevisaoMeses,
+          descricao: pop.descricao ?? '',
+          elaboradoPor: pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)',
+          revisadoPor: pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)',
+          aprovadoPor: pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)',
+          hashArquivo: version.hashArquivo,
+          publicadoEm: version.publicadoEm
+            ? new Date(version.publicadoEm).toLocaleDateString('pt-BR')
+            : new Date(version.createdAt).toLocaleDateString('pt-BR'),
+        });
+      }
     }
 
     return new NextResponse(new Uint8Array(pdfBuffer), {

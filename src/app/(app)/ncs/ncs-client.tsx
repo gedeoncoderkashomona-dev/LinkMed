@@ -6,6 +6,7 @@ import {
   Clock,
   Cpu,
   FileCheck2,
+  Lock,
   Play,
   Plus,
   RotateCcw,
@@ -13,6 +14,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
+import { OsDossierDialog } from '@/components/operacional/os-dossier-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +42,7 @@ import {
   type NcSeveridade,
   type NcStatus,
 } from '@/core/domain/entities/operacional';
+import { canEditGovernance, RESPONSAVEIS_PADRAO_AT } from '@/core/domain/forms/definitions';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useCreateNc, useNcs, useUpdateNcStatus } from '@/hooks/use-operacional';
 import { can } from '@/lib/auth/rbac';
@@ -62,14 +65,17 @@ export function NcsClient() {
   const [severidade, setSeveridade] = React.useState<NcSeveridade>('moderada');
   const [elaboradoPor, setElaboradoPor] = React.useState('Gestão da Qualidade');
   const [revisadoPor, setRevisadoPor] = React.useState('Responsável Técnico');
-  const [aprovadoPor, setAprovadoPor] = React.useState('Diretoria Operacional');
+  const [aprovadoPor, setAprovadoPor] = React.useState('Pedro Costa (Diretoria Operacional)');
+  const [dossierOs, setDossierOs] = React.useState<string | null>(null);
   const [erroForm, setErroForm] = React.useState<string | null>(null);
 
+  const podeEditarGovernanca = canEditGovernance(user?.perfil);
+
   React.useEffect(() => {
-    if (user?.nomeCompleto && elaboradoPor === 'Gestão da Qualidade') {
+    if (podeEditarGovernanca && user?.nomeCompleto && elaboradoPor === 'Gestão da Qualidade') {
       setElaboradoPor(user.nomeCompleto);
     }
-  }, [user?.nomeCompleto, elaboradoPor]);
+  }, [podeEditarGovernanca, user?.nomeCompleto, elaboradoPor]);
 
   const { data, isLoading } = useNcs(origemFiltro || undefined);
   const createNc = useCreateNc();
@@ -572,40 +578,72 @@ export function NcsClient() {
             </div>
 
             {/* Governança Documental: Elaborado / Revisado / Aprovado */}
-            <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label htmlFor="nc-elab" className="text-xs">
-                  Elaborado por *
-                </Label>
-                <Input
-                  id="nc-elab"
-                  value={elaboradoPor}
-                  onChange={(e) => setElaboradoPor(e.target.value)}
-                  required
-                />
+            <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
+                  Governança Documental (REG-020)
+                </span>
+                {podeEditarGovernanca ? (
+                  <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">
+                    Edição permitida (Qualidade / Diretor)
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="gap-1 text-[10px] text-muted-foreground">
+                    <Lock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    Bloqueado · Apenas Qualidade e Diretor
+                  </Badge>
+                )}
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="nc-rev" className="text-xs">
-                  Revisado por *
-                </Label>
-                <Input
-                  id="nc-rev"
-                  value={revisadoPor}
-                  onChange={(e) => setRevisadoPor(e.target.value)}
-                  required
-                />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <Label htmlFor="nc-elab" className="text-xs">
+                    Elaborado por *
+                  </Label>
+                  <Input
+                    id="nc-elab"
+                    value={elaboradoPor}
+                    disabled={!podeEditarGovernanca}
+                    readOnly={!podeEditarGovernanca}
+                    onChange={(e) => setElaboradoPor(e.target.value)}
+                    className={!podeEditarGovernanca ? 'bg-muted/60 cursor-not-allowed font-medium text-muted-foreground' : ''}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="nc-rev" className="text-xs">
+                    Revisado por *
+                  </Label>
+                  <Input
+                    id="nc-rev"
+                    value={revisadoPor}
+                    disabled={!podeEditarGovernanca}
+                    readOnly={!podeEditarGovernanca}
+                    onChange={(e) => setRevisadoPor(e.target.value)}
+                    className={!podeEditarGovernanca ? 'bg-muted/60 cursor-not-allowed font-medium text-muted-foreground' : ''}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="nc-aprov" className="text-xs">
+                    Aprovado por *
+                  </Label>
+                  <Input
+                    id="nc-aprov"
+                    value={aprovadoPor}
+                    disabled={!podeEditarGovernanca}
+                    readOnly={!podeEditarGovernanca}
+                    onChange={(e) => setAprovadoPor(e.target.value)}
+                    className={!podeEditarGovernanca ? 'bg-muted/60 cursor-not-allowed font-medium text-muted-foreground' : ''}
+                    required
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="nc-aprov" className="text-xs">
-                  Aprovado por *
-                </Label>
-                <Input
-                  id="nc-aprov"
-                  value={aprovadoPor}
-                  onChange={(e) => setAprovadoPor(e.target.value)}
-                  required
-                />
-              </div>
+              {!podeEditarGovernanca && (
+                <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <Lock className="h-3 w-3" />
+                  Tabela bloqueada para usuários operacionais conforme governança documental LinkMed (RDC 665/22).
+                </p>
+              )}
             </div>
 
             <DialogFooter>
@@ -624,6 +662,13 @@ export function NcsClient() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Dossiê da OS */}
+      <OsDossierDialog
+        osChaveOuNumero={dossierOs}
+        open={Boolean(dossierOs)}
+        onOpenChange={(open) => !open && setDossierOs(null)}
+      />
     </div>
   );
 }

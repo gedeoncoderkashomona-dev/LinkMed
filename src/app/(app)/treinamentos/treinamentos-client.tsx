@@ -10,6 +10,7 @@ import {
   Clock,
   FileCheck2,
   GraduationCap,
+  Lock,
   MapPin,
   Plus,
   Search,
@@ -46,6 +47,7 @@ import {
   TREINAMENTO_TIPOS,
   type TreinamentoTipo,
 } from '@/core/domain/entities/operacional';
+import { canEditGovernance } from '@/core/domain/forms/definitions';
 import { agoraBR } from '@/core/domain/forms/alerts';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import {
@@ -153,6 +155,8 @@ export function TreinamentosClient() {
   const [editAvaliadoPor, setEditAvaliadoPor] = React.useState('');
   const [editDataAvaliacao, setEditDataAvaliacao] = React.useState('');
   const [editAssinaturaAvaliador, setEditAssinaturaAvaliador] = React.useState('');
+
+  const podeEditarGovernanca = canEditGovernance(user?.perfil);
 
   React.useEffect(() => {
     if (user?.nomeCompleto) {
@@ -1059,31 +1063,63 @@ export function TreinamentosClient() {
             </div>
 
             {/* Bloco 4: Governança Documental (Elaborado / Revisado / Aprovado) */}
-            <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Elaborado por *</Label>
-                <Input
-                  value={elaboradoPor}
-                  onChange={(e) => setElaboradoPor(e.target.value)}
-                  required
-                />
+            <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
+                  Governança Documental (REG-008)
+                </span>
+                {podeEditarGovernanca ? (
+                  <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">
+                    Edição permitida (Qualidade / Diretor)
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="gap-1 text-[10px] text-muted-foreground">
+                    <Lock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    Bloqueado · Apenas Qualidade e Diretor
+                  </Badge>
+                )}
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Revisado por *</Label>
-                <Input
-                  value={revisadoPor}
-                  onChange={(e) => setRevisadoPor(e.target.value)}
-                  required
-                />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Elaborado por *</Label>
+                  <Input
+                    value={elaboradoPor}
+                    disabled={!podeEditarGovernanca}
+                    readOnly={!podeEditarGovernanca}
+                    onChange={(e) => setElaboradoPor(e.target.value)}
+                    className={!podeEditarGovernanca ? 'bg-muted/60 cursor-not-allowed font-medium text-muted-foreground' : ''}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Revisado por *</Label>
+                  <Input
+                    value={revisadoPor}
+                    disabled={!podeEditarGovernanca}
+                    readOnly={!podeEditarGovernanca}
+                    onChange={(e) => setRevisadoPor(e.target.value)}
+                    className={!podeEditarGovernanca ? 'bg-muted/60 cursor-not-allowed font-medium text-muted-foreground' : ''}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Aprovado por *</Label>
+                  <Input
+                    value={aprovadoPor}
+                    disabled={!podeEditarGovernanca}
+                    readOnly={!podeEditarGovernanca}
+                    onChange={(e) => setAprovadoPor(e.target.value)}
+                    className={!podeEditarGovernanca ? 'bg-muted/60 cursor-not-allowed font-medium text-muted-foreground' : ''}
+                    required
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Aprovado por *</Label>
-                <Input
-                  value={aprovadoPor}
-                  onChange={(e) => setAprovadoPor(e.target.value)}
-                  required
-                />
-              </div>
+              {!podeEditarGovernanca && (
+                <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <Lock className="h-3 w-3" />
+                  Tabela bloqueada para usuários operacionais conforme governança documental LinkMed (RDC 665/22).
+                </p>
+              )}
             </div>
 
             <DialogFooter>

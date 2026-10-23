@@ -60,7 +60,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     throw new ValidationError('Preencha os campos obrigatórios.', erros);
   }
 
-  const dados = sanitizarDados(def, subtipo, body.dados);
+  const dados = sanitizarDados(def, subtipo, body.dados, auth.perfil);
   const status = avaliarConformidade(def, subtipo, dados);
   const dataRef = String(dados[def.campoData] ?? agoraBR().data);
 

@@ -13,6 +13,7 @@ import {
   Eye,
   Layers,
   Loader2,
+  Lock,
   PlusCircle,
   ShieldAlert,
   Sparkles,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { OsDossierDialog } from '@/components/operacional/os-dossier-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +45,7 @@ import { agoraBR } from '@/core/domain/forms/alerts';
 import {
   avaliarConformidade,
   campoVisivel,
+  canEditGovernance,
   DEFAULT_HOJE,
   getCampos,
   getFormDef,
@@ -158,6 +161,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   const [sucessoMsg, setSucessoMsg] = React.useState<string | null>(null);
   const [osSelecionada, setOsSelecionada] = React.useState<string>('');
   const [registroDetalhe, setRegistroDetalhe] = React.useState<FormRecord | null>(null);
+  const [dossierOs, setDossierOs] = React.useState<string | null>(null);
   const [ncSugerida, setNcSugerida] = React.useState<{
     titulo: string;
     descricao: string;
@@ -222,6 +226,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
 
   const secoes = getSecoes(def, subtipo);
   const statusPrevia = avaliarConformidade(def, subtipo, dados);
+  const podeEditarGovernanca = canEditGovernance(user?.perfil);
   const osContextoAtual = ordensServico.find((o) => o.chave === osSelecionada) ?? null;
 
   // Gamificação: cálculo de progresso dos campos obrigatórios visíveis
@@ -240,6 +245,14 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   const faltamCount = Math.max(0, totalObrigatorios - preenchidosCount);
 
   function atualizarCampo(name: string, value: unknown) {
+    const campoDef = def ? getCampos(def, subtipo).find((c) => c.name === name) : undefined;
+    if (campoDef?.governanceOnly && !podeEditarGovernanca) {
+      toast.error('Acesso restrito', {
+        description: 'Apenas a Qualidade e o Diretor podem alterar quem elaborou, revisou e aprovou os documentos.',
+      });
+      return;
+    }
+
     setDados((prev) => {
       const next = { ...prev, [name]: value };
       if (def?.tipo === 'verificacao-calibracao') {
@@ -296,7 +309,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       setSucessoMsg(msg);
 
       toast.success(msg, {
-        description: `Protocolo #${res.record.id.slice(0, 8)} gravado no Supabase e registrado na Trilha de Auditoria.`,
+        description: `Protocolo #${res.record.id.slice(0, 8)} registrado com sucesso e vinculado à Trilha de Auditoria.`,
       });
 
       if (res.record.status === 'nao_conforme') {
@@ -386,38 +399,56 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       </div>
 
       {/* Cabeçalho Oficial de Governança: Elaboração, Revisão e Aprovação */}
-      <div className="grid gap-2.5 rounded-xl border border-border/80 bg-card p-3.5 text-xs shadow-2xs sm:grid-cols-3">
-        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-          <UserCheck className="h-4 w-4 shrink-0 text-primary" />
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium text-muted-foreground">
-              Responsável pela Elaboração
-            </p>
-            <p className="truncate font-semibold text-foreground">
-              {String(dados.elaborado_por || def.responsaveis.elaboradoPor)}
-            </p>
-          </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">
+            Governança Documental (RDC 665/22)
+          </span>
+          {podeEditarGovernanca ? (
+            <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">
+              <UserCheck className="h-3 w-3" />
+              Edição permitida (Qualidade / Diretor)
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="gap-1 text-[10px] text-muted-foreground">
+              <Lock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+              Bloqueado para edição · Apenas Qualidade e Diretor
+            </Badge>
+          )}
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-          <UserCheck className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium text-muted-foreground">
-              Responsável pela Revisão
-            </p>
-            <p className="truncate font-semibold text-foreground">
-              {String(dados.revisado_por || def.responsaveis.revisadoPor)}
-            </p>
+        <div className="grid gap-2.5 rounded-xl border border-border/80 bg-card p-3.5 text-xs shadow-2xs sm:grid-cols-3">
+          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <UserCheck className="h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium text-muted-foreground">
+                Responsável pela Elaboração
+              </p>
+              <p className="truncate font-semibold text-foreground">
+                {String(dados.elaborado_por || def.responsaveis.elaboradoPor)}
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-          <UserCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium text-muted-foreground">
-              Responsável pela Aprovação
-            </p>
-            <p className="truncate font-semibold text-foreground">
-              {String(dados.aprovado_por || def.responsaveis.aprovadoPor)}
-            </p>
+          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <UserCheck className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium text-muted-foreground">
+                Responsável pela Revisão
+              </p>
+              <p className="truncate font-semibold text-foreground">
+                {String(dados.revisado_por || def.responsaveis.revisadoPor)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <UserCheck className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium text-muted-foreground">
+                Responsável pela Aprovação
+              </p>
+              <p className="truncate font-semibold text-foreground">
+                {String(dados.aprovado_por || def.responsaveis.aprovadoPor)}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -506,9 +537,14 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 text-xs">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono font-semibold text-primary">
+                    <button
+                      type="button"
+                      onClick={() => setDossierOs(osContextoAtual.numeroOs)}
+                      className="font-mono font-semibold text-primary underline hover:text-primary/80 transition-colors cursor-pointer"
+                      title="Clique para abrir o Dossiê completo com tudo o que já foi preenchido desta OS"
+                    >
                       OS: {osContextoAtual.numeroOs}
-                    </span>
+                    </button>
                     <span>·</span>
                     <span className="font-medium">{osContextoAtual.cliente || '—'}</span>
                     <span>·</span>
@@ -826,15 +862,28 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                               rows={3}
                               value={String(dados[campo.name] ?? '')}
                               placeholder={placeholderTexto}
+                              disabled={campo.governanceOnly && !podeEditarGovernanca}
+                              readOnly={campo.governanceOnly && !podeEditarGovernanca}
                               onChange={(e) => atualizarCampo(campo.name, e.target.value)}
-                              className={cn(erroCampo && 'border-rose-500')}
+                              className={cn(
+                                erroCampo && 'border-rose-500',
+                                campo.governanceOnly &&
+                                  !podeEditarGovernanca &&
+                                  'bg-muted/60 cursor-not-allowed text-muted-foreground font-medium',
+                              )}
                             />
                           ) : campo.type === 'select' ? (
                             <SelectNative
                               id={campo.name}
                               value={String(dados[campo.name] ?? '')}
+                              disabled={campo.governanceOnly && !podeEditarGovernanca}
                               onChange={(e) => atualizarCampo(campo.name, e.target.value)}
-                              className={cn(erroCampo && 'border-rose-500')}
+                              className={cn(
+                                erroCampo && 'border-rose-500',
+                                campo.governanceOnly &&
+                                  !podeEditarGovernanca &&
+                                  'bg-muted/60 cursor-not-allowed text-muted-foreground font-medium',
+                              )}
                             >
                               <option value="">Selecione uma opção...</option>
                               {(campo.options ?? []).map((op) => (
@@ -850,9 +899,23 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                               step={campo.step}
                               value={String(dados[campo.name] ?? '')}
                               placeholder={placeholderTexto}
+                              disabled={campo.governanceOnly && !podeEditarGovernanca}
+                              readOnly={campo.governanceOnly && !podeEditarGovernanca}
                               onChange={(e) => atualizarCampo(campo.name, e.target.value)}
-                              className={cn(erroCampo && 'border-rose-500')}
+                              className={cn(
+                                erroCampo && 'border-rose-500',
+                                campo.governanceOnly &&
+                                  !podeEditarGovernanca &&
+                                  'bg-muted/60 cursor-not-allowed text-muted-foreground font-medium',
+                              )}
                             />
+                          )}
+
+                          {campo.governanceOnly && !podeEditarGovernanca && (
+                            <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                              <Lock className="h-3 w-3" />
+                              Bloqueado: Apenas a Qualidade e o Diretor podem alterar este responsável.
+                            </p>
                           )}
 
                           {campo.hint && (
@@ -1062,6 +1125,13 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dossiê Completo da OS ao Clicar na OS */}
+      <OsDossierDialog
+        osChaveOuNumero={dossierOs}
+        open={Boolean(dossierOs)}
+        onOpenChange={(open) => !open && setDossierOs(null)}
+      />
     </div>
   );
 }

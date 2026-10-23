@@ -15,6 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
 import { Skeleton } from '@/components/ui/skeleton';
+import { OsDossierDialog } from '@/components/operacional/os-dossier-dialog';
 import {
   aggregateServiceOrders,
   TAG_SPECS,
@@ -28,6 +29,7 @@ export function EquipamentosClient() {
   const { data, isLoading } = useFormsOverview();
   const [busca, setBusca] = React.useState('');
   const [filtroCor, setFiltroCor] = React.useState<TagColor | ''>('');
+  const [dossierOs, setDossierOs] = React.useState<string | null>(null);
 
   const ordensServico = React.useMemo(
     () => aggregateServiceOrders(data?.records ?? []),
@@ -149,9 +151,16 @@ export function EquipamentosClient() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="default" className="font-mono">
-                            OS: {os.numeroOs}
-                          </Badge>
+                          <button
+                            type="button"
+                            onClick={() => setDossierOs(os.numeroOs)}
+                            className="cursor-pointer transition-transform active:scale-95 text-left"
+                            title="Clique para abrir o Dossiê completo com tudo o que já foi preenchido desta OS"
+                          >
+                            <Badge variant="default" className="font-mono hover:bg-primary/90 underline">
+                              OS: {os.numeroOs}
+                            </Badge>
+                          </button>
                           <span className="text-sm font-semibold">
                             {os.equipamento || 'Equipamento'}
                           </span>
@@ -213,6 +222,13 @@ export function EquipamentosClient() {
           </div>
         )}
       </div>
+
+      {/* Dossiê completo ao clicar na OS */}
+      <OsDossierDialog
+        osChaveOuNumero={dossierOs}
+        open={Boolean(dossierOs)}
+        onOpenChange={(open) => !open && setDossierOs(null)}
+      />
     </div>
   );
 }
