@@ -7,6 +7,7 @@ import {
   Cpu,
   FileCheck2,
   Lock,
+  PenTool,
   Play,
   Plus,
   RotateCcw,
@@ -29,9 +30,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SelectNative } from '@/components/ui/select-native';
+import { SignaturePadDialog } from '@/components/ui/signature-pad-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  DOCUMENTOS_OFICIAIS_POR_MODULO,
   NC_ORIGEM_LABEL,
   NC_ORIGENS,
   NC_SEVERIDADE_LABEL,
@@ -42,7 +45,7 @@ import {
   type NcSeveridade,
   type NcStatus,
 } from '@/core/domain/entities/operacional';
-import { canEditGovernance, RESPONSAVEIS_PADRAO_AT } from '@/core/domain/forms/definitions';
+import { canEditGovernance } from '@/core/domain/forms/definitions';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useCreateNc, useNcs, useUpdateNcStatus } from '@/hooks/use-operacional';
 import { can } from '@/lib/auth/rbac';
@@ -54,7 +57,7 @@ export function NcsClient() {
   const [busca, setBusca] = React.useState('');
   const [dialogAberto, setDialogAberto] = React.useState(false);
 
-  // Estado do modal de nova NC (REG-020)
+  // Estado do modal de nova NC (REG-038 / REG-047)
   const [titulo, setTitulo] = React.useState('');
   const [descricao, setDescricao] = React.useState('');
   const [causa, setCausa] = React.useState('');
@@ -68,6 +71,20 @@ export function NcsClient() {
   const [aprovadoPor, setAprovadoPor] = React.useState('Pedro Costa (Diretoria Operacional)');
   const [dossierOs, setDossierOs] = React.useState<string | null>(null);
   const [erroForm, setErroForm] = React.useState<string | null>(null);
+
+  const [assinaturaAlvo, setAssinaturaAlvo] = React.useState<{
+    open: boolean;
+    titulo: string;
+    nomePadrao: string;
+    funcaoPadrao: string;
+    onSigned: (resumo: string) => void;
+  }>({
+    open: false,
+    titulo: '',
+    nomePadrao: '',
+    funcaoPadrao: '',
+    onSigned: () => {},
+  });
 
   const podeEditarGovernanca = canEditGovernance(user?.perfil);
 
@@ -152,8 +169,15 @@ export function NcsClient() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            {DOCUMENTOS_OFICIAIS_POR_MODULO.naoConformidades.map((doc) => (
+              <Badge key={doc.codigo} variant="default" className="font-mono">
+                {doc.codigo} ({doc.pastaPop})
+              </Badge>
+            ))}
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Não Conformidades (POP-012 / REG-020)
+            Não Conformidades (REG 038 · REG 047 — Pasta POP 012)
           </h1>
           <p className="text-sm text-muted-foreground">
             Registro e acompanhamento de Não Conformidades por setor (Assistência Técnica, Almoxarifado, Vendas, Diretoria, Qualidade e Financeiro).
@@ -167,11 +191,11 @@ export function NcsClient() {
         )}
       </div>
 
-      {/* Cabeçalho de Governança Documental REG-020 */}
+      {/* Cabeçalho de Governança Documental REG-038 / REG-047 */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-xs">
         <div className="flex items-center gap-2 font-semibold text-primary">
           <FileCheck2 className="h-4 w-4" />
-          <span>REG-020 — Controle de Não Conformidade (RDC 665/22)</span>
+          <span>REG 038 / REG 047 (Pasta do POP 012 — Gestão de não conformidade)</span>
         </div>
         <div className="flex flex-wrap items-center gap-4 text-muted-foreground">
           <span>
@@ -307,6 +331,9 @@ export function NcsClient() {
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="default" className="font-mono">
                         {nc.codigo}
+                      </Badge>
+                      <Badge variant="outline" className="font-mono text-[10px]">
+                        REG 038 / REG 047
                       </Badge>
                       <Badge
                         variant={
@@ -447,7 +474,7 @@ export function NcsClient() {
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Abrir Não Conformidade (RNC / REG-020)</DialogTitle>
+            <DialogTitle>Abrir Não Conformidade (REG 038 / REG 047 — Pasta POP 012)</DialogTitle>
             <DialogDescription>
               Registre a ocorrência separando Descrição Detalhada, Causa e Ação Imediata, além da identificação do equipamento (ou Não se aplica).
             </DialogDescription>
@@ -577,15 +604,15 @@ export function NcsClient() {
               />
             </div>
 
-            {/* Governança Documental: Elaborado / Revisado / Aprovado */}
+            {/* Governança Documental: Elaborado / Revisado / Aprovado + Assinatura Seção 5.3 */}
             <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
-                  Governança Documental (REG-020)
+                  Governança Documental (REG 038 / REG 047 — Seção 5.3)
                 </span>
                 {podeEditarGovernanca ? (
                   <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">
-                    Edição permitida (Qualidade / Diretor)
+                    Edição e Assinatura permitidas (Qualidade / Diretor)
                   </Badge>
                 ) : (
                   <Badge variant="secondary" className="gap-1 text-[10px] text-muted-foreground">
@@ -596,9 +623,29 @@ export function NcsClient() {
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1">
-                  <Label htmlFor="nc-elab" className="text-xs">
-                    Elaborado por *
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="nc-elab" className="text-xs">
+                      Elaborado por *
+                    </Label>
+                    {podeEditarGovernanca && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: 'Assinatura de Elaboração (REG 038)',
+                            nomePadrao: elaboradoPor,
+                            funcaoPadrao: 'Elaborador',
+                            onSigned: (resumo) => setElaboradoPor(resumo),
+                          })
+                        }
+                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        <PenTool className="h-2.5 w-2.5" />
+                        Assinar
+                      </button>
+                    )}
+                  </div>
                   <Input
                     id="nc-elab"
                     value={elaboradoPor}
@@ -610,9 +657,29 @@ export function NcsClient() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="nc-rev" className="text-xs">
-                    Revisado por *
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="nc-rev" className="text-xs">
+                      Revisado por *
+                    </Label>
+                    {podeEditarGovernanca && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: 'Assinatura de Revisão (REG 038)',
+                            nomePadrao: revisadoPor,
+                            funcaoPadrao: 'Revisor Técnico',
+                            onSigned: (resumo) => setRevisadoPor(resumo),
+                          })
+                        }
+                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        <PenTool className="h-2.5 w-2.5" />
+                        Assinar
+                      </button>
+                    )}
+                  </div>
                   <Input
                     id="nc-rev"
                     value={revisadoPor}
@@ -624,9 +691,29 @@ export function NcsClient() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="nc-aprov" className="text-xs">
-                    Aprovado por *
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="nc-aprov" className="text-xs">
+                      Aprovado por *
+                    </Label>
+                    {podeEditarGovernanca && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: 'Assinatura de Aprovação (REG 038)',
+                            nomePadrao: aprovadoPor,
+                            funcaoPadrao: 'Aprovador / Diretoria',
+                            onSigned: (resumo) => setAprovadoPor(resumo),
+                          })
+                        }
+                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        <PenTool className="h-2.5 w-2.5" />
+                        Assinar
+                      </button>
+                    )}
+                  </div>
                   <Input
                     id="nc-aprov"
                     value={aprovadoPor}
@@ -668,6 +755,18 @@ export function NcsClient() {
         osChaveOuNumero={dossierOs}
         open={Boolean(dossierOs)}
         onOpenChange={(open) => !open && setDossierOs(null)}
+      />
+
+      {/* Modal de Assinatura Eletrônica LGPD na Tela */}
+      <SignaturePadDialog
+        open={assinaturaAlvo.open}
+        onOpenChange={(open) => setAssinaturaAlvo((prev) => ({ ...prev, open }))}
+        documentoCodigo="REG-038"
+        documentoTitulo={assinaturaAlvo.titulo}
+        signatarioNomePadrao={assinaturaAlvo.nomePadrao}
+        signatarioIdPadrao={user?.id}
+        funcaoPadrao={assinaturaAlvo.funcaoPadrao}
+        onConfirm={(reg) => assinaturaAlvo.onSigned(reg.resumoFormatado)}
       />
     </div>
   );

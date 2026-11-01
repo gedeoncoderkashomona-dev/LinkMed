@@ -465,8 +465,9 @@ export default function UsuariosPage() {
                   value={perfil}
                   onChange={(e) => setPerfil(e.target.value as Perfil)}
                 >
-                  <option value="tecnico">Técnico</option>
-                  <option value="estoquista">Estoquista / Almoxarife</option>
+                  <option value="tecnico">Assistência Técnica (AT)</option>
+                  <option value="adm">Administrativo (ADM)</option>
+                  <option value="estoquista">Almoxarifado / Estoquista</option>
                   <option value="gestor">Gestor da Qualidade / RT</option>
                   <option value="diretor">Diretor</option>
                 </SelectNative>

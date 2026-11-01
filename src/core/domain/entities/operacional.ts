@@ -144,6 +144,80 @@ export const HISTORICO_REVISAO_REG008 = [
   { data: '30/01/2026', numero: '01', historico: 'Adequação do Processo' },
 ] as const;
 
+/**
+ * Catálogo oficial de documentos por módulo conforme Seção 1 da Auditoria Linkmed (v2).
+ */
+export const DOCUMENTOS_OFICIAIS_POR_MODULO = {
+  documentosPops: [
+    { codigo: 'POP-004', titulo: 'Treinamento de Pessoal' },
+    { codigo: 'POP-006', titulo: 'Limpeza e Higienização dos Ambientes' },
+    { codigo: 'POP-007', titulo: 'Controle de Ambiente e Infraestrutura' },
+    { codigo: 'POP-011', titulo: 'Gestão de Instrumentos de Medição' },
+    { codigo: 'POP-012', titulo: 'Gestão de não conformidade' },
+    { codigo: 'POP-014', titulo: 'Ações corretivas e preventivas' },
+    { codigo: 'POP-019', titulo: 'Instalação e Treinamento de Equipamentos' },
+    { codigo: 'POP-020', titulo: 'Assistência Técnica' },
+  ],
+  formularios: [
+    { codigo: 'REG-018', pastaPop: 'POP-006', titulo: 'Limpeza e Higienização dos Ambientes' },
+    { codigo: 'REG-017', pastaPop: 'POP-007', titulo: 'Controle de Ambiente e Infraestrutura (Temperatura e Umidade)' },
+    { codigo: 'REG-040', pastaPop: 'POP-007', titulo: 'Teste Diário da Pulseira e Manta Anti-Estática (ESD)' },
+    { codigo: 'REG-030', pastaPop: 'POP-011', titulo: 'Gestão de Instrumentos de Medição' },
+    { codigo: 'REG-015', pastaPop: 'POP-011', titulo: 'Controle de Instrumentos de Medição — Validade de Calibração' },
+    { codigo: 'REG-016', pastaPop: 'POP-020', titulo: 'Etapas da Manutenção (Assistência Técnica)' },
+  ],
+  naoConformidades: [
+    { codigo: 'REG-038', pastaPop: 'POP-012', titulo: 'Registro de Não Conformidade' },
+    { codigo: 'REG-047', pastaPop: 'POP-012', titulo: 'Controle e Tratativa de Não Conformidades' },
+  ],
+  treinamentos: [
+    { codigo: 'REG-008', pastaPop: 'POP-019', titulo: 'Registro de Treinamento e Avaliação da Eficácia' },
+    { codigo: 'REG-036', pastaPop: 'POP-019', titulo: 'Cronograma / Controle de Treinamento' },
+    { codigo: 'REG-045', pastaPop: 'POP-019', titulo: 'Registro de Instalação e Treinamento de Equipamentos' },
+  ],
+} as const;
+
+/**
+ * Calcula automaticamente a Carga Horária (em horas decimais) a partir de
+ * Horário Inicial (HH:MM) e Horário Final (HH:MM), conforme Seção 2 da Auditoria Linkmed.
+ */
+export function calcularCargaHorariaAutomatica(
+  horarioInicial?: string | null,
+  horarioFinal?: string | null,
+): number | null {
+  if (!horarioInicial || !horarioFinal) return null;
+  const matchIni = /^(\d{1,2}):(\d{2})$/.exec(horarioInicial.trim());
+  const matchFim = /^(\d{1,2}):(\d{2})$/.exec(horarioFinal.trim());
+  if (!matchIni || !matchFim) return null;
+
+  const hIni = Number(matchIni[1]);
+  const mIni = Number(matchIni[2]);
+  const hFim = Number(matchFim[1]);
+  const mFim = Number(matchFim[2]);
+
+  if (
+    Number.isNaN(hIni) ||
+    Number.isNaN(mIni) ||
+    Number.isNaN(hFim) ||
+    Number.isNaN(mFim) ||
+    hIni > 23 ||
+    mIni > 59 ||
+    hFim > 23 ||
+    mFim > 59
+  ) {
+    return null;
+  }
+
+  const totalMinIni = hIni * 60 + mIni;
+  const totalMinFim = hFim * 60 + mFim;
+  let diffMin = totalMinFim - totalMinIni;
+  if (diffMin <= 0) {
+    return null;
+  }
+
+  return Number((diffMin / 60).toFixed(2));
+}
+
 export interface Treinamento {
   id: string;
   titulo: string;

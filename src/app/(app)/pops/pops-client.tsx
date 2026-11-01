@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { FileText, Plus, Search, UserCheck } from 'lucide-react';
+import { FileCheck2, FileText, Plus, Search, UserCheck } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { SelectNative } from '@/components/ui/select-native';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DOCUMENTOS_OFICIAIS_POR_MODULO } from '@/core/domain/entities/operacional';
 import {
   POP_STATUS_LABEL,
   POP_STATUS_VARIANT,
@@ -47,7 +48,7 @@ export function PopsClient() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Documentos (POPs)</h1>
           <p className="text-sm text-muted-foreground">
-            Procedimentos Operacionais Padrão com governança de elaboração, revisão, aprovação e confirmação de leitura.
+            Procedimentos Operacionais Padrão com governança de elaboração, revisão, aprovação, assinatura eletrônica LGPD e confirmação de leitura.
           </p>
         </div>
         {canUpload && (
@@ -58,12 +59,33 @@ export function PopsClient() {
         )}
       </div>
 
+      {/* Catálogo Oficial de Documentos (POPs) — Seção 1 da Auditoria Linkmed */}
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs space-y-2">
+        <div className="flex items-center gap-2 font-semibold text-primary">
+          <FileCheck2 className="h-4 w-4" />
+          <span>Catálogo Oficial de POPs do Módulo Documentos (Auditoria Linkmed — Seção 1):</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {DOCUMENTOS_OFICIAIS_POR_MODULO.documentosPops.map((item) => (
+            <button
+              key={item.codigo}
+              type="button"
+              onClick={() => setSearch(item.codigo)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-background px-2.5 py-1 text-[11px] font-medium transition hover:border-primary hover:bg-primary/10"
+            >
+              <span className="font-mono font-bold text-primary">{item.codigo}</span>
+              <span className="text-muted-foreground">— {item.titulo}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Card>
         <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_180px_180px]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por título ou código..."
+              placeholder="Buscar por título ou código (ex: POP-004, POP-020)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
