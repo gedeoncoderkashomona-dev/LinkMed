@@ -45,8 +45,12 @@ export function AppHeader({ user, onOpenMobile }: Props) {
         <p className="truncate text-xs sm:text-sm font-medium text-muted-foreground">
           Bem-vindo(a), <span className="font-semibold text-foreground">{user.nomeCompleto.split(' ')[0]}</span>
         </p>
-        <span className="hidden xl:inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary border border-primary/20">
-          {APP_VERSION_LABEL}
+        <span
+          title="LinkMed Release Oficial v2.0 (Fluxo Revisado RDC 665/22 & LGPD)"
+          className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-2xs"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          Release {APP_VERSION_LABEL}
         </span>
       </div>
 

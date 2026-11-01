@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 
+import { APP_VERSION_LABEL } from '@/lib/version';
 import { useWhiteLabelBranding } from './brand-logo';
 
 export function AppFooter() {
@@ -11,9 +12,12 @@ export function AppFooter() {
   return (
     <footer className="mt-auto border-t border-border/70 bg-card/50 px-4 py-3.5 text-xs text-muted-foreground backdrop-blur-sm sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 sm:flex-row">
-        <div className="flex flex-wrap items-center gap-1.5 text-center sm:text-left">
+        <div className="flex flex-wrap items-center justify-center gap-1.5 text-center sm:justify-start sm:text-left">
           <span className="font-semibold text-foreground">{branding.instituicaoNome}</span>
           <span>— {branding.instituicaoSubtitulo}</span>
+          <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+            {APP_VERSION_LABEL}
+          </span>
           <span className="hidden text-muted-foreground/60 sm:inline">·</span>
           <span className="text-[11px]">
             SGQ & Assistência Técnica Hospitalar (ANVISA RDC 665/22) · © {ano}
@@ -38,4 +42,3 @@ export function AppFooter() {
     </footer>
   );
 }
-
