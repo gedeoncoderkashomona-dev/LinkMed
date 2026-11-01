@@ -8,6 +8,7 @@ import {
   Bell,
   CheckCheck,
   CheckCircle2,
+  Clock,
   FileText,
   GraduationCap,
   ShieldAlert,
@@ -18,7 +19,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { agoraBR, calcularAlertas, diffDias, type NivelAlerta } from '@/core/domain/forms/alerts';
+import {
+  agoraBR,
+  calcularAlertas,
+  diffDias,
+  verificarAtividadesObrigatoriasDiariasPorSetor,
+  type NivelAlerta,
+} from '@/core/domain/forms/alerts';
 import { useFormsOverview, useNcs, useTreinamentos } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
 import { cn } from '@/lib/utils';
@@ -65,11 +72,24 @@ export default function NotificacoesPage() {
     }
   }
 
+  const obrigatoriasAt = React.useMemo(
+    () => verificarAtividadesObrigatoriasDiariasPorSetor(formsData?.records ?? [], 'AT'),
+    [formsData?.records],
+  );
+  const obrigatoriasAlmox = React.useMemo(
+    () =>
+      verificarAtividadesObrigatoriasDiariasPorSetor(
+        formsData?.records ?? [],
+        'ALMOXARIFADO',
+      ),
+    [formsData?.records],
+  );
+
   const notificacoes = React.useMemo<NotificacaoItem[]>(() => {
     const lista: NotificacaoItem[] = [];
     const hoje = agoraBR().data;
 
-    // 1. Alertas Operacionais (Temperatura 2x/dia, Bancada semanal, Pulseira, Calibração 60 dias)
+    // 1. Alertas Operacionais (Temperatura 2x/dia, Bancada semanal, Pulseira, Calibração 60 dias REG-015)
     const alertasForm = calcularAlertas(formsData?.records ?? []);
     for (const a of alertasForm) {
       lista.push({
@@ -79,7 +99,7 @@ export default function NotificacoesPage() {
         titulo: a.titulo,
         descricao: a.descricao,
         href: a.href,
-        origemLabel: 'Rotina Operacional / Calibração',
+        origemLabel: 'Rotina Operacional / Calibração (REG-015)',
       });
     }
 
@@ -94,7 +114,7 @@ export default function NotificacoesPage() {
         titulo: `${nc.codigo} — ${nc.titulo}`,
         descricao: `Status: ${nc.status === 'aberta' ? 'Aberta' : 'Em andamento'} · Severidade: ${nc.severidade.toUpperCase()}`,
         href: '/ncs',
-        origemLabel: 'Não Conformidades (REG-020)',
+        origemLabel: 'Não Conformidades (REG 038 / REG 047)',
       });
     }
 
@@ -108,7 +128,7 @@ export default function NotificacoesPage() {
           titulo: `${pop.codigo} aguardando aprovação da Direção`,
           descricao: `O documento "${pop.titulo}" foi submetido e aguarda assinatura eletrônica.`,
           href: '/pops',
-          origemLabel: 'Gestão Documental (POP-001)',
+          origemLabel: 'Gestão Documental (POPs)',
         });
       } else if (pop.status === 'publicado' && pop.totalPendentes > 0) {
         lista.push({
@@ -118,7 +138,7 @@ export default function NotificacoesPage() {
           titulo: `${pop.codigo} possui ${pop.totalPendentes} leitura(s) pendente(s)`,
           descricao: `${pop.titulo} (v${pop.versaoAtual}) — colaboradores ainda precisam confirmar ciência.`,
           href: '/pops',
-          origemLabel: 'Gestão Documental (POP-001)',
+          origemLabel: 'Gestão Documental (POPs)',
         });
       }
     }
@@ -135,7 +155,7 @@ export default function NotificacoesPage() {
           titulo: `Treinamento vencido: ${t.titulo}`,
           descricao: `Validade expirou há ${Math.abs(dias)} dia(s) (${t.validadeAte}). Programe reciclagem.`,
           href: '/treinamentos',
-          origemLabel: 'Capacitação & Treinamentos',
+          origemLabel: 'Capacitação & Treinamentos (REG 008)',
         });
       } else if (dias <= 30) {
         lista.push({
@@ -145,7 +165,7 @@ export default function NotificacoesPage() {
           titulo: `Reciclagem próxima: ${t.titulo}`,
           descricao: `Vence em ${dias} dia(s) (${t.validadeAte}) · Modalidade: ${t.tipo}.`,
           href: '/treinamentos',
-          origemLabel: 'Capacitação & Treinamentos',
+          origemLabel: 'Capacitação & Treinamentos (REG 008)',
         });
       }
     }
@@ -184,7 +204,7 @@ export default function NotificacoesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Central de Notificações</h1>
           <p className="text-sm text-muted-foreground">
-            Alertas em tempo real de rotinas diárias, validade de calibração (60 dias), NCs e documentos pendentes.
+            Entregas dentro do horário comercial (07:30h às 19:30h, Seg–Sex), atividades obrigatórias diárias por setor (Seção 5.2), lembretes de 7 dias e calibrações (REG-015).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -206,6 +226,101 @@ export default function NotificacoesPage() {
           </Button>
         </div>
       </div>
+
+      {/* Painel Oficial da Seção 5.2: Atividades Obrigatórias Diárias por Setor */}
+      <Card className="border-primary/25 bg-primary/5">
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-primary">
+              <Clock className="h-4 w-4" />
+              Atividades Obrigatórias Diárias por Setor (Seção 5.2 — Verificação no Fim do Dia)
+            </CardTitle>
+            <Badge variant="outline" className="font-mono text-[10px]">
+              Notificação diária às 07:30h se pendente
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          {/* Assistência Técnica */}
+          <div className="rounded-lg border border-border bg-card p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-foreground">
+                Setor: Assistência Técnica (AT)
+              </span>
+              <Badge variant={obrigatoriasAt.todasConcluidas ? 'success' : 'warning'}>
+                {obrigatoriasAt.todasConcluidas ? 'Concluídas hoje' : 'Pendente hoje'}
+              </Badge>
+            </div>
+            <div className="space-y-1.5">
+              {obrigatoriasAt.atividades.map((at) => (
+                <div
+                  key={at.codigo}
+                  className="flex items-center justify-between gap-2 rounded border border-border/60 bg-muted/20 px-2.5 py-1.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {at.codigo}
+                    </Badge>
+                    <span>{at.titulo}</span>
+                  </div>
+                  {at.concluidaHoje ? (
+                    <Badge variant="success" className="text-[10px]">
+                      Realizada
+                    </Badge>
+                  ) : (
+                    <Link href={at.href}>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]">
+                        Preencher
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Almoxarifado */}
+          <div className="rounded-lg border border-border bg-card p-3 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-foreground">
+                Setor: Almoxarifado
+              </span>
+              <Badge variant={obrigatoriasAlmox.todasConcluidas ? 'success' : 'warning'}>
+                {obrigatoriasAlmox.todasConcluidas ? 'Concluídas hoje' : 'Pendente hoje'}
+              </Badge>
+            </div>
+            <div className="space-y-1.5">
+              {obrigatoriasAlmox.atividades.map((at) => (
+                <div
+                  key={at.codigo}
+                  className="flex items-center justify-between gap-2 rounded border border-border/60 bg-muted/20 px-2.5 py-1.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {at.codigo}
+                    </Badge>
+                    <span>{at.titulo}</span>
+                  </div>
+                  {at.concluidaHoje ? (
+                    <Badge variant="success" className="text-[10px]">
+                      Realizada
+                    </Badge>
+                  ) : (
+                    <Link href={at.href}>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]">
+                        Preencher
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Regra Seção 5.2: Verificação no fim do dia. Se não realizadas, notifica às 07:30h do dia seguinte e repete diariamente até a conclusão.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Resumo rápido */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -249,13 +364,13 @@ export default function NotificacoesPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Antecedência de Calibração
+              Antecedência de Calibração (REG-015)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">60 dias</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Regra ativa para alerta preventivo de instrumentos
+              Regra ativa para alerta preventivo de instrumentos (Pasta POP 011)
             </p>
           </CardContent>
         </Card>
@@ -266,7 +381,7 @@ export default function NotificacoesPage() {
         {(
           [
             { key: 'todas', label: 'Todas', icon: Bell },
-            { key: 'operacional', label: 'Rotinas & Calibração', icon: Wrench },
+            { key: 'operacional', label: 'Rotinas & Calibração (REG-015)', icon: Wrench },
             { key: 'ncs', label: 'Não Conformidades', icon: ShieldAlert },
             { key: 'pops', label: 'Documentos (POPs)', icon: FileText },
             { key: 'treinamentos', label: 'Treinamentos', icon: GraduationCap },

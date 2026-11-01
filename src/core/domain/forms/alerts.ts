@@ -2,6 +2,7 @@ import {
   ALERTA_CALIBRACAO_DIAS,
   FAIXA_TEMPERATURA_MAX,
   FAIXA_UMIDADE,
+  INSTRUMENTOS_PADRAO_REG015,
 } from './definitions';
 
 /**
@@ -17,6 +18,7 @@ export interface Alerta {
   titulo: string;
   descricao: string;
   href: string;
+  setorDestino?: 'AT' | 'ALMOXARIFADO' | 'AMBOS';
 }
 
 /** Subconjunto mínimo de um registro necessário para calcular alertas. */
@@ -83,9 +85,10 @@ export function alertaHigienizacaoBancada(
   return {
     id: 'higienizacao-bancada',
     nivel: atrasada ? 'danger' : 'warning',
-    titulo: atrasada ? 'Higienização da bancada atrasada' : 'Higienização da bancada pendente',
+    titulo: atrasada ? 'Higienização da bancada atrasada (REG-018)' : 'Higienização da bancada pendente (REG-018)',
     descricao: 'A higienização é feita 1x por semana, sempre no início da semana.',
     href: '/formularios/higienizacao-bancada',
+    setorDestino: 'AT',
   };
 }
 
@@ -108,9 +111,37 @@ export function alertaTemperaturaUmidade(
   return {
     id: 'temperatura-umidade',
     nivel: hora >= 17 ? 'danger' : 'warning',
-    titulo: 'Controle de temperatura e umidade pendente',
-    descricao: `Registrar duas vezes ao dia. Pendente: ${faltando.join(' e ')}.`,
+    titulo: 'Controle diário de temperatura e umidade pendente (REG-017)',
+    descricao: `Atividade obrigatória diária (AT e Almoxarifado). Pendente: ${faltando.join(' e ')}.`,
     href: '/formularios/temperatura-umidade',
+    setorDestino: 'AMBOS',
+  };
+}
+
+/**
+ * Alerta diário para o Teste da Pulseira Elétrica / Antiestática (REG-040) na Assistência Técnica (Seção 5.2).
+ */
+export function alertaPulseiraAntiestatica(
+  registros: RegistroParaAlerta[],
+  now: Date = new Date(),
+): Alerta | null {
+  const { data, hora, diaSemana } = agoraBR(now);
+  if (diaSemana === 0 || diaSemana === 6) return null;
+
+  const feitoHoje = registros.some(
+    (r) => r.tipo === 'pulseira-antiestatica' && r.dataRef === data,
+  );
+  if (feitoHoje) return null;
+  if (hora < 9) return null;
+
+  return {
+    id: 'pulseira-antiestatica',
+    nivel: hora >= 17 ? 'danger' : 'warning',
+    titulo: 'Teste diário da pulseira elétrica pendente (REG-040)',
+    descricao:
+      'Atividade obrigatória diária da Assistência Técnica (Seção 5.2). Se não concluída no dia, gera notificação diária às 07:30h.',
+    href: '/formularios/pulseira-antiestatica',
+    setorDestino: 'AT',
   };
 }
 
@@ -129,6 +160,102 @@ export function alertaLeituraForaDaFaixa(registros: RegistroParaAlerta[], now: D
     titulo: 'Leitura fora dos limites permitidos',
     descricao: 'Faça outra medição em horário diferente do dia e registre a observação.',
     href: '/formularios/temperatura-umidade',
+    setorDestino: 'AMBOS',
+  };
+}
+
+export interface AtividadeObrigatoriaDiariaStatus {
+  codigo: string;
+  titulo: string;
+  setor: 'AT' | 'ALMOXARIFADO';
+  concluidaHoje: boolean;
+  href: string;
+  mensagemNotificacao0730: string;
+}
+
+/**
+ * Seção 5.2 da Auditoria Linkmed:
+ * - Almoxarifado: Controle de temperatura e umidade do setor (REG-017).
+ * - Assistência Técnica: Controle de temperatura e umidade (REG-017) + Teste da pulseira elétrica (REG-040).
+ * Verificação no fim do dia: se não realizadas, no dia seguinte às 07:30h notifica que tem atividade pendente,
+ * repetindo diariamente até ser concluída.
+ */
+export function verificarAtividadesObrigatoriasDiariasPorSetor(
+  registros: RegistroParaAlerta[],
+  setor: 'AT' | 'ALMOXARIFADO',
+  now: Date = new Date(),
+): {
+  setor: 'AT' | 'ALMOXARIFADO';
+  dataReferencia: string;
+  todasConcluidas: boolean;
+  atividades: AtividadeObrigatoriaDiariaStatus[];
+} {
+  const { data } = agoraBR(now);
+
+  if (setor === 'ALMOXARIFADO') {
+    const tempAlmoxConcluida = registros.some(
+      (r) =>
+        r.tipo === 'temperatura-umidade' &&
+        r.dataRef === data &&
+        (!r.dados.setor_medicao || r.dados.setor_medicao === 'Almoxarifado'),
+    );
+
+    const atividades: AtividadeObrigatoriaDiariaStatus[] = [
+      {
+        codigo: 'REG-017',
+        titulo: 'Controle de temperatura e umidade do setor (Almoxarifado)',
+        setor: 'ALMOXARIFADO',
+        concluidaHoje: tempAlmoxConcluida,
+        href: '/formularios/temperatura-umidade',
+        mensagemNotificacao0730:
+          'Notificação 07:30h (Seção 5.2): Atividade diatória obrigatória pendente no Almoxarifado — Preencha o Controle de Temperatura e Umidade (REG-017).',
+      },
+    ];
+
+    return {
+      setor,
+      dataReferencia: data,
+      todasConcluidas: atividades.every((a) => a.concluidaHoje),
+      atividades,
+    };
+  }
+
+  const tempAtConcluida = registros.some(
+    (r) =>
+      r.tipo === 'temperatura-umidade' &&
+      r.dataRef === data &&
+      (!r.dados.setor_medicao || r.dados.setor_medicao === 'Assistência Técnica'),
+  );
+  const pulseiraConcluida = registros.some(
+    (r) => r.tipo === 'pulseira-antiestatica' && r.dataRef === data,
+  );
+
+  const atividades: AtividadeObrigatoriaDiariaStatus[] = [
+    {
+      codigo: 'REG-017',
+      titulo: 'Controle de temperatura e umidade (Assistência Técnica)',
+      setor: 'AT',
+      concluidaHoje: tempAtConcluida,
+      href: '/formularios/temperatura-umidade',
+      mensagemNotificacao0730:
+        'Notificação 07:30h (Seção 5.2): Atividade diária obrigatória pendente na Assistência Técnica — Preencha o Controle de Temperatura e Umidade (REG-017).',
+    },
+    {
+      codigo: 'REG-040',
+      titulo: 'Teste da pulseira elétrica / antiestática (Assistência Técnica)',
+      setor: 'AT',
+      concluidaHoje: pulseiraConcluida,
+      href: '/formularios/pulseira-antiestatica',
+      mensagemNotificacao0730:
+        'Notificação 07:30h (Seção 5.2): Atividade diária obrigatória pendente na Assistência Técnica — Realize o Teste da Pulseira Elétrica (REG-040).',
+    },
+  ];
+
+  return {
+    setor,
+    dataReferencia: data,
+    todasConcluidas: atividades.every((a) => a.concluidaHoje),
+    atividades,
   };
 }
 
@@ -149,7 +276,24 @@ export function statusCalibracoes(
   const { data } = agoraBR(now);
   const ultimas = new Map<string, RegistroParaAlerta>();
 
-  for (const r of registros) {
+  // Se não houver registros passados explicitamente, inclui também os instrumentos padrão do REG-015
+  const fonteRegistros =
+    registros.some((r) => r.tipo === 'validade-calibracao')
+      ? registros
+      : [
+          ...registros,
+          ...INSTRUMENTOS_PADRAO_REG015.map((inst) => ({
+            tipo: 'validade-calibracao',
+            dataRef: inst.dataCalibracao,
+            dados: {
+              equipamento: inst.equipamento,
+              numero_serie: inst.numeroSerie,
+              validade: inst.validade,
+            },
+          })),
+        ];
+
+  for (const r of fonteRegistros) {
     if (r.tipo !== 'validade-calibracao') continue;
     const chave = `${String(r.dados.equipamento)}|${String(r.dados.numero_serie)}`.toLowerCase();
     const atual = ultimas.get(chave);
@@ -182,8 +326,8 @@ export function alertasCalibracao(registros: RegistroParaAlerta[], now: Date = n
       nivel: c.situacao === 'vencida' ? 'danger' : 'warning',
       titulo:
         c.situacao === 'vencida'
-          ? `Calibração vencida: ${c.equipamento}`
-          : `Calibração vence em ${c.diasRestantes} dia(s): ${c.equipamento}`,
+          ? `Calibração vencida (REG-015): ${c.equipamento}`
+          : `Calibração vence em ${c.diasRestantes} dia(s) (REG-015): ${c.equipamento}`,
       descricao: `Nº de série ${c.numeroSerie || '—'} · validade ${c.validade.split('-').reverse().join('/')}.`,
       href: '/formularios/validade-calibracao',
     }));
@@ -194,6 +338,7 @@ export function calcularAlertas(registros: RegistroParaAlerta[], now: Date = new
   const lista: Alerta[] = [
     alertaHigienizacaoBancada(registros, now),
     alertaTemperaturaUmidade(registros, now),
+    alertaPulseiraAntiestatica(registros, now),
     alertaLeituraForaDaFaixa(registros, now),
     ...alertasCalibracao(registros, now),
   ].filter((a): a is Alerta => a !== null);

@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardCheck,
+  FileCheck2,
   Info,
   Layers,
   Search,
@@ -20,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DOCUMENTOS_OFICIAIS_POR_MODULO } from '@/core/domain/entities/operacional';
 import { calcularAlertas } from '@/core/domain/forms/alerts';
 import {
   FORM_DEFS,
@@ -49,7 +51,8 @@ export function FormulariosClient() {
       return (
         f.titulo.toLowerCase().includes(q) ||
         f.descricao.toLowerCase().includes(q) ||
-        (f.reg && f.reg.toLowerCase().includes(q))
+        (f.reg && f.reg.toLowerCase().includes(q)) ||
+        (f.pastaPop && f.pastaPop.toLowerCase().includes(q))
       );
     });
   }, [setor, busca]);
@@ -62,7 +65,7 @@ export function FormulariosClient() {
             Formulários Operacionais (REGs)
           </h1>
           <p className="text-sm text-muted-foreground">
-            Checklists e registros da Assistência Técnica e Almoxarifado (POP-020 / RDC 665/22) com herança de dados por OS.
+            Checklists e registros da Assistência Técnica, Almoxarifado e Administrativo (ADM) conforme Auditoria Linkmed v2 (RDC 665/22).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -80,6 +83,30 @@ export function FormulariosClient() {
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
+        </div>
+      </div>
+
+      {/* Catálogo Oficial de Documentos do Módulo Formulários — Seção 1 */}
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs space-y-2">
+        <div className="flex items-center gap-2 font-semibold text-primary">
+          <FileCheck2 className="h-4 w-4" />
+          <span>Documentos Oficiais do Módulo Formulários (Seção 1 da Auditoria Linkmed):</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {DOCUMENTOS_OFICIAIS_POR_MODULO.formularios.map((item) => (
+            <button
+              key={item.codigo}
+              type="button"
+              onClick={() => setBusca(item.codigo)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-background px-2.5 py-1 text-[11px] font-medium transition hover:border-primary hover:bg-primary/10"
+            >
+              <span className="font-mono font-bold text-primary">{item.codigo}</span>
+              <span className="rounded bg-primary/10 px-1.5 py-0.2 font-mono text-[10px] text-primary">
+                Pasta {item.pastaPop}
+              </span>
+              <span className="text-muted-foreground">— {item.titulo}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -157,7 +184,7 @@ export function FormulariosClient() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por código (ex: REG-022, REG-035) ou título..."
+              placeholder="Buscar por código (ex: REG-015, REG-016, REG-022) ou pasta POP..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="pl-9"
@@ -168,7 +195,8 @@ export function FormulariosClient() {
             onChange={(e) => setSetor(e.target.value as SetorFormulario | '')}
           >
             <option value="">Todos os setores</option>
-            <option value="assistencia_tecnica">Assistência Técnica</option>
+            <option value="assistencia_tecnica">Assistência Técnica (AT)</option>
+            <option value="administrativo">Administrativo (ADM)</option>
             <option value="almoxarifado">Almoxarifado</option>
           </SelectNative>
         </CardContent>
@@ -199,6 +227,11 @@ export function FormulariosClient() {
                         </Badge>
                       ) : (
                         <Badge variant="secondary">Controle Interno</Badge>
+                      )}
+                      {form.pastaPop && (
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          Pasta {form.pastaPop}
+                        </Badge>
                       )}
                       {form.subtipos && (
                         <Badge variant="outline" className="gap-1">

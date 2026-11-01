@@ -12,6 +12,7 @@ import {
   GraduationCap,
   Lock,
   MapPin,
+  PenTool,
   Plus,
   Search,
   Trash2,
@@ -33,10 +34,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SelectNative } from '@/components/ui/select-native';
+import { SignaturePadDialog } from '@/components/ui/signature-pad-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
   type AvaliacaoEficaciaParticipante,
+  calcularCargaHorariaAutomatica,
+  DOCUMENTOS_OFICIAIS_POR_MODULO,
   HISTORICO_REVISAO_REG008,
   LEGENDA_EFICACIA_REG008,
   type NotaEficacia,
@@ -106,7 +110,6 @@ export function TreinamentosClient() {
   const [localTreinamento, setLocalTreinamento] = React.useState(
     'Sala de Treinamento LinkMed',
   );
-  const [entidade, setEntidade] = React.useState('');
   const [cargaHoraria, setCargaHoraria] = React.useState('4');
   const [horarioInicial, setHorarioInicial] = React.useState('08:30');
   const [horarioFinal, setHorarioFinal] = React.useState('12:30');
@@ -116,6 +119,29 @@ export function TreinamentosClient() {
   const [elaboradoPor, setElaboradoPor] = React.useState('Gestão da Qualidade');
   const [revisadoPor, setRevisadoPor] = React.useState('Responsável Técnico');
   const [aprovadoPor, setAprovadoPor] = React.useState('Diretoria Operacional');
+
+  // Cálculo automático da Carga Horária (Seção 2 da Auditoria Linkmed)
+  React.useEffect(() => {
+    const calculada = calcularCargaHorariaAutomatica(horarioInicial, horarioFinal);
+    if (calculada !== null) {
+      setCargaHoraria(String(calculada));
+    }
+  }, [horarioInicial, horarioFinal]);
+
+  // Modal de Assinatura Eletrônica LGPD na tela
+  const [assinaturaAlvo, setAssinaturaAlvo] = React.useState<{
+    open: boolean;
+    titulo: string;
+    nomePadrao: string;
+    funcaoPadrao: string;
+    onSigned: (resumo: string) => void;
+  }>({
+    open: false,
+    titulo: '',
+    nomePadrao: '',
+    funcaoPadrao: '',
+    onSigned: () => {},
+  });
 
   // Lista de presença estruturada (REG-008)
   const [participantesDetalhe, setParticipantesDetalhe] = React.useState<
@@ -170,9 +196,8 @@ export function TreinamentosClient() {
     setErroForm(null);
     if (modalidade === 'interno') {
       setLocalTreinamento('Sala de Treinamento LinkMed');
-      setEntidade('');
     } else {
-      setLocalTreinamento('Centro Técnico do Fabricante / Remoto Síncrono');
+      setLocalTreinamento('Centro Técnico / Remoto Síncrono');
     }
     setDialogAberto(true);
   }
@@ -312,10 +337,6 @@ export function TreinamentosClient() {
       setErroForm('Informe o assunto/título do treinamento.');
       return;
     }
-    if (tipo === 'externo' && !entidade.trim()) {
-      setErroForm('Informe a entidade ou fabricante responsável pelo treinamento externo.');
-      return;
-    }
 
     const participantesValidos = participantesDetalhe.filter(
       (p) => p.nome.trim().length > 0,
@@ -336,6 +357,10 @@ export function TreinamentosClient() {
         })
       : [];
 
+    const cargaFinal =
+      calcularCargaHorariaAutomatica(horarioInicial, horarioFinal) ??
+      (cargaHoraria ? Number(cargaHoraria) : null);
+
     try {
       await createTreinamento.mutateAsync({
         titulo: titulo.trim(),
@@ -345,8 +370,8 @@ export function TreinamentosClient() {
         localTreinamento: localTreinamento.trim() || null,
         horarioInicial: horarioInicial || null,
         horarioFinal: horarioFinal || null,
-        entidade: tipo === 'externo' ? entidade.trim() : null,
-        cargaHoraria: cargaHoraria ? Number(cargaHoraria) : null,
+        entidade: null,
+        cargaHoraria: cargaFinal,
         dataRealizacao,
         validadeAte: validadeAte || null,
         participantes: nomesParticipantes,
@@ -373,7 +398,6 @@ export function TreinamentosClient() {
       setTitulo('');
       setConteudo('');
       setInstrutor('');
-      setEntidade('');
       setObservacoes('');
       setDialogAberto(false);
     } catch (err) {
@@ -388,19 +412,21 @@ export function TreinamentosClient() {
       {/* Cabeçalho com os 2 botões dedicados: Treinamento Interno e Treinamento Externo */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <Badge variant="default" className="font-mono">
-              REG-008 · Rev. 01
-            </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            {DOCUMENTOS_OFICIAIS_POR_MODULO.treinamentos.map((doc) => (
+              <Badge key={doc.codigo} variant="default" className="font-mono">
+                {doc.codigo} ({doc.pastaPop})
+              </Badge>
+            ))}
             <span className="text-xs font-medium text-muted-foreground">
               RDC 665/22 — Capacitação & Avaliação da Eficácia
             </span>
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Registro de Treinamento e Avaliação da Eficácia (REG 008)
+            Módulo Treinamentos (REG 008 · REG 036 · REG 045 — Pasta POP 019)
           </h1>
           <p className="text-sm text-muted-foreground">
-            Inclusão de Treinamentos Internos e Externos com Lista de Presença e Avaliação da Eficácia por participante.
+            Inclusão de Treinamentos Internos e Externos com cálculo automático de carga horária, assinatura eletrônica em tela e avaliação da eficácia.
           </p>
         </div>
 
@@ -428,7 +454,7 @@ export function TreinamentosClient() {
         <div className="flex items-center gap-2 font-semibold text-primary">
           <FileCheck2 className="h-4 w-4" />
           <span>
-            REG 008 — Registro de Treinamento e Avaliação da Eficácia (Revisão 01 · 30/01/2026)
+            REG 008 / REG 036 / REG 045 (Pasta do POP 019 — Instalação e Treinamento de Equipamentos)
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-4 text-muted-foreground">
@@ -480,7 +506,7 @@ export function TreinamentosClient() {
             <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
               {totalExternos}
             </p>
-            <p className="text-xs text-muted-foreground">Fabricantes (Olidef, TEB, etc.)</p>
+            <p className="text-xs text-muted-foreground">Capacitações externas registradas</p>
           </CardContent>
         </Card>
 
@@ -507,7 +533,7 @@ export function TreinamentosClient() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por assunto, conteúdo, instrutor, entidade ou participante..."
+              placeholder="Buscar por assunto, conteúdo, instrutor ou participante..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="pl-9"
@@ -735,7 +761,7 @@ export function TreinamentosClient() {
               Avaliação da Eficácia
             </DialogTitle>
             <DialogDescription>
-              Formulário oficial REG 008 (Rev. 01 — 30/01/2026) com lista de presença e registro de avaliação da eficácia.
+              Formulário oficial REG 008 (Rev. 01 — 30/01/2026) com cálculo automático de carga horária, assinatura eletrônica em tela e avaliação da eficácia.
             </DialogDescription>
           </DialogHeader>
 
@@ -746,7 +772,7 @@ export function TreinamentosClient() {
               </p>
             )}
 
-            {/* Seletor rápido de Modalidade no topo do modal */}
+            {/* Seletor rápido de Modalidade no topo do modal — Seção 2: apenas "Treinamento Externo" */}
             <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-1.5">
               <button
                 type="button"
@@ -757,7 +783,7 @@ export function TreinamentosClient() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Treinamento Interno (POPs / Qualidade)
+                Treinamento Interno
               </button>
               <button
                 type="button"
@@ -768,7 +794,7 @@ export function TreinamentosClient() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Treinamento Externo (Fabricante / Instituição)
+                Treinamento Externo
               </button>
             </div>
 
@@ -824,21 +850,6 @@ export function TreinamentosClient() {
                   />
                 </div>
 
-                {tipo === 'externo' && (
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="tr-entidade">
-                      Entidade / Fabricante Responsável (Treinamento Externo) *
-                    </Label>
-                    <Input
-                      id="tr-entidade"
-                      value={entidade}
-                      onChange={(e) => setEntidade(e.target.value)}
-                      placeholder="Ex: Olidef / TEB / Instituto Acreditado"
-                      required
-                    />
-                  </div>
-                )}
-
                 <div className="space-y-1.5">
                   <Label htmlFor="tr-data">Data *</Label>
                   <Input
@@ -857,7 +868,12 @@ export function TreinamentosClient() {
                       id="tr-hi"
                       type="time"
                       value={horarioInicial}
-                      onChange={(e) => setHorarioInicial(e.target.value)}
+                      onChange={(e) => {
+                        const novoHi = e.target.value;
+                        setHorarioInicial(novoHi);
+                        const calc = calcularCargaHorariaAutomatica(novoHi, horarioFinal);
+                        if (calc !== null) setCargaHoraria(String(calc));
+                      }}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -866,24 +882,31 @@ export function TreinamentosClient() {
                       id="tr-hf"
                       type="time"
                       value={horarioFinal}
-                      onChange={(e) => setHorarioFinal(e.target.value)}
+                      onChange={(e) => {
+                        const novoHf = e.target.value;
+                        setHorarioFinal(novoHf);
+                        const calc = calcularCargaHorariaAutomatica(horarioInicial, novoHf);
+                        if (calc !== null) setCargaHoraria(String(calc));
+                      }}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="tr-carga">Carga (h)</Label>
+                    <Label htmlFor="tr-carga">Carga (h) Auto</Label>
                     <Input
                       id="tr-carga"
                       type="number"
-                      step="0.5"
+                      step="0.25"
                       value={cargaHoraria}
-                      onChange={(e) => setCargaHoraria(e.target.value)}
+                      readOnly
+                      className="bg-muted/50 font-semibold text-primary"
+                      title="Calculada automaticamente a partir do Horário Inicial e Horário Final"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Bloco 2: Lista de Presença (Nº | Nome | Função | Assinatura) */}
+            {/* Bloco 2: Lista de Presença (Nº | Nome | Função | Assinatura com Rubrica na Tela) */}
             <div className="space-y-3 rounded-xl border border-border/80 bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -891,7 +914,7 @@ export function TreinamentosClient() {
                     2. Lista de Presença dos Participantes (REG 008)
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    Informe Nome, Função e Assinatura de cada colaborador treinado.
+                    Informe Nome, Função e Assinatura (com opção de rubrica na tela LGPD) de cada colaborador treinado.
                   </p>
                 </div>
                 <Button
@@ -909,7 +932,7 @@ export function TreinamentosClient() {
                 {participantesDetalhe.map((p, idx) => (
                   <div
                     key={idx}
-                    className="grid items-center gap-2 sm:grid-cols-[44px_1fr_1fr_1fr_40px]"
+                    className="grid items-center gap-2 sm:grid-cols-[40px_1fr_1fr_1fr_auto_36px]"
                   >
                     <div className="flex h-9 items-center justify-center rounded-md border border-border bg-muted/40 font-mono text-xs font-bold">
                       {idx + 1}
@@ -930,12 +953,31 @@ export function TreinamentosClient() {
                       }
                     />
                     <Input
-                      placeholder="Assinatura"
+                      placeholder="Assinatura / Protocolo LGPD"
                       value={p.assinatura}
                       onChange={(e) =>
                         atualizarParticipante(idx, 'assinatura', e.target.value)
                       }
                     />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setAssinaturaAlvo({
+                          open: true,
+                          titulo: `Assinatura de Presença (${p.nome || `Participante ${idx + 1}`})`,
+                          nomePadrao: p.nome,
+                          funcaoPadrao: p.funcao || 'Colaborador Treinado',
+                          onSigned: (resumo) =>
+                            atualizarParticipante(idx, 'assinatura', resumo),
+                        })
+                      }
+                      className="gap-1 text-xs border-primary/40 text-primary"
+                    >
+                      <PenTool className="h-3 w-3" />
+                      Assinar
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
@@ -1050,7 +1092,25 @@ export function TreinamentosClient() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label className="text-xs">Assinatura do avaliador *</Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Assinatura do avaliador *</Label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAssinaturaAlvo({
+                              open: true,
+                              titulo: 'Assinatura do Avaliador de Eficácia (REG 008)',
+                              nomePadrao: avaliadoPor,
+                              funcaoPadrao: 'Avaliador / Gestão da Qualidade',
+                              onSigned: (resumo) => setAssinaturaAvaliador(resumo),
+                            })
+                          }
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                        >
+                          <PenTool className="h-3 w-3" />
+                          Assinar na tela
+                        </button>
+                      </div>
                       <Input
                         value={assinaturaAvaliador}
                         onChange={(e) => setAssinaturaAvaliador(e.target.value)}
@@ -1066,11 +1126,11 @@ export function TreinamentosClient() {
             <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
-                  Governança Documental (REG-008)
+                  Governança Documental (REG-008 — Seção 5.3)
                 </span>
                 {podeEditarGovernanca ? (
                   <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">
-                    Edição permitida (Qualidade / Diretor)
+                    Edição e Assinatura permitidas (Qualidade / Diretor)
                   </Badge>
                 ) : (
                   <Badge variant="secondary" className="gap-1 text-[10px] text-muted-foreground">
@@ -1081,7 +1141,26 @@ export function TreinamentosClient() {
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Elaborado por *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Elaborado por *</Label>
+                    {podeEditarGovernanca && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: 'Assinatura de Elaboração (REG 008)',
+                            nomePadrao: elaboradoPor,
+                            funcaoPadrao: 'Elaborador',
+                            onSigned: (resumo) => setElaboradoPor(resumo),
+                          })
+                        }
+                        className="text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        Assinar
+                      </button>
+                    )}
+                  </div>
                   <Input
                     value={elaboradoPor}
                     disabled={!podeEditarGovernanca}
@@ -1092,7 +1171,26 @@ export function TreinamentosClient() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Revisado por *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Revisado por *</Label>
+                    {podeEditarGovernanca && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: 'Assinatura de Revisão (REG 008)',
+                            nomePadrao: revisadoPor,
+                            funcaoPadrao: 'Revisor Técnico',
+                            onSigned: (resumo) => setRevisadoPor(resumo),
+                          })
+                        }
+                        className="text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        Assinar
+                      </button>
+                    )}
+                  </div>
                   <Input
                     value={revisadoPor}
                     disabled={!podeEditarGovernanca}
@@ -1103,7 +1201,26 @@ export function TreinamentosClient() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Aprovado por *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Aprovado por *</Label>
+                    {podeEditarGovernanca && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: 'Assinatura de Aprovação (REG 008)',
+                            nomePadrao: aprovadoPor,
+                            funcaoPadrao: 'Aprovador / Diretoria',
+                            onSigned: (resumo) => setAprovadoPor(resumo),
+                          })
+                        }
+                        className="text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        Assinar
+                      </button>
+                    )}
+                  </div>
                   <Input
                     value={aprovadoPor}
                     disabled={!podeEditarGovernanca}
@@ -1175,10 +1292,9 @@ export function TreinamentosClient() {
                     </p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Local / Entidade:</span>
+                    <span className="text-muted-foreground">Local:</span>
                     <p className="font-semibold text-foreground">
                       {treinamentoSelecionado.localTreinamento ||
-                        treinamentoSelecionado.entidade ||
                         'Sala de Treinamento LinkMed'}
                     </p>
                   </div>
@@ -1282,7 +1398,25 @@ export function TreinamentosClient() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Assinatura</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Assinatura</Label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: 'Assinatura de Avaliação de Eficácia (REG 008)',
+                            nomePadrao: editAvaliadoPor,
+                            funcaoPadrao: 'Avaliador da Eficácia',
+                            onSigned: (resumo) => setEditAssinaturaAvaliador(resumo),
+                          })
+                        }
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+                      >
+                        <PenTool className="h-3 w-3" />
+                        Assinar na tela
+                      </button>
+                    </div>
                     <Input
                       value={editAssinaturaAvaliador}
                       onChange={(e) => setEditAssinaturaAvaliador(e.target.value)}
@@ -1329,6 +1463,18 @@ export function TreinamentosClient() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Assinatura Eletrônica LGPD na Tela */}
+      <SignaturePadDialog
+        open={assinaturaAlvo.open}
+        onOpenChange={(open) => setAssinaturaAlvo((prev) => ({ ...prev, open }))}
+        documentoCodigo="REG-008"
+        documentoTitulo={assinaturaAlvo.titulo}
+        signatarioNomePadrao={assinaturaAlvo.nomePadrao}
+        signatarioIdPadrao={user?.id}
+        funcaoPadrao={assinaturaAlvo.funcaoPadrao}
+        onConfirm={(reg) => assinaturaAlvo.onSigned(reg.resumoFormatado)}
+      />
     </div>
   );
 }

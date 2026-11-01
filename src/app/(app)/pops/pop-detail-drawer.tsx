@@ -10,6 +10,7 @@ import {
   History,
   Lock,
   MessageSquare,
+  PenTool,
   Save,
   Send,
   ShieldCheck,
@@ -22,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { SignaturePadDialog } from '@/components/ui/signature-pad-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -73,6 +75,20 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
   const [editAprovado, setEditAprovado] = React.useState('');
   const [salvandoGov, setSalvandoGov] = React.useState(false);
 
+  const [assinaturaAlvo, setAssinaturaAlvo] = React.useState<{
+    open: boolean;
+    titulo: string;
+    nomePadrao: string;
+    funcaoPadrao: string;
+    onSigned: (resumo: string) => void;
+  }>({
+    open: false,
+    titulo: '',
+    nomePadrao: '',
+    funcaoPadrao: '',
+    onSigned: () => {},
+  });
+
   const canUpload = user ? can(user.perfil, 'pops:upload') : false;
   const isDiretor = user?.perfil === 'diretor';
   const isGestor = user?.perfil === 'gestor';
@@ -106,7 +122,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message || 'Falha ao salvar responsáveis.');
       }
-      toast.success('Responsáveis pelo POP atualizados com sucesso!');
+      toast.success('Responsáveis e assinaturas do POP atualizados com sucesso!');
       setEditandoGov(false);
       void refetch();
     } catch (err) {
@@ -234,11 +250,11 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
           </div>
         ) : (
           <div className="flex-1 p-5 space-y-4">
-            {/* Quadro Oficial de Governança: Elaboração, Revisão e Aprovação */}
+            {/* Quadro Oficial de Governança: Elaboração, Revisão e Aprovação + Assinatura Seção 5.3 */}
             <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 text-xs space-y-2.5">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                  Responsáveis pelo Documento (RDC 665/2022)
+                  Responsáveis e Assinaturas (Seção 5.3 · RDC 665/2022)
                 </p>
                 {podeEditarGov ? (
                   !editandoGov ? (
@@ -249,7 +265,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                       className="h-6 gap-1 px-2 text-[10px] text-primary"
                     >
                       <Edit2 className="h-3 w-3" />
-                      Alterar Responsáveis
+                      Alterar / Assinar
                     </Button>
                   ) : (
                     <div className="flex items-center gap-1.5">
@@ -313,9 +329,27 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
               ) : (
                 <div className="grid gap-2.5 sm:grid-cols-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">
-                      Elaborado por
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-semibold text-muted-foreground">
+                        Elaborado por
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: `Assinatura de Elaboração (${data.pop.codigo})`,
+                            nomePadrao: editElaborado,
+                            funcaoPadrao: 'Elaborador',
+                            onSigned: (resumo) => setEditElaborado(resumo),
+                          })
+                        }
+                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        <PenTool className="h-2.5 w-2.5" />
+                        Assinar
+                      </button>
+                    </div>
                     <Input
                       value={editElaborado}
                       onChange={(e) => setEditElaborado(e.target.value)}
@@ -323,9 +357,27 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">
-                      Revisado por
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-semibold text-muted-foreground">
+                        Revisado por
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: `Assinatura de Revisão (${data.pop.codigo})`,
+                            nomePadrao: editRevisado,
+                            funcaoPadrao: 'Revisor Técnico',
+                            onSigned: (resumo) => setEditRevisado(resumo),
+                          })
+                        }
+                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        <PenTool className="h-2.5 w-2.5" />
+                        Assinar
+                      </button>
+                    </div>
                     <Input
                       value={editRevisado}
                       onChange={(e) => setEditRevisado(e.target.value)}
@@ -333,9 +385,27 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-muted-foreground">
-                      Aprovado por
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-semibold text-muted-foreground">
+                        Aprovado por
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssinaturaAlvo({
+                            open: true,
+                            titulo: `Assinatura de Aprovação (${data.pop.codigo})`,
+                            nomePadrao: editAprovado,
+                            funcaoPadrao: 'Aprovador / Diretoria',
+                            onSigned: (resumo) => setEditAprovado(resumo),
+                          })
+                        }
+                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                      >
+                        <PenTool className="h-2.5 w-2.5" />
+                        Assinar
+                      </button>
+                    </div>
                     <Input
                       value={editAprovado}
                       onChange={(e) => setEditAprovado(e.target.value)}
@@ -679,6 +749,18 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
           </div>
         )}
       </aside>
+
+      {/* Modal de Assinatura Eletrônica LGPD na Tela */}
+      <SignaturePadDialog
+        open={assinaturaAlvo.open}
+        onOpenChange={(open) => setAssinaturaAlvo((prev) => ({ ...prev, open }))}
+        documentoCodigo={data?.pop.codigo ?? 'POP'}
+        documentoTitulo={assinaturaAlvo.titulo}
+        signatarioNomePadrao={assinaturaAlvo.nomePadrao}
+        signatarioIdPadrao={user?.id}
+        funcaoPadrao={assinaturaAlvo.funcaoPadrao}
+        onConfirm={(reg) => assinaturaAlvo.onSigned(reg.resumoFormatado)}
+      />
     </div>
   );
 }

@@ -30,19 +30,21 @@ import {
 } from '@/core/domain/forms/os-workflow';
 import type { FormRecord } from '@/core/domain/entities/operacional';
 
-describe('Módulos Operacionais — Catálogo, Validação e Conformidade (Fase 4)', () => {
-  it('contém exatamente os 9 módulos da Assistência Técnica e Almoxarifado', () => {
+describe('Módulos Operacionais — Catálogo, Validação e Conformidade (Fase 4 / Auditoria v2)', () => {
+  it('contém exatamente os 9 módulos operacionais com REG-022 atribuído ao ADM (Seção 3.3)', () => {
     expect(FORM_DEFS).toHaveLength(9);
 
-    // Inspeção de recebimento deve constar tanto em Assistência Técnica quanto em Almoxarifado
+    // Seção 3.3 (Auditoria v2): Inspeção de recebimento (REG 022) retirada da AT e disponibilizada ao ADM
     const reg022 = getFormDef('inspecao-recebimento')!;
-    expect(reg022.setores).toContain('assistencia_tecnica');
-    expect(reg022.setores).toContain('almoxarifado');
+    expect(reg022.setores).toContain('administrativo');
+    expect(reg022.setores).not.toContain('assistencia_tecnica');
+    expect(reg022.perfis).toContain('adm');
 
-    // Checklist de manutenção deve ter submódulos OLIDEF e TEB
+    // Checklist de manutenção deve ter submódulos OLIDEF, TEB e Cardios (REG-009)
     const reg035 = getFormDef('checklist-manutencao')!;
     expect(getSubtipo(reg035, 'olidef')).toBeDefined();
     expect(getSubtipo(reg035, 'teb')).toBeDefined();
+    expect(getSubtipo(reg035, 'cardios')).toBeDefined();
     expect(getSecoes(reg035, 'olidef').length).toBeGreaterThan(reg035.secoes.length);
   });
 

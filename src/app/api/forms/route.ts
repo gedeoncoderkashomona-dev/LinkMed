@@ -9,6 +9,7 @@ import {
   validarDados,
 } from '@/core/domain/forms/definitions';
 import { agoraBR } from '@/core/domain/forms/alerts';
+import { normalizarNumeroOs } from '@/core/domain/forms/os-workflow';
 import { getRepositories } from '@/infra/db';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { apiHandler } from '@/lib/http/api-handler';
@@ -60,11 +61,35 @@ export const POST = apiHandler(async (req: NextRequest) => {
     throw new ValidationError('Preencha os campos obrigatórios.', erros);
   }
 
+  const { operacionalRepository, auditService } = getRepositories();
+
+  // Regra Seção 7.4 (T11): Bloquear números de OS duplicados ao cadastrar o REG 022
+  if (def.tipo === 'inspecao-recebimento') {
+    const numOsNorm = normalizarNumeroOs(String(body.dados.numero_os ?? ''));
+    if (numOsNorm) {
+      const existentes = await operacionalRepository.listFormRecords({
+        tipo: 'inspecao-recebimento',
+        limit: 300,
+      });
+      const duplicado = existentes.find(
+        (r) => normalizarNumeroOs(String(r.dados?.numero_os ?? '')) === numOsNorm,
+      );
+      if (duplicado) {
+        const osExibicao = String(duplicado.dados?.numero_os ?? numOsNorm);
+        throw new ValidationError(
+          `Já existe uma OS com este número (${osExibicao}). Acesse a OS existente em /equipamentos?os=${encodeURIComponent(osExibicao)}.`,
+          {
+            numero_os: `Já existe uma OS com este número (${osExibicao}). Não são permitidas OS duplicadas.`,
+          },
+        );
+      }
+    }
+  }
+
   const dados = sanitizarDados(def, subtipo, body.dados, auth.perfil);
   const status = avaliarConformidade(def, subtipo, dados);
   const dataRef = String(dados[def.campoData] ?? agoraBR().data);
 
-  const { operacionalRepository, auditService } = getRepositories();
   const record = await operacionalRepository.createFormRecord({
     tipo: def.tipo,
     subtipo,
