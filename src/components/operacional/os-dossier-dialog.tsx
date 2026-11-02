@@ -239,7 +239,7 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
 
   <div class="section-title">REGISTROS OPERACIONAIS E RASTREABILIDADE (RDC 665/22)</div>
   <div id="records-content">
-    ${historicoRegistros.map(rec => {
+    ${recordsDaOs.map((rec) => {
       const def = FORM_DEFS.find(f => f.tipo === rec.tipo);
       const d = rec.dados || {};
       const chaves = Object.keys(d).filter(k => k !== 'numero_os' && !k.startsWith('__'));
