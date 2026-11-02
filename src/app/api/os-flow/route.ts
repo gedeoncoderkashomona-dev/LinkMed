@@ -121,3 +121,4 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   return { ok: true, directTableOk: !directError, numeroOs: rawBody.numeroOs };
 });
+

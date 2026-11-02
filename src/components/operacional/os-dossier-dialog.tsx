@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
+  Printer,
   CheckCircle2,
   Clock,
   Cpu,
@@ -147,6 +148,137 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
       href: `/formularios/verificacao-calibracao?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
     },
   ];
+
+
+  function handlePrintDossier() {
+    if (!osCtx) return;
+    const win = window.open('', '_blank', 'width=800,height=900');
+    if (!win) {
+      window.print();
+      return;
+    }
+
+    const safeOs = osCtx.numeroOs;
+    const safeCliente = osCtx.cliente || '—';
+    const safeEquip = osCtx.equipamento || '—';
+    const safeMarca = osCtx.marca || '—';
+    const safeModelo = osCtx.modelo || '—';
+    const safeSerie = osCtx.numeroSerie || '—';
+    const safeData = new Date().toLocaleDateString('pt-BR');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dossiê da Ordem de Serviço — ${safeOs}</title>
+  <style>
+    @page { size: A4 portrait; margin: 15mm; }
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+    body { margin: 0; padding: 20px; color: #0f172a; background: #fff; line-height: 1.4; }
+    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+    .logo-box { display: flex; align-items: center; gap: 10px; }
+    .logo-img { height: 42px; width: auto; object-fit: contain; }
+    .title-box h1 { margin: 0; font-size: 16px; font-weight: 800; color: #0f172a; }
+    .title-box p { margin: 2px 0 0; font-size: 11px; color: #64748b; }
+    .os-badge { background: #0f172a; color: #fff; padding: 6px 12px; border-radius: 6px; font-family: monospace; font-size: 14px; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+    .field { font-size: 11px; }
+    .field-label { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: 700; margin-bottom: 2px; }
+    .field-val { font-size: 12px; font-weight: 700; color: #0f172a; }
+    .section-title { font-size: 13px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin: 16px 0 10px; }
+    .record-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; page-break-inside: avoid; }
+    .record-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 6px; }
+    .record-title { font-size: 12px; font-weight: 700; color: #0f172a; }
+    .record-date { font-size: 11px; color: #64748b; font-family: monospace; }
+    .record-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; font-size: 11px; }
+    .footer { margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 10px; color: #64748b; display: flex; justify-content: space-between; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-box">
+      <img src="/logo-linkmed.jpg" alt="LinkMed" class="logo-img" onerror="this.style.display='none'" />
+      <div class="title-box">
+        <h1>LINKMED SOLUÇÕES MÉDICAS — DOSSIÊ DA ORDEM DE SERVIÇO</h1>
+        <p>Sistema de Gestão da Qualidade RDC 665/2022 (ANVISA) · POP-020</p>
+      </div>
+    </div>
+    <div class="os-badge">${safeOs}</div>
+  </div>
+
+  <div class="grid">
+    <div class="field">
+      <div class="field-label">Cliente / Hospital</div>
+      <div class="field-val">${safeCliente}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Equipamento</div>
+      <div class="field-val">${safeEquip}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Marca / Modelo</div>
+      <div class="field-val">${safeMarca} · ${safeModelo}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Número de Série</div>
+      <div class="field-val">${safeSerie}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Etiqueta Atual</div>
+      <div class="field-val">${osCtx.tagColor} — ${osCtx.osStatus}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">Data de Emissão</div>
+      <div class="field-val">${safeData}</div>
+    </div>
+  </div>
+
+  <div class="section-title">REGISTROS OPERACIONAIS E RASTREABILIDADE (RDC 665/22)</div>
+  <div id="records-content">
+    ${historicoRegistros.map(rec => {
+      const def = FORM_DEFS.find(f => f.tipo === rec.tipo);
+      const d = rec.dados || {};
+      const chaves = Object.keys(d).filter(k => k !== 'numero_os' && !k.startsWith('__'));
+      return `
+        <div class="record-card">
+          <div class="record-header">
+            <span class="record-title">${def?.reg || rec.tipo} — ${def?.titulo || rec.tipo}</span>
+            <span class="record-date">Data: ${rec.dataRef}</span>
+          </div>
+          <div class="record-grid">
+            ${chaves.slice(0, 8).map(k => {
+              const val = d[k];
+              const strVal = typeof val === 'boolean' ? (val ? 'Sim' : 'Não') : String(val ?? '—');
+              return `<div><strong>${k.replace(/_/g, ' ')}:</strong> ${strVal}</div>`;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }).join('')}
+  </div>
+
+  <div class="footer">
+    <span>Documento gerado eletronicamente com selo de integridade SHA-256 e amparo LGPD (Art. 7º, II).</span>
+    <span>Página 1 / 1</span>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+    win.document.write(html);
+    win.document.close();
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -350,9 +482,15 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
           <div className="text-[11px] text-muted-foreground">
             Rastreabilidade integral RDC 665/2022 — Sistema LinkMed
           </div>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Fechar Dossiê
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="default" onClick={handlePrintDossier} className="gap-1.5">
+              <Printer className="h-4 w-4" />
+              Imprimir / Salvar PDF
+            </Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Fechar Dossiê
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

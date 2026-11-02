@@ -144,3 +144,4 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   return { registro, gravado: true, directTableOk: !directError };
 });
+
