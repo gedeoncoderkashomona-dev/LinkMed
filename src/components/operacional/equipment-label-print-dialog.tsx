@@ -33,6 +33,16 @@ interface EquipmentLabelPrintDialogProps {
   dados: DadosEtiquetaEquipamento | null;
 }
 
+function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export function EquipmentLabelPrintDialog({
   open,
   onOpenChange,
@@ -54,11 +64,20 @@ export function EquipmentLabelPrintDialog({
       return;
     }
 
+    const safeOs = escapeHtml(dados.numeroOs);
+    const safeCliente = escapeHtml(dados.cliente || '—');
+    const safeEquipamento = escapeHtml(dados.equipamento || '—');
+    const safeMarca = escapeHtml(dados.marca || '—');
+    const safeModelo = escapeHtml(dados.modelo || '—');
+    const safeSerie = escapeHtml(dados.numeroSerie || '—');
+    const safeStatus = escapeHtml(dados.statusEtiqueta || 'CINZA — Análise Completa');
+    const safeData = escapeHtml(dataFormatada);
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Etiqueta de Identificação — OS ${dados.numeroOs}</title>
+  <title>Etiqueta de Identificação — OS ${safeOs}</title>
   <style>
     @page { size: 100mm 65mm; margin: 4mm; }
     * { box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; }
@@ -116,36 +135,36 @@ export function EquipmentLabelPrintDialog({
         <div class="brand">LINKMED SOLUÇÕES MÉDICAS</div>
         <div style="font-size:9px;color:#475569;">ETIQUETA DE IDENTIFICAÇÃO DO EQUIPAMENTO (ITEM 1 · REG 022)</div>
       </div>
-      <div class="os-pill">OS: ${dados.numeroOs}</div>
+      <div class="os-pill">OS: ${safeOs}</div>
     </div>
     <div class="grid">
       <div class="full">
         <div class="k">Cliente</div>
-        <div class="v">${dados.cliente || '—'}</div>
+        <div class="v">${safeCliente}</div>
       </div>
       <div class="full">
         <div class="k">Equipamento</div>
-        <div class="v">${dados.equipamento || '—'}</div>
+        <div class="v">${safeEquipamento}</div>
       </div>
       <div>
         <div class="k">Marca</div>
-        <div class="v">${dados.marca || '—'}</div>
+        <div class="v">${safeMarca}</div>
       </div>
       <div>
         <div class="k">Modelo</div>
-        <div class="v">${dados.modelo || '—'}</div>
+        <div class="v">${safeModelo}</div>
       </div>
       <div>
         <div class="k">Nº de Série (S/N)</div>
-        <div class="v" style="font-family:monospace;">${dados.numeroSerie || '—'}</div>
+        <div class="v" style="font-family:monospace;">${safeSerie}</div>
       </div>
       <div>
         <div class="k">Status / Análise</div>
-        <div class="v">${dados.statusEtiqueta || 'CINZA — Análise Completa'}</div>
+        <div class="v">${safeStatus}</div>
       </div>
     </div>
     <div class="footer">
-      <span>Data da Análise: ${dataFormatada}</span>
+      <span>Data da Análise: ${safeData}</span>
       <span>RDC 665/2022 · POP-020 / REG-022 / REG-016</span>
     </div>
   </div>
@@ -253,4 +272,3 @@ export function EquipmentLabelPrintDialog({
     </Dialog>
   );
 }
-

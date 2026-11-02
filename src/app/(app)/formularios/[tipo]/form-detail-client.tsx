@@ -203,7 +203,15 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   // Estado local para certificados anexados na tabela REG-015
   const [certificadosReg015, setCertificadosReg015] = React.useState<
     Record<string, { nome: string; dataUrl: string }>
-  >({});
+  >(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const s = localStorage.getItem('regulaon:certificados_reg015:v1');
+      return s ? JSON.parse(s) : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Estado do modal de Assinatura Eletrônica LGPD na tela
   const [assinaturaAlvo, setAssinaturaAlvo] = React.useState<{
@@ -454,10 +462,15 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = typeof reader.result === 'string' ? reader.result : '';
-      setCertificadosReg015((prev) => ({
-        ...prev,
-        [inst.id]: { nome: file.name, dataUrl },
-      }));
+      setCertificadosReg015((prev) => {
+        const next = { ...prev, [inst.id]: { nome: file.name, dataUrl } };
+        try {
+          localStorage.setItem('regulaon:certificados_reg015:v1', JSON.stringify(next));
+        } catch {
+          // storage limit
+        }
+        return next;
+      });
       toast.success(`Certificado "${file.name}" anexado ao equipamento ${inst.equipamento}!`);
     };
     reader.readAsDataURL(file);
@@ -868,11 +881,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                                 type="button"
                                 onClick={() => {
                                   if (certUpload?.dataUrl) {
-                                    const w = window.open();
+                                    const safe = certUpload.dataUrl.startsWith('data:application/pdf') || certUpload.dataUrl.startsWith('data:image/') ? certUpload.dataUrl : 'about:blank';
+                                    const w = window.open('', '_blank');
                                     if (w) {
-                                      w.document.write(
-                                        `<iframe src="${certUpload.dataUrl}" style="width:100%;height:100vh;border:0;"></iframe>`,
-                                      );
+                                      w.location.href = safe;
                                     }
                                   } else {
                                     toast.info(`Certificado: ${nomeCertificado}`, {

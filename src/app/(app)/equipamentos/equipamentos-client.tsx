@@ -75,6 +75,31 @@ const ATOR_ALMOX = {
   perfil: 'estoquista' as const,
 };
 
+const STORAGE_KEY_FLUXO_PREFIX = 'regulaon:os_fluxo_v2:';
+
+function salvarFluxoStorage(state: OrdemServicoFluxoState) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`${STORAGE_KEY_FLUXO_PREFIX}${state.numeroOs}`, JSON.stringify(state));
+    localStorage.setItem(`${STORAGE_KEY_FLUXO_PREFIX}current`, state.numeroOs);
+  } catch {
+    // ignora se storage estiver desabilitado
+  }
+}
+
+function carregarFluxoStorage(numeroOs?: string): OrdemServicoFluxoState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const alvo = numeroOs || localStorage.getItem(`${STORAGE_KEY_FLUXO_PREFIX}current`);
+    if (!alvo) return null;
+    const raw = localStorage.getItem(`${STORAGE_KEY_FLUXO_PREFIX}${alvo}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as OrdemServicoFluxoState;
+  } catch {
+    return null;
+  }
+}
+
 export function EquipamentosClient() {
   const { data, isLoading } = useFormsOverview();
   const [busca, setBusca] = React.useState('');
@@ -93,8 +118,10 @@ export function EquipamentosClient() {
   const [motivoCancelamento, setMotivoCancelamento] = React.useState(
     'Solicitação temporária do cliente para revisão de contrato',
   );
-  const [fluxoV2, setFluxoV2] = React.useState<OrdemServicoFluxoState>(() =>
-    criarOsViaReg022({
+  const [fluxoV2, setFluxoV2] = React.useState<OrdemServicoFluxoState>(() => {
+    const salvo = carregarFluxoStorage();
+    if (salvo) return salvo;
+    return criarOsViaReg022({
       numeroOs: 'OS-2026-V2',
       identificacao: {
         cliente: 'Hospital Santa Clara',
@@ -104,8 +131,8 @@ export function EquipamentosClient() {
         numeroSerie: 'SN-CRD-9921',
       },
       ator: ATOR_ADM,
-    }),
-  );
+    });
+  });
 
   const ordensServico = React.useMemo(
     () => aggregateServiceOrders(data?.records ?? []),
@@ -129,11 +156,50 @@ export function EquipamentosClient() {
 
   function executarTransicao(fn: (s: OrdemServicoFluxoState) => OrdemServicoFluxoState, msg: string) {
     try {
-      setFluxoV2((atual) => fn(atual));
+      setFluxoV2((atual) => {
+        const next = fn(atual);
+        salvarFluxoStorage(next);
+        return next;
+      });
       toast.success(msg);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Transição inválida no fluxo da OS.');
     }
+  }
+
+  function carregarOsRealNoFluxoV2(os: {
+    numeroOs: string;
+    cliente: string;
+    equipamento: string;
+    marca: string;
+    modelo: string;
+    numeroSerie: string;
+    tagColor: TagColor;
+  }) {
+    const salvo = carregarFluxoStorage(os.numeroOs);
+    if (salvo) {
+      setFluxoV2(salvo);
+      setMostrarPainelFluxoV2(true);
+      toast.success(`Fluxo v2 da OS ${os.numeroOs} carregado!`);
+      return;
+    }
+
+    const nova = criarOsViaReg022({
+      numeroOs: os.numeroOs,
+      identificacao: {
+        cliente: os.cliente || 'Cliente Hospitalar',
+        equipamento: os.equipamento || 'Equipamento Médico',
+        marca: os.marca || 'Cardios',
+        modelo: os.modelo || 'Modelo Padrão',
+        numeroSerie: os.numeroSerie || 'S/N',
+      },
+      ator: ATOR_ADM,
+    });
+
+    salvarFluxoStorage(nova);
+    setFluxoV2(nova);
+    setMostrarPainelFluxoV2(true);
+    toast.info(`Fluxo v2 inicializado para a OS ${os.numeroOs}.`);
   }
 
   function reiniciarFluxoV2(marca: 'Cardios' | 'TEB' | 'OLIDEF') {
@@ -154,6 +220,7 @@ export function EquipamentosClient() {
       },
       ator: ATOR_ADM,
     });
+    salvarFluxoStorage(nova);
     setFluxoV2(nova);
     toast.info(`Fluxo v2 reiniciado para equipamento da marca ${marca}.`);
   }
@@ -884,6 +951,18 @@ export function EquipamentosClient() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => carregarOsRealNoFluxoV2(os)}
+                          className="h-7 gap-1.5 text-xs font-semibold"
+                          title="Carrega esta OS no motor interativo oficial v2"
+                        >
+                          <PlayCircle className="h-3.5 w-3.5 text-primary" />
+                          Gerenciar Fluxo v2
+                        </Button>
+
                         {analiseJaConcluida && (
                           <Button
                             type="button"

@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 import {
+  calcularCargaHorariaAutomatica,
   TREINAMENTO_TIPOS,
   type AvaliacaoEficaciaParticipante,
   type NotaEficacia,
@@ -34,34 +35,29 @@ const avaliacaoEficaciaSchema = z.object({
   observacoes: z.string().trim().default(''),
 });
 
-const createSchema = z
-  .object({
-    titulo: z.string().trim().min(3, 'Informe o assunto / título.').max(255),
-    tipo: z.enum(TREINAMENTO_TIPOS),
-    instrutor: z.string().trim().max(255).nullish(),
-    entidade: z.string().trim().max(255).nullish(),
-    cargaHoraria: z.coerce.number().positive().max(1000).nullish(),
-    dataRealizacao: data,
-    validadeAte: data.nullish().or(z.literal('')),
-    participantes: z.array(z.string().trim().min(1)).max(100).default([]),
-    participantesDetalhados: z.array(participanteDetalhadoSchema).max(100).optional(),
-    observacoes: z.string().trim().max(4000).nullish(),
-    conteudo: z.string().trim().max(4000).nullish(),
-    localTreinamento: z.string().trim().max(255).nullish(),
-    horarioInicial: z.string().trim().max(10).nullish(),
-    horarioFinal: z.string().trim().max(10).nullish(),
-    avaliadoPor: z.string().trim().max(255).nullish(),
-    dataAvaliacao: data.nullish().or(z.literal('')),
-    assinaturaAvaliador: z.string().trim().max(255).nullish(),
-    avaliacoesEficacia: z.array(avaliacaoEficaciaSchema).max(100).optional(),
-    elaboradoPor: z.string().trim().max(255).nullish(),
-    revisadoPor: z.string().trim().max(255).nullish(),
-    aprovadoPor: z.string().trim().max(255).nullish(),
-  })
-  .refine((v) => v.tipo !== 'externo' || (v.entidade && v.entidade.length > 0), {
-    message: 'Informe a entidade que ministrou o treinamento externo.',
-    path: ['entidade'],
-  });
+const createSchema = z.object({
+  titulo: z.string().trim().min(3, 'Informe o assunto / título.').max(255),
+  tipo: z.enum(TREINAMENTO_TIPOS),
+  instrutor: z.string().trim().max(255).nullish(),
+  entidade: z.string().trim().max(255).nullish(),
+  cargaHoraria: z.coerce.number().positive().max(1000).nullish(),
+  dataRealizacao: data,
+  validadeAte: data.nullish().or(z.literal('')),
+  participantes: z.array(z.string().trim().min(1)).max(100).default([]),
+  participantesDetalhados: z.array(participanteDetalhadoSchema).max(100).optional(),
+  observacoes: z.string().trim().max(4000).nullish(),
+  conteudo: z.string().trim().max(4000).nullish(),
+  localTreinamento: z.string().trim().max(255).nullish(),
+  horarioInicial: z.string().trim().max(10).nullish(),
+  horarioFinal: z.string().trim().max(10).nullish(),
+  avaliadoPor: z.string().trim().max(255).nullish(),
+  dataAvaliacao: data.nullish().or(z.literal('')),
+  assinaturaAvaliador: z.string().trim().max(255).nullish(),
+  avaliacoesEficacia: z.array(avaliacaoEficaciaSchema).max(100).optional(),
+  elaboradoPor: z.string().trim().max(255).nullish(),
+  revisadoPor: z.string().trim().max(255).nullish(),
+  aprovadoPor: z.string().trim().max(255).nullish(),
+});
 
 const updateEficaciaSchema = z.object({
   id: z.string().min(1),
@@ -82,6 +78,13 @@ export const POST = apiHandler(async (req: NextRequest) => {
   assertCan(auth.perfil, 'trainings:create');
   const body = createSchema.parse(await req.json());
 
+  // Calcula carga horária automática se horários forem fornecidos e carga não estiver setada
+  const cargaCalculada =
+    body.cargaHoraria ??
+    (body.horarioInicial && body.horarioFinal
+      ? calcularCargaHorariaAutomatica(body.horarioInicial, body.horarioFinal)
+      : null);
+
   const podeEditarGov = canEditGovernance(auth.perfil);
   const { operacionalRepository, auditService } = getRepositories();
   const treinamento = await operacionalRepository.createTreinamento({
@@ -90,7 +93,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
     setor: 'assistencia_tecnica',
     instrutor: body.instrutor || null,
     entidade: body.tipo === 'externo' ? body.entidade || null : null,
-    cargaHoraria: body.cargaHoraria ?? null,
+    cargaHoraria: cargaCalculada,
     dataRealizacao: body.dataRealizacao,
     validadeAte: body.validadeAte || null,
     participantes: body.participantes,
