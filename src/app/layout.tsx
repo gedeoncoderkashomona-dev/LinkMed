@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 
+import { APP_VERSION } from '@/lib/version';
+
 import { Providers } from './providers';
 import './globals.css';
 
@@ -53,6 +55,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              try {
+                // Auto cache-purge para garantir transição imediata de Beta 1.0.1 para v2.0
+                var currentVersion = '${APP_VERSION}';
+                var storedVersion = localStorage.getItem('regulaon_app_version');
+                if (storedVersion !== currentVersion) {
+                  localStorage.setItem('regulaon_app_version', currentVersion);
+                  if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                      for (var i = 0; i < registrations.length; i++) {
+                        registrations[i].unregister();
+                      }
+                    });
+                  }
+                  if ('caches' in window) {
+                    caches.keys().then(function(names) {
+                      for (var i = 0; i < names.length; i++) {
+                        caches.delete(names[i]);
+                      }
+                    });
+                  }
+                }
+              } catch (_) {}
+
               try {
                 if (localStorage.getItem('linkmed-theme') === 'dark' || (!('linkmed-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                   document.documentElement.classList.add('dark');
