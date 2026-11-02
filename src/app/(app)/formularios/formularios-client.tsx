@@ -314,12 +314,31 @@ export function FormulariosClient() {
                       )}
                     </div>
 
-                    <Link href={`/formularios/${form.tipo}`}>
-                      <Button size="sm">
-                        Preencher
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Button>
-                    </Link>
+                    {form.subtipos ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {form.subtipos.map((st) => (
+                          <Link
+                            key={st.key}
+                            href={`/formularios/${form.tipo}?subtipo=${st.key}`}
+                          >
+                            <Button
+                              size="sm"
+                              variant={st.key === 'cardios' ? 'default' : 'outline'}
+                              className="h-7 px-2.5 text-xs font-semibold"
+                            >
+                              {st.label}
+                            </Button>
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <Link href={`/formularios/${form.tipo}`}>
+                        <Button size="sm">
+                          Preencher
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
+                    )}
                   </div>
                 </CardContent>
               </Card>

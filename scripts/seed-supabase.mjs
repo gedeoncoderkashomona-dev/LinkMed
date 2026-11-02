@@ -133,6 +133,24 @@ const SEED_USERS = [
     nivel: null,
     senha: 'RegulaOn@2026',
   },
+  {
+    id: '00000000-0000-4000-8000-000000000013',
+    nome_completo: 'Patrícia Lima (Setor Administrativo)',
+    email: 'adm@regulaon.local',
+    cpf: '141.141.141-41',
+    perfil: 'adm',
+    nivel: null,
+    senha: 'RegulaOn@2026',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000014',
+    nome_completo: 'Filipe Farias (Administrativo / Diretoria)',
+    email: 'adm.filipe@regulaon.local',
+    cpf: '151.151.151-51',
+    perfil: 'adm',
+    nivel: 'Sênior',
+    senha: 'RegulaOn@2026',
+  },
 ];
 
 const SEED_FORM_RECORDS = [

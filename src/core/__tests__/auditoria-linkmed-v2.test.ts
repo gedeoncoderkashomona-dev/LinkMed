@@ -650,7 +650,7 @@ describe('Subtarefa 4 — Módulo Treinamentos (Seção 2) e Catálogo Oficial d
       'POP-020',
     ]);
 
-    const formsCodigos = DOCUMENTOS_OFICIAIS_POR_MODULO.formularios.map((f) => f.codigo);
+        const formsCodigos = DOCUMENTOS_OFICIAIS_POR_MODULO.formularios.map((f) => f.codigo);
     expect(formsCodigos).toEqual([
       'REG-018',
       'REG-017',
@@ -658,6 +658,10 @@ describe('Subtarefa 4 — Módulo Treinamentos (Seção 2) e Catálogo Oficial d
       'REG-030',
       'REG-015',
       'REG-016',
+      'REG-009',
+      'REG-035',
+      'REG-022',
+      'REG-034',
     ]);
 
     const ncsCodigos = DOCUMENTOS_OFICIAIS_POR_MODULO.naoConformidades.map((n) => n.codigo);

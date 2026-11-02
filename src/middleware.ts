@@ -6,6 +6,8 @@ const encoder = new TextEncoder();
 
 /**
  * Middleware de proteção:
+ *  - Modo Manutenção (se ativado via NEXT_PUBLIC_MAINTENANCE_MODE / MAINTENANCE_MODE):
+ *    Redireciona para /manutencao com tela informativa e bypass para equipe
  *  - /login libera se não houver token; redireciona pra /dashboard se houver
  *  - rotas (app) exigem token válido; senão vão pra /login
  *  - verificação de assinatura é feita no Edge (jose)
@@ -20,7 +22,6 @@ export async function middleware(req: NextRequest) {
   }
   const accessSecret = rawSecret ?? 'dev-access-secret-troque-em-producao-000000000000';
 
-  const isAuthRoute = pathname === '/login';
   const isPublicAsset =
     pathname.startsWith('/_next') ||
     pathname.startsWith('/icons') ||
@@ -30,6 +31,32 @@ export async function middleware(req: NextRequest) {
     /\.(?:jpg|jpeg|png|gif|svg|ico|webp)$/i.test(pathname);
 
   if (isPublicAsset) return NextResponse.next();
+
+  // Modo de Manutenção Programada
+  const isMaintenanceMode =
+    process.env.NEXT_PUBLIC_MAINTENANCE_MODE === 'true' ||
+    process.env.MAINTENANCE_MODE === 'true';
+
+  const isMaintenanceRoute = pathname === '/manutencao';
+  const bypassCookie = req.cookies.get('ro_bypass_maintenance')?.value;
+  const bypassQuery = req.nextUrl.searchParams.get('bypass');
+  const hasBypass = bypassCookie === 'true' || bypassQuery === 'linkmed2026' || bypassQuery === 'true';
+
+  if (isMaintenanceMode && !isMaintenanceRoute && !hasBypass) {
+    if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/me')) {
+      return NextResponse.json(
+        {
+          error: 'MAINTENANCE_MODE',
+          message: 'Sistema em manutenção programada para atualização da Versão 2.0 (Auditoria Linkmed).',
+        },
+        { status: 503 },
+      );
+    }
+    const url = new URL('/manutencao', req.url);
+    return NextResponse.redirect(url);
+  }
+
+  const isAuthRoute = pathname === '/login';
 
   let valid = false;
   if (token) {
@@ -45,7 +72,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
-  if (!isAuthRoute && !valid) {
+  if (!isAuthRoute && !valid && !isMaintenanceRoute) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json(
         { error: 'UNAUTHORIZED', message: 'Sessão inválida ou ausente.' },

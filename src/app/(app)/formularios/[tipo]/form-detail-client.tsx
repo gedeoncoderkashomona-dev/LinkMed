@@ -176,6 +176,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   const def = getFormDef(tipo);
   const searchParams = useSearchParams();
   const osParam = searchParams.get('os');
+  const subtipoParam = searchParams.get('subtipo');
 
   const { data: user } = useCurrentUser();
   const { data: recordsData, isLoading } = useFormRecords(tipo);
@@ -183,9 +184,18 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   const createRecord = useCreateFormRecord();
   const createNc = useCreateNc();
 
-  const [subtipo, setSubtipo] = React.useState<string | null>(
-    def?.subtipos?.[0]?.key ?? null,
-  );
+  const [subtipo, setSubtipo] = React.useState<string | null>(() => {
+    if (subtipoParam && def?.subtipos?.some((s) => s.key === subtipoParam)) {
+      return subtipoParam;
+    }
+    return def?.subtipos?.[0]?.key ?? null;
+  });
+
+  React.useEffect(() => {
+    if (subtipoParam && def?.subtipos?.some((s) => s.key === subtipoParam)) {
+      setSubtipo(subtipoParam);
+    }
+  }, [subtipoParam, def]);
   const [dados, setDados] = React.useState<Record<string, unknown>>({});
   const [erros, setErros] = React.useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = React.useState<string | null>(null);

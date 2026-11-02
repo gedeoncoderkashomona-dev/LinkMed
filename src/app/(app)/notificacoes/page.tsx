@@ -4,16 +4,22 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
+  ArrowLeftRight,
   ArrowRight,
   Bell,
+  Check,
   CheckCheck,
   CheckCircle2,
   Clock,
   FileText,
   GraduationCap,
+  Layers,
+  Send,
   ShieldAlert,
+  UserCheck,
   Wrench,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,11 +32,13 @@ import {
   verificarAtividadesObrigatoriasDiariasPorSetor,
   type NivelAlerta,
 } from '@/core/domain/forms/alerts';
+import type { OrdemServicoFluxoState, SetorOperacional } from '@/core/domain/forms/os-workflow';
+import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFormsOverview, useNcs, useTreinamentos } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
 import { cn } from '@/lib/utils';
 
-type CategoriaNotificacao = 'operacional' | 'ncs' | 'pops' | 'treinamentos';
+type CategoriaNotificacao = 'operacional' | 'intersetorial' | 'ncs' | 'pops' | 'treinamentos';
 
 interface NotificacaoItem {
   id: string;
@@ -40,26 +48,140 @@ interface NotificacaoItem {
   descricao: string;
   href: string;
   origemLabel: string;
+  destinatarioSetor?: SetorOperacional;
+  remetenteSetor?: SetorOperacional;
+  numeroOs?: string;
+  confirmadaEm?: string | null;
+  confirmadaPorNome?: string | null;
 }
 
 const STORAGE_KEY_LIDAS = 'regulaon:notificacoes:lidas:v1';
+const STORAGE_KEY_CONFIRMADAS = 'regulaon:notificacoes:confirmadas:v1';
+const STORAGE_KEY_FLUXO_PREFIX = 'regulaon:os_fluxo_v2:';
+
+const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
+  {
+    id: 'os:notif:0102:aprovado',
+    categoria: 'intersetorial',
+    nivel: 'info',
+    titulo: 'OS-2026-0102 — Orçamento APROVADO pelo ADM (CardioSmart)',
+    descricao:
+      'O setor Administrativo (ADM) aprovou o orçamento junto ao cliente. O Almoxarifado foi notificado para separação e liberação imediata das peças solicitadas pela Assistência Técnica.',
+    href: '/equipamentos',
+    origemLabel: 'Notificação Intersetorial (ADM → Almoxarifado)',
+    destinatarioSetor: 'ALMOXARIFADO',
+    remetenteSetor: 'ADM',
+    numeroOs: 'OS-2026-0102',
+    confirmadaEm: null,
+    confirmadaPorNome: null,
+  },
+  {
+    id: 'os:notif:0101:branca',
+    categoria: 'intersetorial',
+    nivel: 'info',
+    titulo: 'OS-2026-0101 — Equipamento com Etiqueta BRANCA no Almoxarifado',
+    descricao:
+      'Equipamento Incubadora Neonatal (Olidef SC Line) recebido no Almoxarifado com Etiqueta BRANCA (REG 016). Assistência Técnica notificada para proceder com triagem técnica e higienização (REG 034).',
+    href: '/equipamentos',
+    origemLabel: 'Notificação Intersetorial (Almoxarifado → AT)',
+    destinatarioSetor: 'AT',
+    remetenteSetor: 'ALMOXARIFADO',
+    numeroOs: 'OS-2026-0101',
+    confirmadaEm: null,
+    confirmadaPorNome: null,
+  },
+  {
+    id: 'os:notif:0103:reprovado',
+    categoria: 'intersetorial',
+    nivel: 'warning',
+    titulo: 'OS-2026-0103 — Orçamento REPROVADO pelo Cliente (ADM)',
+    descricao:
+      'O cliente reprovou o orçamento de manutenção. O equipamento recebeu Etiqueta VERMELHA e o Almoxarifado foi notificado para providenciar a devolução formal com comprovante de entrega.',
+    href: '/equipamentos',
+    origemLabel: 'Notificação Intersetorial (ADM → Almoxarifado)',
+    destinatarioSetor: 'ALMOXARIFADO',
+    remetenteSetor: 'ADM',
+    numeroOs: 'OS-2026-0103',
+    confirmadaEm: null,
+    confirmadaPorNome: null,
+  },
+  {
+    id: 'os:notif:0104:orcamento',
+    categoria: 'intersetorial',
+    nivel: 'info',
+    titulo: 'OS-2026-0104 — Diagnóstico e Orçamento Concluídos pela AT (Etiqueta AMARELA)',
+    descricao:
+      'A Assistência Técnica concluiu a análise e elaborou a proposta no REG 022. Setor Administrativo (ADM) notificado para envio comercial e aprovação do orçamento com o cliente.',
+    href: '/equipamentos',
+    origemLabel: 'Notificação Intersetorial (AT → ADM)',
+    destinatarioSetor: 'ADM',
+    remetenteSetor: 'AT',
+    numeroOs: 'OS-2026-0104',
+    confirmadaEm: null,
+    confirmadaPorNome: null,
+  },
+];
 
 export default function NotificacoesPage() {
+  const { data: user } = useCurrentUser();
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
   const { data: ncsData, isLoading: loadingNcs } = useNcs();
   const { data: popsData, isLoading: loadingPops } = usePops();
   const { data: treinosData, isLoading: loadingTreinos } = useTreinamentos();
 
   const [categoria, setCategoria] = React.useState<'todas' | CategoriaNotificacao>('todas');
+  const [setorFiltro, setSetorFiltro] = React.useState<'todos' | SetorOperacional>('todos');
   const [apenasNaoLidas, setApenasNaoLidas] = React.useState(false);
   const [lidasIds, setLidasIds] = React.useState<string[]>([]);
+  const [confirmadasMap, setConfirmadasMap] = React.useState<
+    Record<string, { porNome: string; em: string }>
+  >({});
+  const [osNotificacoesDinâmicas, setOsNotificacoesDinamicas] = React.useState<NotificacaoItem[]>([]);
 
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_LIDAS);
       if (raw) setLidasIds(JSON.parse(raw) as string[]);
+      const rawConf = localStorage.getItem(STORAGE_KEY_CONFIRMADAS);
+      if (rawConf) setConfirmadasMap(JSON.parse(rawConf));
     } catch {
       // ignora erro de storage
+    }
+
+    // Carregar notificações ativas das OS salvas no localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const dinâmicas: NotificacaoItem[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(STORAGE_KEY_FLUXO_PREFIX) && key !== `${STORAGE_KEY_FLUXO_PREFIX}current`) {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const os = JSON.parse(raw) as OrdemServicoFluxoState;
+              if (Array.isArray(os.notificacoes)) {
+                for (const notif of os.notificacoes) {
+                  dinâmicas.push({
+                    id: `os:dyn:${notif.id}`,
+                    categoria: 'intersetorial',
+                    nivel: notif.retidaForaHorario ? 'warning' : 'info',
+                    titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
+                    descricao: notif.mensagem,
+                    href: '/equipamentos',
+                    origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
+                    destinatarioSetor: notif.destinatario,
+                    numeroOs: os.numeroOs,
+                    confirmadaEm: notif.confirmadaEm ? new Date(notif.confirmadaEm).toISOString() : null,
+                    confirmadaPorNome: notif.confirmadaPorNome,
+                  });
+                }
+              }
+            }
+          }
+        }
+        setOsNotificacoesDinamicas(dinâmicas);
+      } catch {
+        // ignora erro ao ler storage
+      }
     }
   }, []);
 
@@ -70,6 +192,21 @@ export default function NotificacoesPage() {
     } catch {
       // ignora
     }
+  }
+
+  function confirmarCienciaIntersetorial(item: NotificacaoItem) {
+    const nome = user?.nomeCompleto || 'Colaborador Autorizado';
+    const agoraIso = new Date().toISOString();
+    const novoMap = { ...confirmadasMap, [item.id]: { porNome: nome, em: agoraIso } };
+    setConfirmadasMap(novoMap);
+    try {
+      localStorage.setItem(STORAGE_KEY_CONFIRMADAS, JSON.stringify(novoMap));
+    } catch {
+      // ignora
+    }
+    toast.success('Ciência confirmada', {
+      description: `Notificação ${item.numeroOs ?? ''} registrada como recebida por ${nome}.`,
+    });
   }
 
   const obrigatoriasAt = React.useMemo(
@@ -89,7 +226,24 @@ export default function NotificacoesPage() {
     const lista: NotificacaoItem[] = [];
     const hoje = agoraBR().data;
 
-    // 1. Alertas Operacionais (Temperatura 2x/dia, Bancada semanal, Pulseira, Calibração 60 dias REG-015)
+    // 1. Notificações Intersetoriais (ADM <-> Almoxarifado <-> Assistência Técnica)
+    // Combina notificações padrão de semente com notificações dinâmicas do fluxo de OS
+    const idsVistos = new Set<string>();
+    const intersetoriaisTodas = [...osNotificacoesDinâmicas, ...NOTIFICACOES_SEMENTE_INTERSETORIAIS];
+
+    for (const notif of intersetoriaisTodas) {
+      if (idsVistos.has(notif.id)) continue;
+      idsVistos.add(notif.id);
+
+      const confirmacao = confirmadasMap[notif.id];
+      lista.push({
+        ...notif,
+        confirmadaEm: confirmacao ? confirmacao.em : notif.confirmadaEm,
+        confirmadaPorNome: confirmacao ? confirmacao.porNome : notif.confirmadaPorNome,
+      });
+    }
+
+    // 2. Alertas Operacionais (Temperatura 2x/dia, Bancada semanal, Pulseira, Calibração 60 dias REG-015)
     const alertasForm = calcularAlertas(formsData?.records ?? []);
     for (const a of alertasForm) {
       lista.push({
@@ -103,7 +257,7 @@ export default function NotificacoesPage() {
       });
     }
 
-    // 2. Não Conformidades abertas ou graves
+    // 3. Não Conformidades abertas ou graves
     for (const nc of ncsData?.ncs ?? []) {
       if (nc.status === 'concluida') continue;
       const isGrave = nc.severidade === 'grave';
@@ -118,7 +272,7 @@ export default function NotificacoesPage() {
       });
     }
 
-    // 3. POPs aguardando aprovação ou com leituras pendentes
+    // 4. POPs aguardando aprovação ou com leituras pendentes
     for (const pop of popsData?.pops ?? []) {
       if (pop.status === 'aguardando_aprovacao') {
         lista.push({
@@ -143,7 +297,7 @@ export default function NotificacoesPage() {
       }
     }
 
-    // 4. Treinamentos vencidos ou vencendo em até 30 dias
+    // 5. Treinamentos vencidos ou vencendo em até 30 dias
     for (const t of treinosData?.treinamentos ?? []) {
       if (!t.validadeAte) continue;
       const dias = diffDias(hoje, t.validadeAte);
@@ -172,19 +326,34 @@ export default function NotificacoesPage() {
 
     const pesoNivel: Record<NivelAlerta, number> = { danger: 0, warning: 1, info: 2 };
     return lista.sort((a, b) => pesoNivel[a.nivel] - pesoNivel[b.nivel]);
-  }, [formsData?.records, ncsData?.ncs, popsData?.pops, treinosData?.treinamentos]);
+  }, [
+    osNotificacoesDinâmicas,
+    confirmadasMap,
+    formsData?.records,
+    ncsData?.ncs,
+    popsData?.pops,
+    treinosData?.treinamentos,
+  ]);
 
   const filtradas = React.useMemo(() => {
     return notificacoes.filter((n) => {
       if (categoria !== 'todas' && n.categoria !== categoria) return false;
+      if (
+        setorFiltro !== 'todos' &&
+        n.destinatarioSetor &&
+        n.destinatarioSetor !== setorFiltro
+      ) {
+        return false;
+      }
       if (apenasNaoLidas && lidasIds.includes(n.id)) return false;
       return true;
     });
-  }, [notificacoes, categoria, apenasNaoLidas, lidasIds]);
+  }, [notificacoes, categoria, setorFiltro, apenasNaoLidas, lidasIds]);
 
   const isLoading = loadingForms || loadingNcs || loadingPops || loadingTreinos;
   const naoLidasCount = notificacoes.filter((n) => !lidasIds.includes(n.id)).length;
   const criticasCount = notificacoes.filter((n) => n.nivel === 'danger').length;
+  const intersetoriaisCount = notificacoes.filter((n) => n.categoria === 'intersetorial').length;
 
   function alternarLida(id: string) {
     if (lidasIds.includes(id)) {
@@ -204,7 +373,7 @@ export default function NotificacoesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Central de Notificações</h1>
           <p className="text-sm text-muted-foreground">
-            Entregas dentro do horário comercial (07:30h às 19:30h, Seg–Sex), atividades obrigatórias diárias por setor (Seção 5.2), lembretes de 7 dias e calibrações (REG-015).
+            Comunicação Intersetorial (ADM, Almoxarifado e AT), entregas comerciais (07:30h às 19:30h), verificação diária por setor (Seção 5.2) e calibrações (REG-015).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -226,6 +395,54 @@ export default function NotificacoesPage() {
           </Button>
         </div>
       </div>
+
+      {/* Destaque para Notificações Intersetoriais da Auditoria Linkmed */}
+      <Card className="border-indigo-500/30 bg-indigo-500/5">
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300">
+              <ArrowLeftRight className="h-4 w-4" />
+              Comunicação Intersetorial Oficial — Máquina de Estados de OS (Auditoria Linkmed v2)
+            </CardTitle>
+            <Badge variant="outline" className="font-mono text-[10px]">
+              Horário Comercial: 07:30h às 19:30h (Seg–Sex)
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Notificações automáticas disparadas entre <strong>Setor Administrativo (ADM)</strong>,{' '}
+            <strong>Almoxarifado</strong> e <strong>Assistência Técnica (AT)</strong> durante cada transição da OS
+            (Recebimento Branca, Orçamento Amarela, Aprovação/Reprovação pelo ADM, Peças no Almoxarifado e Conclusão Verde).
+          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-xs font-semibold text-foreground">Filtrar por setor destinatário:</span>
+            {(
+              [
+                { key: 'todos', label: 'Todos os Setores' },
+                { key: 'ALMOXARIFADO', label: 'Almoxarifado' },
+                { key: 'AT', label: 'Assistência Técnica (AT)' },
+                { key: 'ADM', label: 'Administrativo (ADM)' },
+              ] as const
+            ).map((st) => (
+              <Button
+                key={st.key}
+                size="sm"
+                variant={setorFiltro === st.key ? 'default' : 'outline'}
+                className="h-7 text-xs"
+                onClick={() => {
+                  setSetorFiltro(st.key);
+                  if (categoria !== 'intersetorial' && st.key !== 'todos') {
+                    setCategoria('intersetorial');
+                  }
+                }}
+              >
+                {st.label}
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Painel Oficial da Seção 5.2: Atividades Obrigatórias Diárias por Setor */}
       <Card className="border-primary/25 bg-primary/5">
@@ -323,7 +540,23 @@ export default function NotificacoesPage() {
       </Card>
 
       {/* Resumo rápido */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Intersetoriais (OS)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+              {intersetoriaisCount}
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Avisos entre ADM, Estoque e AT
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -364,13 +597,13 @@ export default function NotificacoesPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Antecedência de Calibração (REG-015)
+              Calibração (REG-015)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">60 dias</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Regra ativa para alerta preventivo de instrumentos (Pasta POP 011)
+              Antecedência ativa para alerta
             </p>
           </CardContent>
         </Card>
@@ -381,6 +614,7 @@ export default function NotificacoesPage() {
         {(
           [
             { key: 'todas', label: 'Todas', icon: Bell },
+            { key: 'intersetorial', label: `Intersetorial OS (${intersetoriaisCount})`, icon: ArrowLeftRight },
             { key: 'operacional', label: 'Rotinas & Calibração (REG-015)', icon: Wrench },
             { key: 'ncs', label: 'Não Conformidades', icon: ShieldAlert },
             { key: 'pops', label: 'Documentos (POPs)', icon: FileText },
@@ -415,53 +649,89 @@ export default function NotificacoesPage() {
           <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
           <p className="mt-2 text-sm font-medium">Nenhuma pendência neste filtro</p>
           <p className="text-xs text-muted-foreground">
-            Todas as rotinas e indicadores selecionados estão em dia.
+            Todas as rotinas e avisos selecionados estão em dia.
           </p>
         </Card>
       ) : (
         <div className="space-y-2.5">
           {filtradas.map((item) => {
             const lida = lidasIds.includes(item.id);
+            const isIntersetorial = item.categoria === 'intersetorial';
+            const confirmada = Boolean(item.confirmadaPorNome);
+
             return (
               <Card
                 key={item.id}
                 className={cn(
                   'transition-colors',
-                  lida ? 'opacity-65' : 'border-l-4',
+                  lida ? 'opacity-70' : 'border-l-4',
                   !lida && item.nivel === 'danger' && 'border-l-rose-500',
                   !lida && item.nivel === 'warning' && 'border-l-amber-500',
-                  !lida && item.nivel === 'info' && 'border-l-sky-500',
+                  !lida && item.nivel === 'info' && (isIntersetorial ? 'border-l-indigo-500' : 'border-l-sky-500'),
                 )}
               >
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle
-                      className={cn(
-                        'mt-0.5 h-4 w-4 shrink-0',
-                        item.nivel === 'danger'
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : item.nivel === 'warning'
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-sky-600 dark:text-sky-400',
-                      )}
-                    />
-                    <div>
+                    {isIntersetorial ? (
+                      <ArrowLeftRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                    ) : (
+                      <AlertTriangle
+                        className={cn(
+                          'mt-0.5 h-4 w-4 shrink-0',
+                          item.nivel === 'danger'
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : item.nivel === 'warning'
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : 'text-sky-600 dark:text-sky-400',
+                        )}
+                      />
+                    )}
+
+                    <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold">{item.titulo}</p>
                         <Badge variant="outline" className="text-[10px]">
                           {item.origemLabel}
                         </Badge>
+                        {item.destinatarioSetor && (
+                          <Badge variant="secondary" className="font-mono text-[10px]">
+                            Destino: {item.destinatarioSetor}
+                          </Badge>
+                        )}
                         {!lida && (
                           <Badge variant="default" className="text-[10px]">
                             Nova
                           </Badge>
                         )}
+                        {isIntersetorial && (
+                          confirmada ? (
+                            <Badge variant="success" className="text-[10px]">
+                              Ciência confirmada por {item.confirmadaPorNome}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-500/30">
+                              Aguardando confirmação do setor
+                            </Badge>
+                          )
+                        )}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.descricao}</p>
+                      <p className="text-xs leading-relaxed text-muted-foreground">{item.descricao}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isIntersetorial && !confirmada && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => confirmarCienciaIntersetorial(item)}
+                        className="text-xs"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Confirmar Ciência
+                      </Button>
+                    )}
+
                     <Button
                       variant="ghost"
                       size="sm"
@@ -470,9 +740,10 @@ export default function NotificacoesPage() {
                     >
                       {lida ? 'Marcar não lida' : 'Marcar lida'}
                     </Button>
+
                     <Link href={item.href}>
                       <Button size="sm" variant="outline">
-                        Resolver
+                        {isIntersetorial ? 'Ver no Fila de OS' : 'Resolver'}
                         <ArrowRight className="h-3.5 w-3.5" />
                       </Button>
                     </Link>

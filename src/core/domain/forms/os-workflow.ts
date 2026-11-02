@@ -12,6 +12,8 @@ import {
   diffDiasDatas,
   type SetorOperacional,
 } from './os-schedule-helpers';
+
+export type { SetorOperacional } from './os-schedule-helpers';
 import type { FormTipo } from './definitions';
 
 /**

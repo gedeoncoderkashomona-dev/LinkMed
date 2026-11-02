@@ -165,6 +165,10 @@ export const DOCUMENTOS_OFICIAIS_POR_MODULO = {
     { codigo: 'REG-030', pastaPop: 'POP-011', titulo: 'Gestão de Instrumentos de Medição' },
     { codigo: 'REG-015', pastaPop: 'POP-011', titulo: 'Controle de Instrumentos de Medição — Validade de Calibração' },
     { codigo: 'REG-016', pastaPop: 'POP-020', titulo: 'Etapas da Manutenção (Assistência Técnica)' },
+    { codigo: 'REG-009', pastaPop: 'POP-020', titulo: 'Checklist de Manutenção (Cardios)' },
+    { codigo: 'REG-035', pastaPop: 'POP-020', titulo: 'Checklist de Manutenção (TEB / OLIDEF)' },
+    { codigo: 'REG-022', pastaPop: 'POP-020', titulo: 'Ordem de Serviço (Abertura ADM)' },
+    { codigo: 'REG-034', pastaPop: 'POP-020', titulo: 'Registro de Limpeza do Equipamento (Álcool 70%)' },
   ],
   naoConformidades: [
     { codigo: 'REG-038', pastaPop: 'POP-012', titulo: 'Registro de Não Conformidade' },

@@ -937,10 +937,10 @@ export const FORM_DEFS: FormDef[] = [
   },
   {
     tipo: 'checklist-manutencao',
-    reg: 'REG-035',
+    reg: 'REG-009 / REG-035',
     pastaPop: 'POP-020',
-    titulo: 'Checklist de Manutenção de Equipamento (Integrado ao Item 5 do REG-016)',
-    descricao: 'Checklist de manutenção com submódulos específicos por marca: Cardios (REG-009), OLIDEF (REG-035) e TEB (REG-035).',
+    titulo: 'Checklist de Manutenção — Cardios (REG-009) / TEB & OLIDEF (REG-035)',
+    descricao: 'Checklist oficial de manutenção com submódulos específicos por marca: Cardios (REG-009), OLIDEF (REG-035) e TEB (REG-035), integrado ao Item 5 do REG-016.',
     setores: ['assistencia_tecnica'],
     perfis: PERFIS_AT,
     campoData: 'data_entrada',
