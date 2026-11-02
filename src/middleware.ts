@@ -6,11 +6,12 @@ const encoder = new TextEncoder();
 
 /**
  * Middleware de proteção:
- *  - Modo Manutenção (se ativado via NEXT_PUBLIC_MAINTENANCE_MODE / MAINTENANCE_MODE):
- *    Redireciona para /manutencao com tela informativa e bypass para equipe
+ *  - Modo Manutenção Automático durante atualizações de código:
+ *    Se NEXT_PUBLIC_MAINTENANCE_MODE não for explicitamente 'false', ativa automaticamente a tela de manutenção.
+ *    Visitantes e clientes veem a tela estilizada da Linkmed.
+ *    A equipe e testadores podem entrar através do botão de bypass ou ?bypass=linkmed2026.
  *  - /login libera se não houver token; redireciona pra /dashboard se houver
  *  - rotas (app) exigem token válido; senão vão pra /login
- *  - verificação de assinatura é feita no Edge (jose)
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -32,15 +33,18 @@ export async function middleware(req: NextRequest) {
 
   if (isPublicAsset) return NextResponse.next();
 
-  // Modo de Manutenção Programada
-  const isMaintenanceMode =
-    process.env.NEXT_PUBLIC_MAINTENANCE_MODE === 'true' ||
-    process.env.MAINTENANCE_MODE === 'true';
+  // Modo de Manutenção Programada (Automático durante atualizações de código)
+  const maintenanceEnv = process.env.NEXT_PUBLIC_MAINTENANCE_MODE;
+  const isMaintenanceMode = maintenanceEnv !== 'false';
 
   const isMaintenanceRoute = pathname === '/manutencao';
   const bypassCookie = req.cookies.get('ro_bypass_maintenance')?.value;
   const bypassQuery = req.nextUrl.searchParams.get('bypass');
-  const hasBypass = bypassCookie === 'true' || bypassQuery === 'linkmed2026' || bypassQuery === 'true';
+  const hasBypass =
+    bypassCookie === 'true' ||
+    bypassQuery === 'linkmed2026' ||
+    bypassQuery === 'linkmed' ||
+    bypassQuery === 'true';
 
   if (isMaintenanceMode && !isMaintenanceRoute && !hasBypass) {
     if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/me')) {
