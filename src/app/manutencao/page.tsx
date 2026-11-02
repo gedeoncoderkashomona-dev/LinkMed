@@ -18,6 +18,10 @@ import { Input } from '@/components/ui/input';
 
 export default function ManutencaoPage() {
   const router = useRouter();
+
+  React.useEffect(() => {
+    router.replace('/login');
+  }, [router]);
   const [showBypassInput, setShowBypassInput] = React.useState(false);
   const [bypassKey, setBypassKey] = React.useState('');
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);

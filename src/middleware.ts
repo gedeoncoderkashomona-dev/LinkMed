@@ -33,31 +33,12 @@ export async function middleware(req: NextRequest) {
 
   if (isPublicAsset) return NextResponse.next();
 
-  // Modo de Manutenção Programada (Desativado: ative definindo NEXT_PUBLIC_MAINTENANCE_MODE="true")
-  const maintenanceEnv = process.env.NEXT_PUBLIC_MAINTENANCE_MODE;
-  const isMaintenanceMode = maintenanceEnv === 'true';
+  // Modo de Manutenção Totalmente Desativado
+  const isMaintenanceMode = false;
 
-  const isMaintenanceRoute = pathname === '/manutencao';
-  const bypassCookie = req.cookies.get('ro_bypass_maintenance')?.value;
-  const bypassQuery = req.nextUrl.searchParams.get('bypass');
-  const hasBypass =
-    bypassCookie === 'true' ||
-    bypassQuery === 'linkmed2026' ||
-    bypassQuery === 'linkmed' ||
-    bypassQuery === 'true';
-
-  if (isMaintenanceMode && !isMaintenanceRoute && !hasBypass) {
-    if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/me')) {
-      return NextResponse.json(
-        {
-          error: 'MAINTENANCE_MODE',
-          message: 'Sistema em manutenção programada para atualização da Versão 2.0 (Auditoria Linkmed).',
-        },
-        { status: 503 },
-      );
-    }
-    const url = new URL('/manutencao', req.url);
-    return NextResponse.redirect(url);
+  // Se qualquer usuário acessar /manutencao, redireciona direto para o login
+  if (pathname === '/manutencao') {
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 
   const isAuthRoute = pathname === '/login';
@@ -76,7 +57,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
-  if (!isAuthRoute && !valid && !isMaintenanceRoute) {
+  if (!isAuthRoute && !valid) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json(
         { error: 'UNAUTHORIZED', message: 'Sessão inválida ou ausente.' },
