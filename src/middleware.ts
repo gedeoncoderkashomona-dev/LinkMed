@@ -33,9 +33,9 @@ export async function middleware(req: NextRequest) {
 
   if (isPublicAsset) return NextResponse.next();
 
-  // Modo de Manutenção Programada (Automático durante atualizações de código)
+  // Modo de Manutenção Programada (Desativado: ative definindo NEXT_PUBLIC_MAINTENANCE_MODE="true")
   const maintenanceEnv = process.env.NEXT_PUBLIC_MAINTENANCE_MODE;
-  const isMaintenanceMode = maintenanceEnv !== 'false';
+  const isMaintenanceMode = maintenanceEnv === 'true';
 
   const isMaintenanceRoute = pathname === '/manutencao';
   const bypassCookie = req.cookies.get('ro_bypass_maintenance')?.value;
