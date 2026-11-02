@@ -85,6 +85,14 @@ function salvarFluxoStorage(state: OrdemServicoFluxoState) {
   } catch {
     // ignora se storage estiver desabilitado
   }
+  // Sincronização em nuvem (Supabase PostgreSQL) para compartilhar com todos os setores/logins
+  fetch('/api/os-flow', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  }).catch((err) => {
+    console.warn('Sincronização de OS no servidor em background:', err);
+  });
 }
 
 function carregarFluxoStorage(numeroOs?: string): OrdemServicoFluxoState | null {
@@ -138,6 +146,24 @@ export function EquipamentosClient() {
     () => aggregateServiceOrders(data?.records ?? []),
     [data?.records],
   );
+
+  React.useEffect(() => {
+    // Sincroniza a OS ativa com o banco de dados Supabase para refletir ações de outros setores
+    if (fluxoV2?.numeroOs) {
+      fetch(`/api/os-flow?os=${encodeURIComponent(fluxoV2.numeroOs)}`)
+        .then((r) => r.json())
+        .then((res) => {
+          if (res?.data?.os) {
+            const serverCount = res.data.os.historico?.length ?? 0;
+            const localCount = fluxoV2.historico?.length ?? 0;
+            if (serverCount >= localCount) {
+              setFluxoV2(res.data.os);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [fluxoV2?.numeroOs]);
 
   const osFiltradas = React.useMemo(() => {
     const q = busca.trim().toLowerCase();

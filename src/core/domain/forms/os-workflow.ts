@@ -318,6 +318,7 @@ export interface OrdemServicoFluxoState {
   } | null;
   historico: EventoHistoricoOS[];
   notificacoes: NotificacaoSetorOS[];
+  versao?: number;
 }
 
 export interface AtorAcaoOS {

@@ -182,6 +182,43 @@ export default function NotificacoesPage() {
       } catch {
         // ignora erro ao ler storage
       }
+
+      // Sincronização em nuvem com o banco de dados central (todas as OSs de todos os setores)
+      fetch('/api/os-flow?all=true')
+        .then((res) => res.json())
+        .then((json) => {
+          if (json?.data?.ordens && Array.isArray(json.data.ordens)) {
+            const serverNotifs: NotificacaoItem[] = [];
+            for (const os of json.data.ordens) {
+              if (Array.isArray(os.notificacoes)) {
+                for (const notif of os.notificacoes) {
+                  serverNotifs.push({
+                    id: `os:dyn:${notif.id}`,
+                    categoria: 'intersetorial',
+                    nivel: notif.retidaForaHorario ? 'warning' : 'info',
+                    titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
+                    descricao: notif.mensagem,
+                    href: '/equipamentos',
+                    origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
+                    destinatarioSetor: notif.destinatario,
+                    numeroOs: os.numeroOs,
+                    confirmadaEm: notif.confirmadaEm ? new Date(notif.confirmadaEm).toISOString() : null,
+                    confirmadaPorNome: notif.confirmadaPorNome,
+                  });
+                }
+              }
+            }
+            if (serverNotifs.length > 0) {
+              setOsNotificacoesDinamicas((prev) => {
+                const map = new Map<string, NotificacaoItem>();
+                for (const item of prev) map.set(item.id, item);
+                for (const item of serverNotifs) map.set(item.id, item);
+                return Array.from(map.values());
+              });
+            }
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 

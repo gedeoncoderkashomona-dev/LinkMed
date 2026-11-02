@@ -155,6 +155,16 @@ export function SignaturePadDialog({
         rubricaDataUrl,
         aceiteTermoLgpd: aceiteLgpd,
       });
+      // Persistência assíncrona no backend
+      if (typeof window !== 'undefined') {
+        fetch('/api/signatures', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(registro),
+        }).catch((err) => {
+          console.warn('Sync backend de assinatura adiado:', err);
+        });
+      }
       callbackConfirmar?.(registro);
       onOpenChange(false);
     } catch (err) {
