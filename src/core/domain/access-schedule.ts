@@ -205,6 +205,28 @@ export function verificarAcessoHorario(
   const setor = perfilParaSetorOperacional(perfil);
   const restrito = isPerfilRestritoHorario(perfil);
 
+  // MODO TESTE / HOMOLOGAÇÃO:
+  // Libera acesso 24h para o cliente Filipe testar a plataforma livremente à noite ou fins de semana.
+  // Permanece ativo nos testes automatizados (Vitest) para garantir conformidade contínua.
+  const forcarAtivacao =
+    typeof process !== 'undefined' &&
+    process.env.NEXT_PUBLIC_ENABLE_SCHEDULE_RESTRICTION === 'true';
+
+  const emAmbienteTesteAutomatizado =
+    typeof process !== 'undefined' && Boolean(process.env.VITEST);
+
+  if (!forcarAtivacao && !emAmbienteTesteAutomatizado) {
+    return {
+      permitido: true,
+      restritoPorPerfil: restrito,
+      setor,
+      mensagem: null,
+      diaSemanaLabel,
+      horaAtualLabel,
+      proximaAberturaLabel: 'Acesso liberado 24h para testes da equipe LinkMed',
+    };
+  }
+
   if (!restrito) {
     return {
       permitido: true,
