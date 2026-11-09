@@ -6,6 +6,7 @@ import {
   ArrowRight,
   ClipboardCheck,
   FileCheck2,
+  PackageCheck,
   Search,
   Tag,
   UserCheck,
@@ -21,12 +22,38 @@ import { DOCUMENTOS_OFICIAIS_POR_MODULO } from '@/core/domain/entities/operacion
 import {
   FORM_DEFS,
   SETOR_FORM_LABEL,
+  type FormDef,
+  type FormTipo,
   type SetorFormulario,
 } from '@/core/domain/forms/definitions';
 import { TAG_SPECS_LIST } from '@/core/domain/forms/os-workflow';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFormsOverview } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
+
+/**
+ * Ordem operacional definida na Ata Linkmed:
+ * 1. REG 022 (Recebimento - ADM)
+ * 2. REG 016 (Etapas da Manutenção - Início do fluxo operacional)
+ * 3. REG 034 (Limpeza de Equipamentos - AT)
+ * 4. REG 018 (Higienização de Bancada - POP 006 - AT)
+ * 5. REG 017 (Temperatura e Umidade - POP 007 - AT e Almoxarifado)
+ * 6. REG 040 (Teste da Pulseira Antiestática - POP 007 - AT)
+ * 7. REG 015 (Instrumentos de Medição e Validades - POP 011 - AT)
+ * 8. REG 030 (Verificação da Calibração Interna vinculada ao REG 015 - POP 011 - AT)
+ * 9. REG 009 / REG 035 (Checklist Final de Manutenção por Marca - Final do fluxo operacional - AT)
+ */
+const ORDEM_OPERACIONAL_TIPOS: Record<FormTipo, number> = {
+  'inspecao-recebimento': 1,
+  'etapas-manutencao': 2,
+  'limpeza-equipamento': 3,
+  'higienizacao-bancada': 4,
+  'temperatura-umidade': 5,
+  'pulseira-antiestatica': 6,
+  'validade-calibracao': 7,
+  'verificacao-calibracao': 8,
+  'checklist-manutencao': 9,
+};
 
 export function FormulariosClient() {
   const { data: user } = useCurrentUser();
@@ -35,33 +62,26 @@ export function FormulariosClient() {
   const [busca, setBusca] = React.useState('');
   const [mostrarLegendaCores, setMostrarLegendaCores] = React.useState(false);
 
-  // Filtragem estrita por perfil de setor conforme ata da reunião e auditoria Linkmed
+  // Filtragem e ordenação estrita por perfil de setor conforme ata da reunião e auditoria Linkmed v2
   const formulariosFiltrados = React.useMemo(() => {
     const q = busca.trim().toLowerCase();
     const perfil = user?.perfil;
 
-    return FORM_DEFS.filter((f) => {
+    const filtrados = FORM_DEFS.filter((f: FormDef) => {
       // 1. Restrição estrita por setor de login
       if (perfil === 'adm') {
-        // ADM vê exclusivamente recebimento (REG 022) e iniciação/etapas (REG 016)
+        // ADM vê exclusivamente recebimento (REG 022) e etapas/orçamento da OS (REG 016)
         if (f.tipo !== 'inspecao-recebimento' && f.tipo !== 'etapas-manutencao') {
           return false;
         }
       } else if (perfil === 'estoquista') {
-        // Almoxarifado vê exclusivamente temperatura e umidade do setor (REG 017)
+        // Almoxarifado vê exclusivamente o controle diário de temperatura e umidade do setor (REG 017)
         if (f.tipo !== 'temperatura-umidade') {
           return false;
         }
       } else if (perfil === 'tecnico') {
-        // Técnico vê formulários pertinentes à Assistência Técnica
-        if (
-          f.tipo !== 'limpeza-equipamento' &&
-          f.tipo !== 'etapas-manutencao' &&
-          f.tipo !== 'checklist-manutencao' &&
-          f.tipo !== 'higienizacao-bancada' &&
-          f.tipo !== 'pulseira-antiestatica' &&
-          f.tipo !== 'validade-calibracao'
-        ) {
+        // Assistência Técnica (AT) vê todos os seus REGs técnicos e diários (exceto REG 022 que é exclusivo do ADM)
+        if (f.tipo === 'inspecao-recebimento') {
           return false;
         }
       }
@@ -78,6 +98,10 @@ export function FormulariosClient() {
         (f.pastaPop && f.pastaPop.toLowerCase().includes(q))
       );
     });
+
+    return [...filtrados].sort(
+      (a, b) => (ORDEM_OPERACIONAL_TIPOS[a.tipo] ?? 99) - (ORDEM_OPERACIONAL_TIPOS[b.tipo] ?? 99),
+    );
   }, [setor, busca, user?.perfil]);
 
   return (
@@ -109,19 +133,29 @@ export function FormulariosClient() {
         </div>
       </div>
 
-      {/* Catálogo Oficial de Documentos — Seção 1 da Auditoria Linkmed */}
+      {/* Catálogo Oficial de Documentos por Setor — Seção 1 da Auditoria Linkmed */}
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs space-y-2">
-        <div className="flex items-center gap-2 font-semibold text-primary">
-          <FileCheck2 className="h-4 w-4" />
-          <span>
-            {user?.perfil === 'adm'
-              ? 'Formulários Habilitados para o Setor Administrativo (ADM):'
-              : user?.perfil === 'estoquista'
-              ? 'Formulários Habilitados para o Almoxarifado / Estoque:'
-              : user?.perfil === 'tecnico'
-              ? 'Formulários Habilitados para a Assistência Técnica (AT):'
-              : 'Catálogo Geral de Formulários Oficiais Linkmed (RDC 665/22):'}
-          </span>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 font-semibold text-primary">
+            <FileCheck2 className="h-4 w-4" />
+            <span>
+              {user?.perfil === 'adm'
+                ? 'REGs Exclusivos do Setor Administrativo (ADM):'
+                : user?.perfil === 'estoquista'
+                ? 'REGs Exclusivos do Almoxarifado / Estoque:'
+                : user?.perfil === 'tecnico'
+                ? 'REGs Exclusivos da Assistência Técnica (AT — Ordem Operacional):'
+                : 'Catálogo Geral de Formulários Oficiais Linkmed (RDC 665/22):'}
+            </span>
+          </div>
+          {user?.perfil === 'estoquista' && (
+            <Link href="/equipamentos">
+              <Button size="sm" variant="default" className="h-7 gap-1.5 text-xs">
+                <PackageCheck className="h-3.5 w-3.5" />
+                Ir para Separação de Peças da OS (Bloco P)
+              </Button>
+            </Link>
+          )}
         </div>
         <div className="flex flex-wrap gap-1.5">
           {DOCUMENTOS_OFICIAIS_POR_MODULO.formularios
@@ -148,6 +182,16 @@ export function FormulariosClient() {
                 <span className="text-muted-foreground">— Pasta: {item.pastaPop}</span>
               </button>
             ))}
+          {user?.perfil === 'adm' && (
+            <button
+              type="button"
+              onClick={() => setBusca('REG-022')}
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-background px-2.5 py-1 text-[11px] font-medium transition hover:border-primary hover:bg-primary/10"
+            >
+              <span className="font-mono font-bold text-primary">REG-022</span>
+              <span className="text-muted-foreground">— Inspeção de Recebimento (POP-020)</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -74,9 +74,15 @@ import {
 } from '@/core/domain/forms/definitions';
 import {
   aggregateServiceOrders,
+  admMarcarEtiquetaBrancaNoReg016,
+  atPreencherItem5Reg016,
+  atRegistrarReg034,
+  confirmarNotificacaoSetor,
+  criarOsViaReg022,
   hydrateFormFieldsFromOs,
   normalizarNumeroOs,
   TAG_SPECS,
+  type OrdemServicoFluxoState,
   type ServiceOrderContext,
 } from '@/core/domain/forms/os-workflow';
 import { useCurrentUser } from '@/hooks/use-current-user';
@@ -94,7 +100,6 @@ const FORMS_COM_OS = new Set([
   'limpeza-equipamento',
   'etapas-manutencao',
   'checklist-manutencao',
-  'verificacao-calibracao',
 ]);
 
 const CAMPOS_COM_ASSINATURA = new Set([
@@ -241,11 +246,29 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
 
   React.useEffect(() => {
     if (!def) return;
-    setDados((prev) => ({
-      ...criarValoresIniciais(def, subtipo, user?.nomeCompleto),
-      ...prev,
-    }));
-  }, [def, subtipo, user?.nomeCompleto]);
+    const eqParam = searchParams.get('equipamento');
+    const mmParam = searchParams.get('marca_modelo');
+    const snParam = searchParams.get('numero_serie');
+    const certParam = searchParams.get('certificado');
+    const dtCalParam = searchParams.get('data_calibracao');
+    setDados((prev) => {
+      const base = {
+        ...criarValoresIniciais(def, subtipo, user?.nomeCompleto),
+        ...prev,
+      };
+      if (def.tipo === 'verificacao-calibracao') {
+        if (eqParam) base.equipamento = eqParam;
+        if (mmParam) base.marca_modelo = mmParam;
+        if (snParam) base.numero_serie = snParam;
+        if (certParam) base.certificado = certParam;
+        if (dtCalParam) base.data_calibracao = dtCalParam;
+      }
+      if (def.tipo === 'etapas-manutencao' && user?.perfil === 'adm' && !base.assinatura_tecnico) {
+        base.assinatura_tecnico = `${user.nomeCompleto} (Etapa ADM)`;
+      }
+      return base;
+    });
+  }, [def, subtipo, user?.nomeCompleto, user?.perfil, searchParams]);
 
   const ordensServico = React.useMemo(
     () => aggregateServiceOrders(overviewData?.records ?? []),
@@ -364,7 +387,53 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     );
   }
 
-  const secoes = getSecoes(def, subtipo);
+  const secoesBrutas = getSecoes(def, subtipo);
+  const secoes = React.useMemo(() => {
+    if (def.tipo !== 'etapas-manutencao' || !user) return secoesBrutas;
+    if (user.perfil === 'adm') {
+      const camposAdm = new Set([
+        'etiqueta_branca_adm',
+        'conferencia_pecas',
+        'orcamento_enviado',
+        'orcamento_aprovado',
+        'orcamento_reprovado',
+      ]);
+      return secoesBrutas
+        .filter((s) => !s.titulo.startsWith('4.') && !s.titulo.startsWith('5.'))
+        .map((s) => {
+          if (s.titulo.startsWith('2.') || s.titulo.startsWith('3.')) {
+            return {
+              ...s,
+              titulo: `${s.titulo} (Exclusivo Setor ADM)`,
+              campos: s.campos.filter((c) => camposAdm.has(c.name)),
+            };
+          }
+          return s;
+        })
+        .filter((s) => s.campos.length > 0);
+    }
+    if (user.perfil === 'tecnico') {
+      const camposExclusivosAdm = new Set([
+        'etiqueta_branca_adm',
+        'orcamento_enviado',
+        'orcamento_aprovado',
+        'orcamento_reprovado',
+      ]);
+      return secoesBrutas
+        .map((s) => {
+          if (s.titulo.startsWith('2.') || s.titulo.startsWith('3.')) {
+            return {
+              ...s,
+              titulo: `${s.titulo} (Etapas da Assistência Técnica — AT)`,
+              campos: s.campos.filter((c) => !camposExclusivosAdm.has(c.name)),
+            };
+          }
+          return s;
+        })
+        .filter((s) => s.campos.length > 0);
+    }
+    return secoesBrutas;
+  }, [def.tipo, secoesBrutas, user]);
   const statusPrevia = avaliarConformidade(def, subtipo, dados);
   const podeEditarGovernanca = canEditGovernance(user?.perfil);
 
@@ -519,8 +588,93 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         description: `Protocolo #${res.record.id.slice(0, 8)} registrado com sucesso e vinculado à Trilha de Auditoria.`,
       });
 
+      const numOsSalvo = String(dados.numero_os ?? osContextoAtual?.numeroOs ?? '').trim();
+      const atorAtual = {
+        usuarioId: user?.id ?? 'usr-operacional',
+        usuarioNome: user?.nomeCompleto ?? 'Colaborador Autorizado',
+        perfil: (user?.perfil ?? 'tecnico') as 'adm' | 'tecnico' | 'estoquista' | 'gestor' | 'diretor',
+      };
+
+      // Sincronização automática do Motor de Fluxo Intersetorial v2 (ADM -> AT -> Almoxarifado)
+      if (numOsSalvo) {
+        try {
+          const storageKey = `regulaon:os_fluxo_v2:${numOsSalvo}`;
+          let osState: OrdemServicoFluxoState | null = null;
+          if (typeof window !== 'undefined') {
+            const rawLocal = localStorage.getItem(storageKey);
+            if (rawLocal) osState = JSON.parse(rawLocal) as OrdemServicoFluxoState;
+          }
+          if (!osState) {
+            try {
+              const r = await fetch(`/api/os-flow?os=${encodeURIComponent(numOsSalvo)}`);
+              const j = await r.json();
+              if (j?.data?.os) osState = j.data.os as OrdemServicoFluxoState;
+            } catch {
+              // ignora falha de rede
+            }
+          }
+
+          if (def.tipo === 'inspecao-recebimento') {
+            const criada = criarOsViaReg022({
+              numeroOs: numOsSalvo,
+              identificacao: {
+                cliente: String(dados.cliente ?? 'Cliente Hospitalar'),
+                equipamento: String(dados.equipamento ?? 'Equipamento Médico'),
+                marca: String(dados.marca ?? 'Cardios'),
+                modelo: String(dados.modelo ?? 'Modelo Padrão'),
+                numeroSerie: String(dados.numero_serie ?? 'S/N'),
+                acessorios: String(dados.acessorios ?? ''),
+                relatoCliente: String(dados.relato_cliente ?? ''),
+              },
+              ator: { ...atorAtual, perfil: 'adm' },
+            });
+            osState = admMarcarEtiquetaBrancaNoReg016(criada, { ...atorAtual, perfil: 'adm' });
+          } else if (def.tipo === 'limpeza-equipamento' && osState) {
+            let nextOs = osState;
+            if (nextOs.passoAtual === 'A1_CRIADA_NO_REG022') {
+              nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, {
+                usuarioId: 'usr-adm',
+                usuarioNome: 'Setor Administrativo (ADM)',
+                perfil: 'adm',
+              });
+            }
+            if (nextOs.passoAtual === 'A2_BRANCA_NOTIFICA_AT') {
+              nextOs = confirmarNotificacaoSetor(nextOs, { ...atorAtual, perfil: 'tecnico' });
+            }
+            if (nextOs.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034') {
+              nextOs = atRegistrarReg034(nextOs, { ...atorAtual, perfil: 'tecnico' });
+            }
+            osState = nextOs;
+          } else if (def.tipo === 'checklist-manutencao' && osState) {
+            if (osState.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' && !osState.item5Preenchido) {
+              osState = atPreencherItem5Reg016(
+                osState,
+                osState.identificacao.marca,
+                { ...atorAtual, perfil: 'tecnico' },
+              );
+            }
+          }
+
+          if (osState) {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(storageKey, JSON.stringify(osState));
+              localStorage.setItem('regulaon:os_fluxo_v2:current', osState.numeroOs);
+            }
+            await fetch('/api/os-flow', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(osState),
+            }).catch(() => {});
+          }
+        } catch {
+          // transição já avançada anteriormente
+        }
+      }
+
       // Seção 5.4: se no REG 016 concluiu a análise (etiqueta cinza), abre opção de imprimir etiqueta física
-      if (def.tipo === 'etapas-manutencao' && dados.etiqueta_cinza === 'C') {
+      const abriuModalEtiqueta =
+        def.tipo === 'etapas-manutencao' && dados.etiqueta_cinza === 'C';
+      if (abriuModalEtiqueta) {
         setEtiquetaPrintDados({
           numeroOs: String(dados.numero_os ?? osContextoAtual?.numeroOs ?? 'S/N'),
           cliente: String(dados.cliente ?? osContextoAtual?.cliente ?? '—'),
@@ -547,6 +701,17 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
 
       setDados(criarValoresIniciais(def, subtipo, user?.nomeCompleto));
       setOsSelecionada('');
+
+      if (!abriuModalEtiqueta) {
+        const destino = FORMS_COM_OS.has(def.tipo)
+          ? numOsSalvo
+            ? `/equipamentos?os=${encodeURIComponent(numOsSalvo)}`
+            : '/equipamentos'
+          : '/formularios';
+        setTimeout(() => {
+          router.push(destino);
+        }, 700);
+      }
     } catch (err) {
       if (err instanceof ApiValidationError) {
         const qtdErros = Object.keys(err.fields ?? {}).length;
@@ -910,6 +1075,13 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                                 Ver PDF
                               </button>
                             )}
+                            <Link
+                              href={`/formularios/verificacao-calibracao?equipamento=${encodeURIComponent(inst.equipamento)}&marca_modelo=${encodeURIComponent(`${inst.marca} / ${inst.modelo}`)}&numero_serie=${encodeURIComponent(inst.numeroSerie)}&certificado=${encodeURIComponent(inst.certificado)}&data_calibracao=${encodeURIComponent(inst.dataCalibracao)}`}
+                              className="inline-flex items-center gap-1 rounded border border-border bg-muted/50 px-2 py-1 text-[10px] font-semibold text-foreground hover:bg-primary/10 hover:text-primary"
+                              title="Registrar Verificação da Calibração deste instrumento interno (REG-030)"
+                            >
+                              REG-030
+                            </Link>
                           </div>
                         </td>
                       </tr>

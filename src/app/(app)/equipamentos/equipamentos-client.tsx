@@ -2,8 +2,10 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
+  Bell,
   CheckCircle2,
   Lock,
   History,
@@ -151,13 +153,16 @@ function obterSetorDoPasso(passo: CodigoPassoFluxoOS): 'adm' | 'tecnico' | 'esto
 export function EquipamentosClient() {
   const { data: user } = useCurrentUser();
   const { data, isLoading } = useFormsOverview();
+  const searchParams = useSearchParams();
+  const osQueryParam = searchParams.get('os');
   const [busca, setBusca] = React.useState('');
   const [filtroCor, setFiltroCor] = React.useState<TagColor | ''>('');
   const [dossierOs, setDossierOs] = React.useState<string | null>(null);
   const [etiquetaPrint, setEtiquetaPrint] = React.useState<DadosEtiquetaEquipamento | null>(null);
 
   // Estado interativo da Máquina de Estados v2 (Seções 4 a 7 da Auditoria Linkmed)
-  const [mostrarPainelFluxoV2, setMostrarPainelFluxoV2] = React.useState(false);
+  const [mostrarPainelFluxoV2, setMostrarPainelFluxoV2] = React.useState(true);
+  const [ordensFluxoServidor, setOrdensFluxoServidor] = React.useState<OrdemServicoFluxoState[]>([]);
   const [marcaSimulacao, setMarcaSimulacao] = React.useState<'Cardios' | 'TEB' | 'OLIDEF'>('Cardios');
   const [transporteSelecionado, setTransporteSelecionado] =
     React.useState<TipoTransporteFabrica>('transportadora_linkmed');
@@ -190,10 +195,68 @@ export function EquipamentosClient() {
     user.perfil === 'gestor' ||
     user.perfil === setorDoPasso;
 
+  const setorOperacionalDoUsuario = React.useMemo(() => {
+    if (!user) return null;
+    if (user.perfil === 'adm') return 'ADM' as const;
+    if (user.perfil === 'tecnico') return 'AT' as const;
+    if (user.perfil === 'estoquista') return 'ALMOXARIFADO' as const;
+    return null;
+  }, [user]);
+
+  const ordensPendentesMeuSetor = React.useMemo(() => {
+    return ordensFluxoServidor.filter((o) => {
+      if (o.estadoGeral === 'finalizada' || o.estadoGeral === 'cancelada') return false;
+      if (!setorOperacionalDoUsuario) return o.setorPendente !== 'NENHUM';
+      return o.setorPendente === setorOperacionalDoUsuario;
+    });
+  }, [ordensFluxoServidor, setorOperacionalDoUsuario]);
+
   const ordensServico = React.useMemo(
     () => aggregateServiceOrders(data?.records ?? []),
     [data?.records],
   );
+
+  // Busca todas as OSs persistidas no servidor e seleciona automaticamente a OS da URL (?os=) ou a primeira pendente para o setor logado
+  React.useEffect(() => {
+    fetch('/api/os-flow?all=true')
+      .then((r) => r.json())
+      .then((res) => {
+        const lista: OrdemServicoFluxoState[] = Array.isArray(res?.data?.ordens)
+          ? res.data.ordens
+          : [];
+        setOrdensFluxoServidor(lista);
+
+        if (osQueryParam) {
+          const alvoLimpo = osQueryParam.replace(/^OS:/i, '').trim().toUpperCase();
+          const encontradaServidor = lista.find(
+            (o) => o.numeroOs.trim().toUpperCase() === alvoLimpo,
+          );
+          if (encontradaServidor) {
+            setFluxoV2(encontradaServidor);
+            setMostrarPainelFluxoV2(true);
+            return;
+          }
+          const salvoLocal = carregarFluxoStorage(alvoLimpo);
+          if (salvoLocal) {
+            setFluxoV2(salvoLocal);
+            setMostrarPainelFluxoV2(true);
+            return;
+          }
+        } else if (setorOperacionalDoUsuario) {
+          const pendenteMeuSetor = lista.find(
+            (o) =>
+              o.estadoGeral !== 'finalizada' &&
+              o.estadoGeral !== 'cancelada' &&
+              o.setorPendente === setorOperacionalDoUsuario,
+          );
+          if (pendenteMeuSetor) {
+            setFluxoV2(pendenteMeuSetor);
+            setMostrarPainelFluxoV2(true);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [osQueryParam, setorOperacionalDoUsuario]);
 
   React.useEffect(() => {
     // Sincroniza a OS ativa com o banco de dados Supabase para refletir ações de outros setores
@@ -233,6 +296,13 @@ export function EquipamentosClient() {
       setFluxoV2((atual) => {
         const next = fn(atual);
         salvarFluxoStorage(next);
+        setOrdensFluxoServidor((prev) => {
+          const idx = prev.findIndex((o) => o.numeroOs === next.numeroOs);
+          if (idx === -1) return [next, ...prev];
+          const clone = [...prev];
+          clone[idx] = next;
+          return clone;
+        });
         return next;
       });
       toast.success(msg);
@@ -250,6 +320,16 @@ export function EquipamentosClient() {
     numeroSerie: string;
     tagColor: TagColor;
   }) {
+    const doServidor = ordensFluxoServidor.find(
+      (o) => o.numeroOs.trim().toUpperCase() === os.numeroOs.trim().toUpperCase(),
+    );
+    if (doServidor) {
+      setFluxoV2(doServidor);
+      setMostrarPainelFluxoV2(true);
+      toast.success(`Fluxo da OS ${os.numeroOs} carregado exatamente da etapa onde parou!`);
+      return;
+    }
+
     const salvo = carregarFluxoStorage(os.numeroOs);
     if (salvo) {
       setFluxoV2(salvo);
@@ -329,6 +409,87 @@ export function EquipamentosClient() {
           </Badge>
         </div>
       </div>
+
+      {/* Fila de Continuidade Direta por Setor Logado (Notificações Recebidas de Outros Departamentos) */}
+      {ordensPendentesMeuSetor.length > 0 && (
+        <Card className="border-emerald-500/40 bg-emerald-500/5 shadow-xs">
+          <CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <div>
+                  <p className="text-xs font-bold text-foreground">
+                    Continuidade de Processo para o Seu Setor ({ordensPendentesMeuSetor.length} OS aguardando sua ação)
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Clique em uma OS abaixo para continuar exatamente na etapa onde o setor anterior parou, sem precisar redigitar nenhum dado.
+                  </p>
+                </div>
+              </div>
+              <Link href="/notificacoes">
+                <Button variant="outline" size="sm" className="h-7 text-xs">
+                  Ver Central de Notificações
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ordensPendentesMeuSetor.map((o) => {
+                const isAtiva = fluxoV2.numeroOs === o.numeroOs;
+                const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
+                return (
+                  <div
+                    key={o.numeroOs}
+                    className={cn(
+                      'flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-xs transition-all',
+                      isAtiva
+                        ? 'border-primary bg-primary/10 shadow-2xs'
+                        : 'border-border bg-card hover:border-primary/40',
+                    )}
+                  >
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="default" className="font-mono text-[10px]">
+                          {o.numeroOs}
+                        </Badge>
+                        <span className="font-semibold text-foreground truncate">
+                          {o.identificacao.equipamento} ({o.identificacao.marca})
+                        </span>
+                        {o.etiquetaAtual && (
+                          <span
+                            className={cn(
+                              'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                              TAG_SPECS[o.etiquetaAtual].badgeClass,
+                            )}
+                          >
+                            {TAG_SPECS[o.etiquetaAtual].nomeCor}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {ultimaNotif?.mensagem || o.mensagemTelaAtual || `Etapa atual: ${o.passoAtual}`}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isAtiva ? 'default' : 'secondary'}
+                      onClick={() => {
+                        setFluxoV2(o);
+                        setMostrarPainelFluxoV2(true);
+                        salvarFluxoStorage(o);
+                        toast.success(`Continuando OS ${o.numeroOs} exatamente na etapa ${o.passoAtual}!`);
+                      }}
+                      className="h-7 shrink-0 text-xs font-semibold"
+                    >
+                      {isAtiva ? 'Em Execução Abaixo' : 'Assumir e Continuar'}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Painel Interativo da Máquina de Estados Oficial v2 (Auditoria Linkmed Seções 4 a 7) */}
       {mostrarPainelFluxoV2 && (
@@ -484,17 +645,24 @@ export function EquipamentosClient() {
               )}
 
               {fluxoV2.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => atRegistrarReg034(s, ATOR_AT),
-                      'REG 034 (Limpeza com Álcool 70%) registrado pela AT!',
-                    )
-                  }
-                >
-                  [AT] A4: Registrar Limpeza no REG 034
-                </Button>
+                <>
+                  <Link href={`/formularios/limpeza-equipamento?os=${encodeURIComponent(fluxoV2.numeroOs)}`}>
+                    <Button size="sm" variant="outline" className="gap-1.5">
+                      Abrir Formulário REG-034 (100% Pré-preenchido)
+                    </Button>
+                  </Link>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      executarTransicao(
+                        (s) => atRegistrarReg034(s, ATOR_AT),
+                        'REG 034 (Limpeza com Álcool 70%) registrado pela AT!',
+                      )
+                    }
+                  >
+                    [AT] A4: Registrar Limpeza no REG 034
+                  </Button>
+                </>
               )}
 
               {fluxoV2.passoAtual === 'A4_REG034_PREENCHIDO' && (
@@ -805,22 +973,29 @@ export function EquipamentosClient() {
               {fluxoV2.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' && (
                 <>
                   {!fluxoV2.item5Preenchido ? (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        executarTransicao(
-                          (s) =>
-                            atPreencherItem5Reg016(
-                              s,
-                              s.identificacao.marca,
-                              ATOR_AT,
-                            ),
-                          `Item 5 (${fluxoV2.item5FormularioTipo}) preenchido para a marca ${fluxoV2.identificacao.marca}!`,
-                        )
-                      }
-                    >
-                      [AT] Preencher Item 5 do REG 016 ({fluxoV2.item5FormularioTipo})
-                    </Button>
+                    <>
+                      <Link href={`/formularios/etapas-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}>
+                        <Button size="sm" variant="outline" className="gap-1.5">
+                          Abrir Item 5 no REG-016 ({fluxoV2.item5FormularioTipo})
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) =>
+                              atPreencherItem5Reg016(
+                                s,
+                                s.identificacao.marca,
+                                ATOR_AT,
+                              ),
+                            `Item 5 (${fluxoV2.item5FormularioTipo}) preenchido para a marca ${fluxoV2.identificacao.marca}!`,
+                          )
+                        }
+                      >
+                        [AT] Preencher Item 5 do REG 016 ({fluxoV2.item5FormularioTipo})
+                      </Button>
+                    </>
                   ) : (
                     <Button
                       size="sm"
@@ -979,24 +1154,19 @@ export function EquipamentosClient() {
                   href: `/formularios/inspecao-recebimento?os=${encodeURIComponent(os.chave)}`,
                 },
                 {
-                  label: '2. Higienização AT (REG-034)',
-                  done: os.etapasConcluidas.reg034Limpeza,
-                  href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(os.chave)}`,
-                },
-                {
-                  label: '3. Diagnóstico AT (REG-035)',
-                  done: os.etapasConcluidas.reg035Manutencao,
-                  href: `/formularios/checklist-manutencao?os=${encodeURIComponent(os.chave)}`,
-                },
-                {
-                  label: '4. Etapas / Etiquetas (REG-016)',
+                  label: '2. Etapas / Etiquetas (REG-016)',
                   done: os.etapasConcluidas.reg016Etapas,
                   href: `/formularios/etapas-manutencao?os=${encodeURIComponent(os.chave)}`,
                 },
                 {
-                  label: '5. Calibração / CQ (REG-030)',
-                  done: os.etapasConcluidas.reg030Calibracao,
-                  href: `/formularios/verificacao-calibracao?os=${encodeURIComponent(os.chave)}`,
+                  label: '3. Higienização AT (REG-034)',
+                  done: os.etapasConcluidas.reg034Limpeza,
+                  href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(os.chave)}`,
+                },
+                {
+                  label: '4. Finalização por Marca (REG-009 / REG-035)',
+                  done: os.etapasConcluidas.reg035Manutencao,
+                  href: `/formularios/checklist-manutencao?os=${encodeURIComponent(os.chave)}`,
                 },
               ];
 
@@ -1086,7 +1256,7 @@ export function EquipamentosClient() {
                     </div>
 
                     {/* Trilha de Etapas com Autopreenchimento */}
-                    <div className="grid gap-2 border-t border-border pt-3 sm:grid-cols-5">
+                    <div className="grid gap-2 border-t border-border pt-3 sm:grid-cols-4">
                       {etapas.map((etapa) => (
                         <Link
                           key={etapa.label}

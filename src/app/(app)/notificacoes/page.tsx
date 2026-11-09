@@ -67,7 +67,7 @@ const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
     titulo: 'OS-2026-0102 — Orçamento APROVADO pelo ADM (CardioSmart)',
     descricao:
       'O setor Administrativo (ADM) aprovou o orçamento junto ao cliente. O Almoxarifado foi notificado para separação e liberação imediata das peças solicitadas pela Assistência Técnica.',
-    href: '/equipamentos',
+    href: '/equipamentos?os=OS-2026-0102',
     origemLabel: 'Notificação Intersetorial (ADM → Almoxarifado)',
     destinatarioSetor: 'ALMOXARIFADO',
     remetenteSetor: 'ADM',
@@ -82,7 +82,7 @@ const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
     titulo: 'OS-2026-0101 — Equipamento com Etiqueta BRANCA no Almoxarifado',
     descricao:
       'Equipamento Incubadora Neonatal (Olidef SC Line) recebido no Almoxarifado com Etiqueta BRANCA (REG 016). Assistência Técnica notificada para proceder com triagem técnica e higienização (REG 034).',
-    href: '/equipamentos',
+    href: '/equipamentos?os=OS-2026-0101',
     origemLabel: 'Notificação Intersetorial (Almoxarifado → AT)',
     destinatarioSetor: 'AT',
     remetenteSetor: 'ALMOXARIFADO',
@@ -97,7 +97,7 @@ const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
     titulo: 'OS-2026-0103 — Orçamento REPROVADO pelo Cliente (ADM)',
     descricao:
       'O cliente reprovou o orçamento de manutenção. O equipamento recebeu Etiqueta VERMELHA e o Almoxarifado foi notificado para providenciar a devolução formal com comprovante de entrega.',
-    href: '/equipamentos',
+    href: '/equipamentos?os=OS-2026-0103',
     origemLabel: 'Notificação Intersetorial (ADM → Almoxarifado)',
     destinatarioSetor: 'ALMOXARIFADO',
     remetenteSetor: 'ADM',
@@ -112,7 +112,7 @@ const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
     titulo: 'OS-2026-0104 — Diagnóstico e Orçamento Concluídos pela AT (Etiqueta AMARELA)',
     descricao:
       'A Assistência Técnica concluiu a análise e elaborou a proposta no REG 022. Setor Administrativo (ADM) notificado para envio comercial e aprovação do orçamento com o cliente.',
-    href: '/equipamentos',
+    href: '/equipamentos?os=OS-2026-0104',
     origemLabel: 'Notificação Intersetorial (AT → ADM)',
     destinatarioSetor: 'ADM',
     remetenteSetor: 'AT',
@@ -132,6 +132,14 @@ export default function NotificacoesPage() {
   const [categoria, setCategoria] = React.useState<'todas' | CategoriaNotificacao>('todas');
   const [setorFiltro, setSetorFiltro] = React.useState<'todos' | SetorOperacional>('todos');
   const [apenasNaoLidas, setApenasNaoLidas] = React.useState(false);
+
+  // Filtra automaticamente pelo setor do login para que o colaborador veja de imediato suas pendências
+  React.useEffect(() => {
+    if (!user) return;
+    if (user.perfil === 'adm') setSetorFiltro('ADM');
+    else if (user.perfil === 'tecnico') setSetorFiltro('AT');
+    else if (user.perfil === 'estoquista') setSetorFiltro('ALMOXARIFADO');
+  }, [user]);
   const [lidasIds, setLidasIds] = React.useState<string[]>([]);
   const [confirmadasMap, setConfirmadasMap] = React.useState<
     Record<string, { porNome: string; em: string }>
@@ -166,7 +174,7 @@ export default function NotificacoesPage() {
                     nivel: notif.retidaForaHorario ? 'warning' : 'info',
                     titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
                     descricao: notif.mensagem,
-                    href: '/equipamentos',
+                    href: `/equipamentos?os=${encodeURIComponent(os.numeroOs)}`,
                     origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
                     destinatarioSetor: notif.destinatario,
                     numeroOs: os.numeroOs,
@@ -198,7 +206,7 @@ export default function NotificacoesPage() {
                     nivel: notif.retidaForaHorario ? 'warning' : 'info',
                     titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
                     descricao: notif.mensagem,
-                    href: '/equipamentos',
+                    href: `/equipamentos?os=${encodeURIComponent(os.numeroOs)}`,
                     origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
                     destinatarioSetor: notif.destinatario,
                     numeroOs: os.numeroOs,

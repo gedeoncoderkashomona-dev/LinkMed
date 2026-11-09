@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  Bell,
   CheckCircle2,
   ClipboardList,
   FileText,
@@ -24,7 +25,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { POP_STATUS_LABEL, POP_STATUS_VARIANT, SETOR_LABEL } from '@/core/domain/enums/pop';
 import { PERFIL_LABEL } from '@/core/domain/enums/user';
 import { calcularAlertas } from '@/core/domain/forms/alerts';
-import { aggregateServiceOrders, TAG_SPECS } from '@/core/domain/forms/os-workflow';
+import {
+  aggregateServiceOrders,
+  TAG_SPECS,
+  type OrdemServicoFluxoState,
+} from '@/core/domain/forms/os-workflow';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFormsOverview, useNcs } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
@@ -35,6 +40,33 @@ export function DashboardPlaceholder() {
   const { data: popsData, isLoading: loadingPops } = usePops();
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
   const { data: ncsData, isLoading: loadingNcs } = useNcs();
+  const [ordensFluxoServidor, setOrdensFluxoServidor] = React.useState<OrdemServicoFluxoState[]>([]);
+
+  React.useEffect(() => {
+    fetch('/api/os-flow?all=true')
+      .then((r) => r.json())
+      .then((res) => {
+        if (Array.isArray(res?.data?.ordens)) {
+          setOrdensFluxoServidor(res.data.ordens);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const ordensPendentesMeuSetor = React.useMemo(() => {
+    if (!user) return [];
+    const mapSetor: Record<string, string> = {
+      adm: 'ADM',
+      tecnico: 'AT',
+      estoquista: 'ALMOXARIFADO',
+    };
+    const meuSetor = mapSetor[user.perfil];
+    return ordensFluxoServidor.filter((o) => {
+      if (o.estadoGeral === 'finalizada' || o.estadoGeral === 'cancelada') return false;
+      if (!meuSetor) return o.setorPendente !== 'NENHUM';
+      return o.setorPendente === meuSetor;
+    });
+  }, [ordensFluxoServidor, user]);
 
   const popsVigentes = React.useMemo(
     () => (popsData?.pops ?? []).filter((p) => p.status === 'publicado').length,
@@ -129,6 +161,63 @@ export function DashboardPlaceholder() {
           </Link>
         </div>
       </div>
+
+      {/* Alerta Direto de Continuidade do Processo para o Setor Logado */}
+      {ordensPendentesMeuSetor.length > 0 && (
+        <Card className="border-emerald-500/40 bg-emerald-500/5 shadow-xs">
+          <CardContent className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <div>
+                  <p className="text-xs font-bold text-foreground">
+                    Notificações de Continuidade para o Seu Setor ({ordensPendentesMeuSetor.length} OS aguardando sua ação)
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Continue diretamente da etapa onde o departamento anterior parou, com todos os dados herdados automaticamente.
+                  </p>
+                </div>
+              </div>
+              <Link href="/notificacoes">
+                <Button variant="outline" size="sm" className="h-7 text-xs">
+                  Ver Notificações
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ordensPendentesMeuSetor.map((o) => {
+                const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
+                return (
+                  <div
+                    key={o.numeroOs}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3 text-xs"
+                  >
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="default" className="font-mono text-[10px]">
+                          {o.numeroOs}
+                        </Badge>
+                        <span className="font-semibold text-foreground truncate">
+                          {o.identificacao.equipamento} ({o.identificacao.marca})
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {ultimaNotif?.mensagem || o.mensagemTelaAtual || `Etapa atual: ${o.passoAtual}`}
+                      </p>
+                    </div>
+                    <Link href={`/equipamentos?os=${encodeURIComponent(o.numeroOs)}`}>
+                      <Button size="sm" className="h-7 shrink-0 gap-1 text-xs">
+                        Continuar Processo
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Se o perfil for Diretor e estiver na visão estratégica, renderiza o painel executivo */}
       {user?.perfil === 'diretor' && visaoDiretor === 'estrategica' ? (
