@@ -1,7 +1,27 @@
 import { z } from 'zod';
 
+function normalizarEmailLinkmed(val: string): string {
+  let e = val.trim().toLowerCase();
+  if (!e.includes('@')) {
+    if (e === 'estoquista' || e === 'estoque' || e === 'almoxarifado') return 'estoquista@regulaon.local';
+    if (e === 'adm' || e === 'administrativo') return 'adm@regulaon.local';
+    if (e === 'tecnico' || e === 'at') return 'tecnico@regulaon.local';
+    if (e === 'diretor') return 'diretor@regulaon.local';
+    if (e === 'gestor' || e === 'qualidade') return 'gestor.qualidade@regulaon.local';
+    return `${e}@regulaon.local`;
+  }
+  e = e.replace(/@regularon(\.local)?$/, '@regulaon.local');
+  e = e.replace(/@regulaon$/, '@regulaon.local');
+  return e;
+}
+
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email('E-mail inválido.'),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform(normalizarEmailLinkmed)
+    .pipe(z.string().email('E-mail inválido.')),
   senha: z.string().min(6, 'A senha deve ter ao menos 6 caracteres.'),
 });
 export type LoginInput = z.infer<typeof loginSchema>;

@@ -134,12 +134,14 @@ export function TreinamentosClient() {
     titulo: string;
     nomePadrao: string;
     funcaoPadrao: string;
+    exigirRubricaManual?: boolean;
     onSigned: (resumo: string) => void;
   }>({
     open: false,
     titulo: '',
     nomePadrao: '',
     funcaoPadrao: '',
+    exigirRubricaManual: false,
     onSigned: () => {},
   });
 
@@ -968,7 +970,8 @@ export function TreinamentosClient() {
                           open: true,
                           titulo: `Assinatura de Presença (${p.nome || `Participante ${idx + 1}`})`,
                           nomePadrao: p.nome,
-                          funcaoPadrao: p.funcao || 'Colaborador Treinado',
+                          funcaoPadrao: p.funcao || (tipo === 'externo' ? 'Profissional Hospital / Cliente' : 'Colaborador Treinado'),
+                          exigirRubricaManual: tipo === 'externo',
                           onSigned: (resumo) =>
                             atualizarParticipante(idx, 'assinatura', resumo),
                         })
@@ -1473,6 +1476,7 @@ export function TreinamentosClient() {
         signatarioNomePadrao={assinaturaAlvo.nomePadrao}
         signatarioIdPadrao={user?.id}
         funcaoPadrao={assinaturaAlvo.funcaoPadrao}
+        exigirRubricaManual={assinaturaAlvo.exigirRubricaManual}
         onConfirm={(reg) => assinaturaAlvo.onSigned(reg.resumoFormatado)}
       />
     </div>

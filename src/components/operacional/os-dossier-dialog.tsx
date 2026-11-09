@@ -139,14 +139,7 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
       titulo: '4. Etapas da Manutenção & Etiquetas',
       done: Boolean(osCtx?.etapasConcluidas.reg016Etapas),
       href: `/formularios/etapas-manutencao?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
-    },
-    {
-      tipo: 'verificacao-calibracao',
-      codigo: 'REG-030',
-      titulo: '5. Controle de Verificação da Calibração',
-      done: Boolean(osCtx?.etapasConcluidas.reg030Calibracao),
-      href: `/formularios/verificacao-calibracao?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
-    },
+    }
   ];
 
 

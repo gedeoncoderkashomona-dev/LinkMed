@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   ArrowRight,
   CheckCircle2,
+  Lock,
   History,
   PlayCircle,
   Printer,
@@ -46,6 +47,7 @@ import {
   cancelarOs,
   confirmarNotificacaoSetor,
   criarOsViaReg022,
+  type CodigoPassoFluxoOS,
   OPCOES_TRANSPORTE_FABRICA,
   reabrirOs,
   TAG_SPECS,
@@ -55,6 +57,7 @@ import {
   type TipoTransporteFabrica,
 } from '@/core/domain/forms/os-workflow';
 import { useFormsOverview } from '@/hooks/use-operacional';
+import { useCurrentUser } from '@/hooks/use-current-user';
 import { cn } from '@/lib/utils';
 
 const ATOR_ADM = {
@@ -108,7 +111,45 @@ function carregarFluxoStorage(numeroOs?: string): OrdemServicoFluxoState | null 
   }
 }
 
+
+const SETOR_COMPETENCIA_MAP: Record<string, string> = {
+  adm: 'Administrativo (ADM)',
+  tecnico: 'Assistência Técnica (AT)',
+  estoquista: 'Almoxarifado / Estoque',
+  todos: 'Geral',
+};
+
+function obterSetorDoPasso(passo: CodigoPassoFluxoOS): 'adm' | 'tecnico' | 'estoquista' | 'todos' {
+  switch (passo) {
+    case 'A1_CRIADA_NO_REG022':
+    case 'C_AGUARDANDO_ORCAMENTO_ADM':
+    case 'C1_AMARELA_AGUARDANDO_RESPOSTA_CLIENTE':
+      return 'adm';
+
+    case 'A2_BRANCA_NOTIFICA_AT':
+    case 'A3_AT_CONFIRMOU_PREENCHER_REG034':
+    case 'A4_REG034_PREENCHIDO':
+    case 'A5_VIOLETA_HIGIENIZADO':
+    case 'A6_CINZA_ANALISE_CONCLUIDA':
+    case 'B2_PERGUNTA_ENVIO_FABRICA':
+    case 'B4_STAND_BY_AGUARDANDO_ENVIO_FABRICA':
+    case 'C3_AMARELA_AGUARDANDO_CONFIRMACAO_REPROVACAO_AT':
+    case 'D4_PECAS_DISPONIVEIS_AGUARDANDO_CONFIRMACAO_AT':
+    case 'D5_AT_PRONTO_PARA_FINALIZAR':
+      return 'tecnico';
+
+    case 'D_AGUARDANDO_CONFIRMACAO_ALMOX':
+    case 'D1_ALMOX_DECIDINDO_PECAS':
+    case 'D2_PRETA_STAND_BY_AGUARDANDO_PECAS':
+      return 'estoquista';
+
+    default:
+      return 'todos';
+  }
+}
+
 export function EquipamentosClient() {
+  const { data: user } = useCurrentUser();
   const { data, isLoading } = useFormsOverview();
   const [busca, setBusca] = React.useState('');
   const [filtroCor, setFiltroCor] = React.useState<TagColor | ''>('');
@@ -141,6 +182,13 @@ export function EquipamentosClient() {
       ator: ATOR_ADM,
     });
   });
+
+  const setorDoPasso = obterSetorDoPasso(fluxoV2.passoAtual);
+  const podeExecutarPasso =
+    !user ||
+    user.perfil === 'diretor' ||
+    user.perfil === 'gestor' ||
+    user.perfil === setorDoPasso;
 
   const ordensServico = React.useMemo(
     () => aggregateServiceOrders(data?.records ?? []),
@@ -397,7 +445,15 @@ export function EquipamentosClient() {
               </div>
             )}
 
-            {/* Botões de Ação conforme o Passo Atual da Máquina de Estados */}
+            {/* Botões de Ação setorizados conforme Auditoria e Ata Linkmed */}
+            {!podeExecutarPasso && fluxoV2.estadoGeral !== 'finalizada' && fluxoV2.estadoGeral !== 'cancelada' ? (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
+                <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>
+                  Etapa sob responsabilidade do setor <strong>{SETOR_COMPETENCIA_MAP[setorDoPasso]}</strong>. Aguardando ação do login correspondente.
+                </span>
+              </div>
+            ) : (
             <div className="flex flex-wrap items-center gap-2">
               {fluxoV2.passoAtual === 'A1_CRIADA_NO_REG022' && (
                 <Button
@@ -780,9 +836,12 @@ export function EquipamentosClient() {
                   )}
                 </>
               )}
+            </div>
+            )}
 
-              {/* Controles de Cancelamento e Reabertura (Seção 7.3) */}
-              {fluxoV2.estadoGeral !== 'cancelada' && fluxoV2.estadoGeral !== 'finalizada' && (
+            {/* Controles de Cancelamento e Reabertura (Seção 7.3) */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {fluxoV2.estadoGeral !== 'cancelada' && fluxoV2.estadoGeral !== 'finalizada' && (user?.perfil === 'adm' || user?.perfil === 'diretor' || user?.perfil === 'gestor') && (
                 <div className="ml-auto flex items-center gap-1.5">
                   <Input
                     value={motivoCancelamento}
@@ -807,7 +866,9 @@ export function EquipamentosClient() {
                   </Button>
                 </div>
               )}
+            </div>
 
+            <div className="flex flex-wrap items-center gap-2">
               {fluxoV2.estadoGeral === 'cancelada' && (
                 <Button
                   type="button"

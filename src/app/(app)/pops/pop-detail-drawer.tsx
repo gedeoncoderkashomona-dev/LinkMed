@@ -34,11 +34,7 @@ import {
   SETOR_LABEL,
   type ChangeRequestStatus,
 } from '@/core/domain/enums/pop';
-import {
-  POP_020_REGISTROS_TABLE,
-  POP_020_REVISOES,
-  POP_020_SECOES,
-} from '@/core/domain/pops/pop-020-content';
+import { obterConteudoPop } from '@/core/domain/pops/pop-catalog-content';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import {
   useApprovePop,
@@ -75,36 +71,26 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
   const [editAprovado, setEditAprovado] = React.useState('');
   const [salvandoGov, setSalvandoGov] = React.useState(false);
 
-  const [assinaturaAlvo, setAssinaturaAlvo] = React.useState<{
-    open: boolean;
-    titulo: string;
-    nomePadrao: string;
-    funcaoPadrao: string;
-    onSigned: (resumo: string) => void;
-  }>({
-    open: false,
-    titulo: '',
-    nomePadrao: '',
-    funcaoPadrao: '',
-    onSigned: () => {},
-  });
-
-  const canUpload = user ? can(user.perfil, 'pops:upload') : false;
-  const isDiretor = user?.perfil === 'diretor';
-  const isGestor = user?.perfil === 'gestor';
-  const podeEditarGov = isDiretor || isGestor;
+  const [assinandoTipo, setAssinandoTipo] = React.useState<
+    'elaborado' | 'revisado' | 'aprovado' | null
+  >(null);
 
   React.useEffect(() => {
     if (data?.pop) {
-      setEditElaborado(data.pop.elaboradoPor || 'Vanessa Ribeiro (Gestão da Qualidade)');
-      setEditRevisado(data.pop.revisadoPor || 'Marina Lopes (Responsável Técnica)');
-      setEditAprovado(data.pop.aprovadoPorNome || 'Pedro Costa (Diretoria)');
+      setEditElaborado(data.pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)');
+      setEditRevisado(data.pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)');
+      setEditAprovado(data.pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)');
     }
   }, [data?.pop]);
 
-  const handleSalvarGov = async () => {
+  const canApprove = user ? can(user.perfil, 'pops:approve') : false;
+  const canPublish = user ? can(user.perfil, 'pops:upload') : false;
+  const canRespondCr = user ? can(user.perfil, 'pops:approve') : false;
+  const podeEditarGov = user?.perfil === 'gestor' || user?.perfil === 'diretor';
+
+  async function handleSalvarGovernanca() {
     if (!editElaborado.trim() || !editRevisado.trim() || !editAprovado.trim()) {
-      toast.error('Preencha todos os responsáveis.');
+      toast.error('Preencha os responsáveis pela elaboração, revisão e aprovação.');
       return;
     }
     setSalvandoGov(true);
@@ -120,374 +106,213 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Falha ao salvar responsáveis.');
+        throw new Error(err.message || 'Falha ao salvar governança.');
       }
-      toast.success('Responsáveis e assinaturas do POP atualizados com sucesso!');
+      toast.success('Responsáveis de governança atualizados com sucesso!');
       setEditandoGov(false);
-      void refetch();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar.');
+      await refetch();
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao atualizar governança.');
     } finally {
       setSalvandoGov(false);
     }
-  };
+  }
 
-  const handlePublish = async () => {
-    try {
-      await publish.mutateAsync(popId);
-      toast.success('POP enviado para aprovação.');
-      void refetch();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
-    }
-  };
-
-  const handleApprove = async () => {
-    try {
-      const res = await approve.mutateAsync(popId);
-      toast.success('POP aprovado e publicado.');
-      toast.message('Assinatura registrada', {
-        description: `Hash: ${res.assinatura.slice(0, 16)}...`,
-      });
-      void refetch();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
-    }
-  };
-
-  const handleConfirmRead = async () => {
-    try {
-      await confirmRead.mutateAsync(popId);
-      toast.success('Leitura confirmada — evidência registrada na aba Leituras.');
-      void refetch();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
-    }
-  };
-
-  const handleCreateCr = async () => {
-    if (crText.trim().length < 10) {
-      toast.error('Descreva com pelo menos 10 caracteres.');
-      return;
-    }
+  async function handleCreateCr(e: React.FormEvent) {
+    e.preventDefault();
+    if (!crText.trim()) return;
     try {
       await createCr.mutateAsync({ id: popId, descricao: crText });
+      toast.success('Sugestão enviada com sucesso!');
       setCrText('');
-      toast.success('Sugestão enviada ao Gestor/Diretor.');
-      void refetch();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Erro ao enviar sugestão.');
     }
-  };
+  }
 
-  const handleRespond = async (
-    crId: string,
-    status: Exclude<ChangeRequestStatus, 'pendente'>,
-  ) => {
-    const resposta = responseText[crId]?.trim() ?? '';
-    if (resposta.length < 3) {
-      toast.error('Informe uma resposta.');
+  async function handleRespondCr(crId: string, status: 'aprovada' | 'rejeitada') {
+    const resposta = responseText[crId]?.trim();
+    if (!resposta) {
+      toast.error('Informe a justificativa da resposta.');
       return;
     }
     try {
       await respondCr.mutateAsync({ popId, crId, status, resposta });
       toast.success('Sugestão respondida.');
-      setResponseText((s) => ({ ...s, [crId]: '' }));
-      void refetch();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro.');
+      setResponseText((prev) => ({ ...prev, [crId]: '' }));
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Erro ao responder sugestão.');
     }
-  };
+  }
+
+  const docCompleto = data?.pop ? obterConteudoPop(data.pop.codigo) : null;
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-background/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
-        aria-hidden
-      />
-      <aside className="absolute right-0 top-0 flex h-full w-full max-w-2xl flex-col overflow-y-auto border-l border-border bg-background shadow-2xl">
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-background/95 px-5 py-4 backdrop-blur">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <FileText className="h-4 w-4 text-primary" />
-          </div>
-          <div className="min-w-0 flex-1">
-            {isLoading || !data ? (
-              <>
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="mt-2 h-3 w-48" />
-              </>
-            ) : (
-              <>
-                <p className="font-mono text-xs text-muted-foreground">{data.pop.codigo}</p>
-                <h2 className="truncate text-base font-semibold">{data.pop.titulo}</h2>
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <Badge variant={POP_STATUS_VARIANT[data.pop.status]}>
-                    {POP_STATUS_LABEL[data.pop.status]}
-                  </Badge>
-                  <Badge variant="secondary">
-                    {SETOR_LABEL[data.pop.setor] ?? data.pop.setor}
-                  </Badge>
-                  <span className="text-[11px] text-muted-foreground">
-                    Rev. {String(data.pop.versaoAtual).padStart(2, '0')} ·{' '}
-                    {data.pop.periodicidadeRevisaoMeses}m
-                  </span>
-                </div>
-              </>
+        className="flex h-full w-full max-w-3xl flex-col border-l border-border bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-semibold text-primary">
+              {data?.pop.codigo ?? <Skeleton className="h-4 w-20" />}
+            </span>
+            {data && (
+              <Badge variant={POP_STATUS_VARIANT[data.pop.status]}>
+                {POP_STATUS_LABEL[data.pop.status]}
+              </Badge>
+            )}
+            {data && (
+              <Badge variant="secondary">
+                {SETOR_LABEL[data.pop.setor] ?? data.pop.setor}
+              </Badge>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fechar">
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {data && (
+              <Button size="sm" variant="outline" asChild>
+                <a href={`/api/pops/${data.pop.id}/file`} target="_blank" rel="noreferrer">
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Baixar POP em PDF
+                </a>
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {isLoading || !data ? (
-          <div className="space-y-3 p-5">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-24 w-full" />
+          <div className="space-y-4 p-6">
+            <Skeleton className="h-6 w-3/4" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-40 w-full" />
           </div>
         ) : (
-          <div className="flex-1 p-5 space-y-4">
-            {/* Quadro Oficial de Governança: Elaboração, Revisão e Aprovação + Assinatura Seção 5.3 */}
-            <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 text-xs space-y-2.5">
+          <div className="flex-1 space-y-6 overflow-y-auto p-6">
+            <div>
+              <h2 className="text-xl font-bold">{data.pop.titulo}</h2>
+              <p className="text-xs text-muted-foreground">
+                Versão {String(data.pop.versaoAtual).padStart(2, '0')} · Periodicidade de revisão:{' '}
+                {data.pop.periodicidadeRevisaoMeses} meses
+              </p>
+            </div>
+
+            {/* Governança Documental */}
+            <div className="space-y-2 rounded-xl border border-border/80 bg-muted/20 p-4 text-xs">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-primary">
-                  Responsáveis e Assinaturas (Seção 5.3 · RDC 665/2022)
-                </p>
-                {podeEditarGov ? (
-                  !editandoGov ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditandoGov(true)}
-                      className="h-6 gap-1 px-2 text-[10px] text-primary"
-                    >
-                      <Edit2 className="h-3 w-3" />
-                      Alterar / Assinar
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditandoGov(false)}
-                        className="h-6 px-2 text-[10px]"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleSalvarGov}
-                        disabled={salvandoGov}
-                        className="h-6 gap-1 px-2 text-[10px]"
-                      >
-                        <Save className="h-3 w-3" />
-                        Salvar
-                      </Button>
-                    </div>
-                  )
-                ) : (
-                  <Badge variant="secondary" className="gap-1 text-[10px] text-muted-foreground">
-                    <Lock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                    Bloqueado · Apenas Qualidade e Diretor
-                  </Badge>
+                <span className="font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">
+                  Governança Documental (RDC 665/2022 — Seção 5.3)
+                </span>
+                {podeEditarGov && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditandoGov((v) => !v)}
+                    className="h-7 gap-1 text-[11px] text-primary"
+                  >
+                    <Edit2 className="h-3 w-3" />
+                    {editandoGov ? 'Cancelar Edição' : 'Editar Responsáveis'}
+                  </Button>
                 )}
               </div>
 
-              {!editandoGov ? (
-                <div className="grid gap-2.5 sm:grid-cols-3">
-                  <div className="rounded-lg border border-border/80 bg-background p-2.5">
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                      <UserCheck className="h-3 w-3 text-primary" />
-                      Elaborado por
-                    </span>
-                    <p className="mt-0.5 font-semibold text-foreground">
-                      {data.pop.elaboradoPor ?? 'Vanessa Ribeiro (Gestão da Qualidade)'}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border/80 bg-background p-2.5">
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                      <UserCheck className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                      Revisado por
-                    </span>
-                    <p className="mt-0.5 font-semibold text-foreground">
-                      {data.pop.revisadoPor ?? 'Marina Lopes (Responsável Técnica)'}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border/80 bg-background p-2.5">
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
-                      <UserCheck className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                      Aprovado por
-                    </span>
-                    <p className="mt-0.5 font-semibold text-foreground">
-                      {data.pop.aprovadoPorNome ?? 'Pedro Costa (Diretoria)'}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid gap-2.5 sm:grid-cols-3">
+              {editandoGov ? (
+                <div className="space-y-3 pt-2">
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-semibold text-muted-foreground">
-                        Elaborado por
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAssinaturaAlvo({
-                            open: true,
-                            titulo: `Assinatura de Elaboração (${data.pop.codigo})`,
-                            nomePadrao: editElaborado,
-                            funcaoPadrao: 'Elaborador',
-                            onSigned: (resumo) => setEditElaborado(resumo),
-                          })
-                        }
-                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
-                      >
-                        <PenTool className="h-2.5 w-2.5" />
-                        Assinar
-                      </button>
-                    </div>
+                    <label className="text-[11px] font-medium text-foreground">
+                      Elaborado por:
+                    </label>
                     <Input
                       value={editElaborado}
                       onChange={(e) => setEditElaborado(e.target.value)}
-                      className="h-8 text-xs bg-background"
+                      className="h-8 text-xs"
                     />
                   </div>
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-semibold text-muted-foreground">
-                        Revisado por
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAssinaturaAlvo({
-                            open: true,
-                            titulo: `Assinatura de Revisão (${data.pop.codigo})`,
-                            nomePadrao: editRevisado,
-                            funcaoPadrao: 'Revisor Técnico',
-                            onSigned: (resumo) => setEditRevisado(resumo),
-                          })
-                        }
-                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
-                      >
-                        <PenTool className="h-2.5 w-2.5" />
-                        Assinar
-                      </button>
-                    </div>
+                    <label className="text-[11px] font-medium text-foreground">
+                      Revisado por:
+                    </label>
                     <Input
                       value={editRevisado}
                       onChange={(e) => setEditRevisado(e.target.value)}
-                      className="h-8 text-xs bg-background"
+                      className="h-8 text-xs"
                     />
                   </div>
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-semibold text-muted-foreground">
-                        Aprovado por
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAssinaturaAlvo({
-                            open: true,
-                            titulo: `Assinatura de Aprovação (${data.pop.codigo})`,
-                            nomePadrao: editAprovado,
-                            funcaoPadrao: 'Aprovador / Diretoria',
-                            onSigned: (resumo) => setEditAprovado(resumo),
-                          })
-                        }
-                        className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
-                      >
-                        <PenTool className="h-2.5 w-2.5" />
-                        Assinar
-                      </button>
-                    </div>
+                    <label className="text-[11px] font-medium text-foreground">
+                      Aprovado por:
+                    </label>
                     <Input
                       value={editAprovado}
                       onChange={(e) => setEditAprovado(e.target.value)}
-                      className="h-8 text-xs bg-background"
+                      className="h-8 text-xs"
                     />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={handleSalvarGovernanca}
+                      disabled={salvandoGov}
+                      className="h-8 gap-1.5 text-xs"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {salvandoGov ? 'Salvando...' : 'Salvar Responsáveis'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="space-y-0.5 rounded-lg border border-border/60 bg-card p-2.5">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <UserCheck className="h-3.5 w-3.5 text-primary" />
+                      <span>Elaboração:</span>
+                    </div>
+                    <strong className="block truncate text-foreground font-semibold">
+                      {data.pop.elaboradoPor ?? 'Vanessa Ribeiro (Qualidade)'}
+                    </strong>
+                  </div>
+                  <div className="space-y-0.5 rounded-lg border border-border/60 bg-card p-2.5">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      <span>Revisão:</span>
+                    </div>
+                    <strong className="block truncate text-foreground font-semibold">
+                      {data.pop.revisadoPor ?? 'Marina Lopes (RT)'}
+                    </strong>
+                  </div>
+                  <div className="space-y-0.5 rounded-lg border border-border/60 bg-card p-2.5">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <UserCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>Aprovação:</span>
+                    </div>
+                    <strong className="block truncate text-foreground font-semibold">
+                      {data.pop.aprovadoPorNome ?? 'Pedro Costa (Diretor)'}
+                    </strong>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Ações contextuais */}
-            <div className="flex flex-wrap gap-2">
-              {data.versaoVigente && (
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    href={`/api/pops/${data.pop.id}/file`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Abrir PDF Oficial
-                  </a>
-                </Button>
-              )}
-              {canUpload && data.pop.status === 'rascunho' && (
-                <Button size="sm" onClick={handlePublish} disabled={publish.isPending}>
-                  <Send className="h-3.5 w-3.5" />
-                  Enviar para aprovação
-                </Button>
-              )}
-              {isDiretor && data.pop.status === 'aguardando_aprovacao' && (
-                <Button size="sm" onClick={handleApprove} disabled={approve.isPending}>
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Aprovar e assinar
-                </Button>
-              )}
-              {data.pop.status === 'publicado' && (
-                data.leituraConfirmadaPorMim ? (
-                  <Badge variant="success" className="gap-1.5 px-3 py-1.5 text-xs">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Leitura confirmada por você
-                  </Badge>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    onClick={handleConfirmRead}
-                    disabled={confirmRead.isPending}
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                    {confirmRead.isPending ? 'Confirmando...' : 'Confirmar leitura'}
-                  </Button>
-                )
-              )}
-            </div>
-
-            {data.pop.descricao && (
-              <p className="whitespace-pre-line text-sm text-muted-foreground">
-                {data.pop.descricao}
-              </p>
-            )}
-
-            <Tabs defaultValue={data.pop.codigo === 'POP-020' ? 'procedimento' : 'versoes'}>
-              <TabsList
-                className={cn(
-                  'grid w-full',
-                  data.pop.codigo === 'POP-020' ? 'grid-cols-4' : 'grid-cols-3',
-                )}
-              >
-                {data.pop.codigo === 'POP-020' && (
-                  <TabsTrigger value="procedimento">
-                    <FileText className="mr-1.5 h-3.5 w-3.5 text-primary" />
-                    Procedimento
-                  </TabsTrigger>
-                )}
+            <Tabs defaultValue="procedimento">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="procedimento">
+                  <FileText className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                  Procedimento
+                </TabsTrigger>
                 <TabsTrigger value="versoes">
                   <History className="mr-1.5 h-3.5 w-3.5" />
                   Versões
                 </TabsTrigger>
                 <TabsTrigger value="leituras">
                   <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
-                  Leituras por Setor
+                  Leituras
                 </TabsTrigger>
                 <TabsTrigger value="sugestoes">
                   <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
@@ -495,272 +320,162 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                 </TabsTrigger>
               </TabsList>
 
-              {/* Procedimento Oficial na Íntegra (POP-020) */}
-              {data.pop.codigo === 'POP-020' && (
-                <TabsContent value="procedimento" className="space-y-4 pt-1">
-                  <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 p-3">
-                    <div>
-                      <p className="text-xs font-semibold text-primary">
-                        POP-020 — Realização de Assistência Técnica de Equipamentos
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Documento oficial da Assistência Técnica em estrita conformidade com a RDC 665/2022.
-                      </p>
-                    </div>
-                    <Button size="sm" asChild>
-                      <a href={`/api/pops/${data.pop.id}/file`} target="_blank" rel="noreferrer">
-                        <Download className="mr-1.5 h-3.5 w-3.5" />
-                        Abrir PDF Oficial
-                      </a>
-                    </Button>
+              {/* Procedimento Oficial na Íntegra */}
+              <TabsContent value="procedimento" className="space-y-4 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div>
+                    <p className="text-xs font-semibold text-primary">
+                      {docCompleto?.codigo} — {docCompleto?.titulo}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Documento oficial do Sistema de Gestão da Qualidade LinkMed (RDC 665/2022).
+                    </p>
                   </div>
+                  <Button size="sm" asChild>
+                    <a href={`/api/pops/${data.pop.id}/file`} target="_blank" rel="noreferrer">
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      Baixar POP em PDF
+                    </a>
+                  </Button>
+                </div>
 
-                  <div className="space-y-4 max-h-[550px] overflow-y-auto pr-1">
-                    {POP_020_SECOES.map((sec) => (
-                      <div
-                        key={sec.numero}
-                        className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-1.5"
-                      >
-                        <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
-                          {sec.titulo}
-                        </h3>
-                        {sec.paragrafos.map((p, idx) => (
-                          <p key={idx} className="leading-relaxed text-muted-foreground">
-                            {p}
+                <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1">
+                  {docCompleto?.secoes.map((sec) => (
+                    <div
+                      key={sec.numero}
+                      className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-1.5"
+                    >
+                      <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
+                        {sec.titulo}
+                      </h3>
+                      {sec.paragrafos.map((p, idx) => (
+                        <p key={idx} className="leading-relaxed text-muted-foreground">
+                          {p}
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+
+                  {docCompleto && docCompleto.registros.length > 0 && (
+                    <div className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-2">
+                      <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
+                        Registros Aplicáveis (REGs)
+                      </h3>
+                      <div className="space-y-1.5">
+                        {docCompleto.registros.map((r, i) => (
+                          <div
+                            key={i}
+                            className="rounded border border-border/70 bg-muted/20 p-2 text-[11px]"
+                          >
+                            <span className="font-semibold text-primary">{r.identificacao}</span>
+                            <div className="mt-1 text-muted-foreground grid grid-cols-2 gap-1">
+                              <span>Armazenamento: {r.armazenamento}</span>
+                              <span>Acesso: {r.acesso}</span>
+                              <span>Retenção: {r.retencao}</span>
+                              <span>Disposição: {r.disposicao}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {docCompleto && docCompleto.revisoes.length > 0 && (
+                    <div className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-2">
+                      <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
+                        Histórico de Revisões
+                      </h3>
+                      <div className="space-y-1">
+                        {docCompleto.revisoes.map((rev, i) => (
+                          <p key={i} className="text-muted-foreground text-[11px]">
+                            <strong>Rev. {rev.numero} ({rev.data}):</strong> {rev.historico}
                           </p>
                         ))}
                       </div>
-                    ))}
-
-                    {/* Tabela de Registros da Qualidade */}
-                    <div className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-2">
-                      <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
-                        8. CONTROLE DE REGISTROS DA QUALIDADE
-                      </h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-[11px] border border-border">
-                          <thead className="bg-muted text-foreground">
-                            <tr>
-                              <th className="p-2 border border-border">Identificação</th>
-                              <th className="p-2 border border-border">Armazenamento</th>
-                              <th className="p-2 border border-border">Acesso</th>
-                              <th className="p-2 border border-border">Proteção</th>
-                              <th className="p-2 border border-border">Recuperação</th>
-                              <th className="p-2 border border-border">Retenção</th>
-                              <th className="p-2 border border-border">Disposição</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {POP_020_REGISTROS_TABLE.map((row, idx) => (
-                              <tr key={idx} className="border-t border-border">
-                                <td className="p-2 font-mono font-medium border border-border">
-                                  {row.identificacao}
-                                </td>
-                                <td className="p-2 border border-border">{row.armazenamento}</td>
-                                <td className="p-2 border border-border">{row.acesso}</td>
-                                <td className="p-2 border border-border">{row.protecao}</td>
-                                <td className="p-2 border border-border">{row.recuperacao}</td>
-                                <td className="p-2 border border-border">{row.retencao}</td>
-                                <td className="p-2 border border-border">{row.disposicao}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
                     </div>
+                  )}
+                </div>
+              </TabsContent>
 
-                    {/* Histórico de Revisões */}
-                    <div className="rounded-lg border border-border bg-card p-3.5 text-xs space-y-2">
-                      <h3 className="font-bold text-foreground text-xs uppercase tracking-wide">
-                        9. HISTÓRICO DE REVISÕES
-                      </h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-[11px] border border-border">
-                          <thead className="bg-muted text-foreground">
-                            <tr>
-                              <th className="p-2 border border-border">Data</th>
-                              <th className="p-2 border border-border">Nº Revisão</th>
-                              <th className="p-2 border border-border">Histórico das Modificações</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {POP_020_REVISOES.map((rev, idx) => (
-                              <tr key={idx} className="border-t border-border">
-                                <td className="p-2 font-mono border border-border">{rev.data}</td>
-                                <td className="p-2 font-semibold border border-border">{rev.numero}</td>
-                                <td className="p-2 border border-border">{rev.historico}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
-              )}
-
-              {/* Versões */}
               <TabsContent value="versoes" className="space-y-2">
                 {data.versoes.map((v) => (
                   <div
                     key={v.id}
-                    className={cn(
-                      'flex items-start gap-3 rounded-lg border border-border p-3',
-                      v.status === 'vigente' && 'border-primary/30 bg-primary/5',
-                    )}
+                    className="flex items-center justify-between rounded-lg border border-border bg-card p-3 text-xs"
                   >
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted text-[11px] font-semibold">
-                      {String(v.numeroVersao).padStart(2, '0')}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium">{v.arquivoNome}</p>
-                        <Badge
-                          variant={v.status === 'vigente' ? 'success' : 'outline'}
-                          className="text-[10px]"
-                        >
-                          {v.status === 'vigente' ? 'Vigente' : 'Obsoleta'}
-                        </Badge>
-                      </div>
-                      <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
-                        SHA-256: {v.hashArquivo.slice(0, 24)}...
+                    <div>
+                      <p className="font-medium">
+                        Versão {v.numeroVersao} · {v.arquivoNome}
                       </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {(v.arquivoTamanho / 1024 / 1024).toFixed(2)} MB · criada em{' '}
-                        {new Date(v.createdAt).toLocaleDateString('pt-BR')}
-                        {v.publicadoEm &&
-                          ` · publicada em ${new Date(v.publicadoEm).toLocaleDateString('pt-BR')}`}
+                      <p className="font-mono text-[10px] text-muted-foreground">
+                        SHA-256: {v.hashArquivo.slice(0, 16)}...
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm" asChild>
+                    <Button size="sm" variant="outline" asChild>
                       <a
                         href={`/api/pops/${data.pop.id}/file?versionId=${v.id}`}
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <Download className="h-3.5 w-3.5" />
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Baixar PDF
                       </a>
                     </Button>
                   </div>
                 ))}
               </TabsContent>
 
-              {/* Leituras */}
               <TabsContent value="leituras">
-                <ReadReportPanel popId={data.pop.id} canSeeReport />
+                <ReadReportPanel popId={data.pop.id} canSeeReport={Boolean(user && can(user.perfil, 'pops:read:report'))} />
               </TabsContent>
 
-              {/* Sugestões */}
               <TabsContent value="sugestoes" className="space-y-4">
-                <div className="rounded-lg border border-border p-3">
+                <form onSubmit={handleCreateCr} className="space-y-2">
                   <Textarea
-                    placeholder="Descreva a alteração sugerida neste POP..."
+                    placeholder="Descreva a sugestão de melhoria ou alteração para este POP..."
                     value={crText}
                     onChange={(e) => setCrText(e.target.value)}
                     rows={3}
                   />
-                  <div className="mt-2 flex justify-end">
-                    <Button
-                      size="sm"
-                      onClick={handleCreateCr}
-                      disabled={createCr.isPending || crText.trim().length < 10}
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                      Enviar sugestão
+                  <div className="flex justify-end">
+                    <Button type="submit" size="sm" disabled={createCr.isPending}>
+                      <Send className="mr-1.5 h-3.5 w-3.5" />
+                      Enviar Sugestão
                     </Button>
                   </div>
-                </div>
+                </form>
 
                 <Separator />
 
-                {data.changeRequests.length === 0 ? (
-                  <p className="py-6 text-center text-xs text-muted-foreground">
-                    Nenhuma sugestão registrada.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {data.changeRequests.map((cr) => {
-                      const isPendente = cr.status === 'pendente';
-                      return (
-                        <div key={cr.id} className="rounded-lg border border-border p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <Badge
-                              variant={
-                                cr.status === 'aprovada'
-                                  ? 'success'
-                                  : cr.status === 'rejeitada'
-                                    ? 'destructive'
-                                    : 'warning'
-                              }
-                            >
-                              {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
-                            </Badge>
-                            <span className="text-[11px] text-muted-foreground">
-                              {new Date(cr.createdAt).toLocaleString('pt-BR')}
-                            </span>
-                          </div>
-                          <p className="mt-2 whitespace-pre-line text-sm">{cr.descricao}</p>
-
-                          {cr.resposta && (
-                            <div className="mt-3 rounded-lg bg-muted/50 p-2.5">
-                              <p className="text-[11px] font-medium text-muted-foreground">
-                                Resposta
-                              </p>
-                              <p className="mt-0.5 whitespace-pre-line text-sm">{cr.resposta}</p>
-                            </div>
-                          )}
-
-                          {isPendente && (isDiretor || isGestor) && (
-                            <div className="mt-3 space-y-2">
-                              <Textarea
-                                placeholder="Resposta do Gestor/Diretor..."
-                                value={responseText[cr.id] ?? ''}
-                                onChange={(e) =>
-                                  setResponseText((s) => ({ ...s, [cr.id]: e.target.value }))
-                                }
-                                rows={2}
-                              />
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleRespond(cr.id, 'rejeitada')}
-                                  disabled={respondCr.isPending}
-                                >
-                                  Rejeitar
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleRespond(cr.id, 'aprovada')}
-                                  disabled={respondCr.isPending}
-                                >
-                                  Aprovar
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="space-y-3">
+                  {data.changeRequests.map((cr) => (
+                    <div
+                      key={cr.id}
+                      className="rounded-lg border border-border bg-card p-3 text-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Sugestão #{cr.id.slice(0, 8)}</span>
+                        <Badge
+                          variant={
+                            cr.status === 'aprovada'
+                              ? 'success'
+                              : cr.status === 'rejeitada'
+                              ? 'destructive'
+                              : 'warning'
+                          }
+                        >
+                          {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground">{cr.descricao}</p>
+                    </div>
+                  ))}
+                </div>
               </TabsContent>
             </Tabs>
           </div>
         )}
-      </aside>
-
-      {/* Modal de Assinatura Eletrônica LGPD na Tela */}
-      <SignaturePadDialog
-        open={assinaturaAlvo.open}
-        onOpenChange={(open) => setAssinaturaAlvo((prev) => ({ ...prev, open }))}
-        documentoCodigo={data?.pop.codigo ?? 'POP'}
-        documentoTitulo={assinaturaAlvo.titulo}
-        signatarioNomePadrao={assinaturaAlvo.nomePadrao}
-        signatarioIdPadrao={user?.id}
-        funcaoPadrao={assinaturaAlvo.funcaoPadrao}
-        onConfirm={(reg) => assinaturaAlvo.onSigned(reg.resumoFormatado)}
-      />
+      </div>
     </div>
   );
 }

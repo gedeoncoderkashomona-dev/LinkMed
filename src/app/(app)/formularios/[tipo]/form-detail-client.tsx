@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -173,6 +173,7 @@ function criarValoresIniciais(
 }
 
 export function FormDetailClient({ tipo }: { tipo: string }) {
+  const router = useRouter();
   const def = getFormDef(tipo);
   const searchParams = useSearchParams();
   const osParam = searchParams.get('os');
@@ -1700,7 +1701,12 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       {/* Modal de Impressão da Etiqueta Física do Equipamento (Seção 5.4) */}
       <EquipmentLabelPrintDialog
         open={Boolean(etiquetaPrintDados)}
-        onOpenChange={(open) => !open && setEtiquetaPrintDados(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEtiquetaPrintDados(null);
+            router.push('/equipamentos');
+          }
+        }}
         dados={etiquetaPrintDados}
       />
 

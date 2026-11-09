@@ -30,6 +30,8 @@ interface SignaturePadDialogProps {
   documentoCodigo: string;
   tituloModal?: string;
   documentoTitulo?: string;
+  /** Se true, exige desenho obrigatório na tela (oculta botão de credencial rápida) */
+  exigirRubricaManual?: boolean;
   onConfirmSignature?: (registro: RegistroAssinaturaLgpd) => void;
   onConfirm?: (registro: RegistroAssinaturaLgpd) => void;
 }
@@ -46,6 +48,7 @@ export function SignaturePadDialog({
   documentoCodigo,
   tituloModal,
   documentoTitulo,
+  exigirRubricaManual = false,
   onConfirmSignature,
   onConfirm,
 }: SignaturePadDialogProps) {
@@ -141,6 +144,11 @@ export function SignaturePadDialog({
       return;
     }
 
+    if (exigirRubricaManual && (!temTraço || usarApenasCredencial)) {
+      setErro('Para treinamentos externos com hospitais/clientes, a coleta da rubrica manual na tela é obrigatória.');
+      return;
+    }
+
     let rubricaDataUrl: string | null = null;
     if (!usarApenasCredencial && temTraço && canvasRef.current) {
       rubricaDataUrl = canvasRef.current.toDataURL('image/png');
@@ -184,38 +192,32 @@ export function SignaturePadDialog({
             <Badge variant="outline" className="font-mono text-[10px]">
               {documentoCodigo}
             </Badge>
+            {exigirRubricaManual && (
+              <Badge variant="secondary" className="text-[10px] text-amber-700 dark:text-amber-300">
+                Rubrica Manual Obrigatória
+              </Badge>
+            )}
           </div>
-          <DialogTitle className="mt-1">
-            {tituloResolvido}
-          </DialogTitle>
-          <DialogDescription>
-            Assine no quadro abaixo com o dedo, caneta touch ou mouse para gerar o selo criptográfico de auditoria.
+          <DialogTitle className="text-base font-semibold">{tituloResolvido}</DialogTitle>
+          <DialogDescription className="text-xs">
+            Signatário: <strong>{nomeResolvido}</strong> ({funcaoResolvida})
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           {erro && (
-            <p className="rounded-lg bg-rose-500/10 p-2.5 text-xs font-medium text-rose-600">
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-600 dark:text-rose-400">
               {erro}
-            </p>
+            </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-2.5 text-xs">
-            <div>
-              <span className="text-muted-foreground">Signatário:</span>
-              <p className="font-semibold text-foreground truncate">{nomeResolvido || '—'}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Função / Perfil:</span>
-              <p className="font-semibold text-foreground truncate">{funcaoResolvida || '—'}</p>
-            </div>
-          </div>
-
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-medium flex items-center gap-1.5 text-foreground">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <PenTool className="h-3.5 w-3.5 text-primary" />
-                Quadro de Rubrica Digital (Toque ou Mouse)
+                {exigirRubricaManual
+                  ? 'Rubrica Manual na Tela (Touch ou Mouse) *'
+                  : 'Rubrica Manual na Tela (Touch ou Mouse)'}
               </span>
               <Button
                 type="button"
@@ -268,14 +270,18 @@ export function SignaturePadDialog({
           >
             Cancelar
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => handleConfirmar(true)}
-          >
-            Assinar via Credencial Rápida
-          </Button>
+
+          {!exigirRubricaManual && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleConfirmar(true)}
+            >
+              Assinar via Credencial Rápida
+            </Button>
+          )}
+
           <Button
             type="button"
             size="sm"
@@ -283,7 +289,7 @@ export function SignaturePadDialog({
             className="gap-1.5"
           >
             <CheckCircle2 className="h-4 w-4" />
-            Confirmar Assinatura na Tela
+            Confirmar Rubrica na Tela
           </Button>
         </DialogFooter>
       </DialogContent>
