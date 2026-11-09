@@ -388,7 +388,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   }
 
   const secoesBrutas = getSecoes(def, subtipo);
-  const secoes = React.useMemo(() => {
+  const secoes = (() => {
     if (def.tipo !== 'etapas-manutencao' || !user) return secoesBrutas;
     if (user.perfil === 'adm') {
       const camposAdm = new Set([
@@ -433,7 +433,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         .filter((s) => s.campos.length > 0);
     }
     return secoesBrutas;
-  }, [def.tipo, secoesBrutas, user]);
+  })();
   const statusPrevia = avaliarConformidade(def, subtipo, dados);
   const podeEditarGovernanca = canEditGovernance(user?.perfil);
 
