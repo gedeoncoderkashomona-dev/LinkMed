@@ -631,12 +631,9 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
             osState = admMarcarEtiquetaBrancaNoReg016(criada, { ...atorAtual, perfil: 'adm' });
           } else if (def.tipo === 'limpeza-equipamento' && osState) {
             let nextOs = osState;
-            if (nextOs.passoAtual === 'A1_CRIADA_NO_REG022') {
-              nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, {
-                usuarioId: 'usr-adm',
-                usuarioNome: 'Setor Administrativo (ADM)',
-                perfil: 'adm',
-              });
+            // A etiqueta BRANCA é ato exclusivo do ADM; a AT só continua depois que o ADM a registrou.
+            if (nextOs.passoAtual === 'A1_CRIADA_NO_REG022' && atorAtual.perfil === 'adm') {
+              nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
             }
             if (nextOs.passoAtual === 'A2_BRANCA_NOTIFICA_AT') {
               nextOs = confirmarNotificacaoSetor(nextOs, { ...atorAtual, perfil: 'tecnico' });

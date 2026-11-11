@@ -1,27 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
+import { resolverSegredo } from '@/infra/crypto/secrets';
+
 const ACCESS_COOKIE = 'ro_access';
 const encoder = new TextEncoder();
 
 /**
  * Middleware de proteção:
- *  - Modo Manutenção Automático durante atualizações de código:
- *    Se NEXT_PUBLIC_MAINTENANCE_MODE não for explicitamente 'false', ativa automaticamente a tela de manutenção.
- *    Visitantes e clientes veem a tela estilizada da Linkmed.
- *    A equipe e testadores podem entrar através do botão de bypass ou ?bypass=linkmed2026.
  *  - /login libera se não houver token; redireciona pra /dashboard se houver
  *  - rotas (app) exigem token válido; senão vão pra /login
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get(ACCESS_COOKIE)?.value;
-  const isProd = process.env.NODE_ENV === 'production';
-  const rawSecret = process.env.JWT_ACCESS_SECRET;
-  if (isProd && !rawSecret) {
-    throw new Error('JWT_ACCESS_SECRET é obrigatório em produção.');
-  }
-  const accessSecret = rawSecret ?? 'dev-access-secret-troque-em-producao-000000000000';
+  const accessSecret = resolverSegredo('JWT_ACCESS_SECRET');
 
   const isPublicAsset =
     pathname.startsWith('/_next') ||

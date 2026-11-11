@@ -48,6 +48,15 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+function escapeHtml(str: unknown): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) {
   const { data } = useFormsOverview();
   const allRecords = React.useMemo(() => data?.records ?? [], [data?.records]);
@@ -151,13 +160,15 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
       return;
     }
 
-    const safeOs = osCtx.numeroOs;
-    const safeCliente = osCtx.cliente || '—';
-    const safeEquip = osCtx.equipamento || '—';
-    const safeMarca = osCtx.marca || '—';
-    const safeModelo = osCtx.modelo || '—';
-    const safeSerie = osCtx.numeroSerie || '—';
-    const safeData = new Date().toLocaleDateString('pt-BR');
+    const safeOs = escapeHtml(osCtx.numeroOs);
+    const safeCliente = escapeHtml(osCtx.cliente || '—');
+    const safeEquip = escapeHtml(osCtx.equipamento || '—');
+    const safeMarca = escapeHtml(osCtx.marca || '—');
+    const safeModelo = escapeHtml(osCtx.modelo || '—');
+    const safeSerie = escapeHtml(osCtx.numeroSerie || '—');
+    const safeTagColor = escapeHtml(osCtx.tagColor);
+    const safeOsStatus = escapeHtml(osCtx.osStatus);
+    const safeData = escapeHtml(new Date().toLocaleDateString('pt-BR'));
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -222,7 +233,7 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
     </div>
     <div class="field">
       <div class="field-label">Etiqueta Atual</div>
-      <div class="field-val">${osCtx.tagColor} — ${osCtx.osStatus}</div>
+      <div class="field-val">${safeTagColor} — ${safeOsStatus}</div>
     </div>
     <div class="field">
       <div class="field-label">Data de Emissão</div>
@@ -236,17 +247,22 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
       const def = FORM_DEFS.find(f => f.tipo === rec.tipo);
       const d = rec.dados || {};
       const chaves = Object.keys(d).filter(k => k !== 'numero_os' && !k.startsWith('__'));
+      const safeReg = escapeHtml(def?.reg || rec.tipo);
+      const safeTitulo = escapeHtml(def?.titulo || rec.tipo);
+      const safeDataRef = escapeHtml(rec.dataRef);
       return `
         <div class="record-card">
           <div class="record-header">
-            <span class="record-title">${def?.reg || rec.tipo} — ${def?.titulo || rec.tipo}</span>
-            <span class="record-date">Data: ${rec.dataRef}</span>
+            <span class="record-title">${safeReg} — ${safeTitulo}</span>
+            <span class="record-date">Data: ${safeDataRef}</span>
           </div>
           <div class="record-grid">
             ${chaves.slice(0, 8).map(k => {
               const val = d[k];
               const strVal = typeof val === 'boolean' ? (val ? 'Sim' : 'Não') : String(val ?? '—');
-              return `<div><strong>${k.replace(/_/g, ' ')}:</strong> ${strVal}</div>`;
+              const safeKey = escapeHtml(k.replace(/_/g, ' '));
+              const safeVal = escapeHtml(strVal);
+              return `<div><strong>${safeKey}:</strong> ${safeVal}</div>`;
             }).join('')}
           </div>
         </div>

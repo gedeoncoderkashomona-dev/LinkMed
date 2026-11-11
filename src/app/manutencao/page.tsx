@@ -22,28 +22,8 @@ export default function ManutencaoPage() {
   React.useEffect(() => {
     router.replace('/login');
   }, [router]);
-  const [showBypassInput, setShowBypassInput] = React.useState(false);
-  const [bypassKey, setBypassKey] = React.useState('');
-  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
-  function handleBypass(e: React.FormEvent) {
-    e.preventDefault();
-    setErrorMsg(null);
-    if (
-      bypassKey.trim() === 'linkmed2026' ||
-      bypassKey.trim() === '2026' ||
-      bypassKey.trim() === 'adm' ||
-      bypassKey.trim() === 'linkmed'
-    ) {
-      document.cookie = 'ro_bypass_maintenance=true; path=/; max-age=86400';
-      router.push('/login');
-    } else {
-      setErrorMsg('Código de liberação inválido. Use a credencial da equipe técnica.');
-    }
-  }
-
-  function liberarAcessoRapido() {
-    document.cookie = 'ro_bypass_maintenance=true; path=/; max-age=86400';
+  function irParaLogin() {
     router.push('/login');
   }
 
@@ -167,47 +147,25 @@ export default function ManutencaoPage() {
 
         {/* Botão de Acesso para Equipe / Testes */}
         <div className="mt-6 flex flex-col items-center gap-3">
-          {!showBypassInput ? (
-            <div className="flex flex-wrap items-center gap-2.5 justify-center">
-              <Button
-                variant="default"
-                className="bg-[#307D54] hover:bg-[#256342] text-white font-semibold text-xs h-9 px-5 shadow-md shadow-[#307D54]/25 border border-emerald-500/30"
-                onClick={liberarAcessoRapido}
-              >
-                <KeyRound className="h-3.5 w-3.5 mr-1.5" />
-                Acessar Plataforma (Equipe & Testes)
-              </Button>
+          <div className="flex flex-wrap items-center gap-2.5 justify-center">
+            <Button
+              variant="default"
+              className="bg-[#307D54] hover:bg-[#256342] text-white font-semibold text-xs h-9 px-5 shadow-md shadow-[#307D54]/25 border border-emerald-500/30"
+              onClick={irParaLogin}
+            >
+              <KeyRound className="h-3.5 w-3.5 mr-1.5" />
+              Ir para o Login
+            </Button>
 
-              <Button
-                variant="outline"
-                className="border-[#1b3427] bg-[#0c1812]/70 hover:bg-[#13271d] text-[#c9e4d6] text-xs h-9 px-3.5"
-                onClick={() => window.location.reload()}
-              >
-                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                Atualizar Página
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleBypass} className="flex items-center gap-2 w-full max-w-sm">
-              <Input
-                type="password"
-                placeholder="Código de liberação"
-                value={bypassKey}
-                onChange={(e) => setBypassKey(e.target.value)}
-                className="bg-[#0c1812] border-[#1b3427] text-white text-xs h-8 placeholder:text-muted-foreground"
-              />
-              <Button type="submit" size="sm" className="bg-[#307D54] hover:bg-[#256342] text-white text-xs h-8">
-                Entrar
-              </Button>
-            </form>
-          )}
-
-          {errorMsg && (
-            <p className="text-xs text-rose-400 flex items-center gap-1">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {errorMsg}
-            </p>
-          )}
+            <Button
+              variant="outline"
+              className="border-[#1b3427] bg-[#0c1812]/70 hover:bg-[#13271d] text-[#c9e4d6] text-xs h-9 px-3.5"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Atualizar Página
+            </Button>
+          </div>
 
           <p className="text-[11px] text-[#638b78]">
             Equipe autorizada pode acessar o painel diretamente pelo botão acima.

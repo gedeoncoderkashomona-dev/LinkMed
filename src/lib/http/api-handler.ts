@@ -53,11 +53,12 @@ export function apiHandler<T, P = any>(handler: Handler<T, P>) {
       }
       // eslint-disable-next-line no-console
       console.error(`[api][${meta.method} ${meta.route}] erro inesperado:`, err);
+      const isDev = process.env.NODE_ENV === 'development';
       return NextResponse.json(
         {
           error: 'INTERNAL_ERROR',
           message: 'Erro interno do servidor ao processar a solicitação.',
-          details: err instanceof Error ? { reason: err.message } : null,
+          details: isDev && err instanceof Error ? { reason: err.message } : null,
           ...meta,
         },
         { status: 500 },

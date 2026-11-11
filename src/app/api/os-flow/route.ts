@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
-import { z } from 'zod';
 
+import { ForbiddenError, ValidationError } from '@/core/domain/errors';
+import { validarTransicaoOsNoServidor } from '@/core/domain/forms/os-flow-guard';
 import {
   normalizarNumeroOs,
   type OrdemServicoFluxoState,
@@ -8,9 +9,29 @@ import {
 import { supabaseAdmin } from '@/infra/db/supabase/client';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { apiHandler } from '@/lib/http/api-handler';
-import { ValidationError } from '@/core/domain/errors';
 
 export const runtime = 'nodejs';
+
+async function carregarEstadoAtual(norm: string): Promise<OrdemServicoFluxoState | null> {
+  // 1. Tabela dedicada os_fluxo
+  const { data: directData, error: directError } = await supabaseAdmin
+    .from('os_fluxo')
+    .select('estado')
+    .eq('numero_os_normalizado', norm)
+    .maybeSingle();
+  if (!directError && directData?.estado) return directData.estado as OrdemServicoFluxoState;
+
+  // 2. Fallback audit_logs
+  const { data: auditData } = await supabaseAdmin
+    .from('audit_logs')
+    .select('dados_depois')
+    .eq('entidade', '__db_os_fluxo__')
+    .eq('entidade_id', norm)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (auditData?.dados_depois as OrdemServicoFluxoState | undefined) ?? null;
+}
 
 export const GET = apiHandler(async (req: NextRequest) => {
   await requireAuth();
@@ -19,34 +40,8 @@ export const GET = apiHandler(async (req: NextRequest) => {
 
   // Caso 1: Buscar uma OS específica
   if (osParam && allParam !== 'true') {
-    const norm = normalizarNumeroOs(osParam);
-
-    // 1. Tentar tabela os_fluxo
-    const { data: directData, error: directError } = await supabaseAdmin
-      .from('os_fluxo')
-      .select('estado')
-      .eq('numero_os_normalizado', norm)
-      .maybeSingle();
-
-    if (!directError && directData?.estado) {
-      return { os: directData.estado as OrdemServicoFluxoState };
-    }
-
-    // 2. Fallback audit_logs
-    const { data: auditData } = await supabaseAdmin
-      .from('audit_logs')
-      .select('dados_depois')
-      .eq('entidade', '__db_os_fluxo__')
-      .eq('entidade_id', norm)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (auditData?.dados_depois) {
-      return { os: auditData.dados_depois as OrdemServicoFluxoState };
-    }
-
-    return { os: null };
+    const os = await carregarEstadoAtual(normalizarNumeroOs(osParam));
+    return { os };
   }
 
   // Caso 2: Listar todas as OS salvas
@@ -81,20 +76,45 @@ export const GET = apiHandler(async (req: NextRequest) => {
   return { ordens: Array.from(map.values()) };
 });
 
+const MAX_BODY_BYTES = 512 * 1024;
+
 export const POST = apiHandler(async (req: NextRequest) => {
   const auth = await requireAuth();
-  const rawBody = (await req.json()) as Partial<OrdemServicoFluxoState>;
 
-  if (!rawBody || !rawBody.numeroOs) {
+  const rawText = await req.text();
+  if (rawText.length > MAX_BODY_BYTES) {
+    throw new ValidationError('Payload do fluxo da OS acima do limite permitido.');
+  }
+  let rawBody: Partial<OrdemServicoFluxoState>;
+  try {
+    rawBody = JSON.parse(rawText) as Partial<OrdemServicoFluxoState>;
+  } catch {
+    throw new ValidationError('JSON inválido.');
+  }
+
+  if (!rawBody || typeof rawBody.numeroOs !== 'string' || !rawBody.numeroOs.trim()) {
     throw new ValidationError('O campo numeroOs é obrigatório para salvar o fluxo da OS.');
   }
 
   const norm = normalizarNumeroOs(rawBody.numeroOs);
+
+  // Autorização no servidor: perfil, setor responsável e integridade do histórico.
+  // Nunca confia no estado enviado pelo navegador.
+  const atual = await carregarEstadoAtual(norm);
+  const guarda = validarTransicaoOsNoServidor({
+    perfil: auth.perfil,
+    anterior: atual,
+    proximo: rawBody as OrdemServicoFluxoState,
+  });
+  if (!guarda.permitido) {
+    throw new ForbiddenError(guarda.motivo ?? 'Transição da OS não autorizada para o seu perfil.');
+  }
+
   const agoraIso = new Date().toISOString();
   const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
   const userAgent = req.headers.get('user-agent') ?? 'browser';
 
-  // 1. Tentar upsert na tabela os_fluxo
+  // 1. Upsert na tabela os_fluxo
   const { error: directError } = await supabaseAdmin.from('os_fluxo').upsert(
     {
       numero_os: rawBody.numeroOs,
@@ -121,4 +141,3 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   return { ok: true, directTableOk: !directError, numeroOs: rawBody.numeroOs };
 });
-
