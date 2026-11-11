@@ -71,7 +71,7 @@ describe('Segurança no Servidor: Guarda de Integridade de OS (os-flow-guard)', 
     });
 
     expect(resultado.permitido).toBe(false);
-    expect(resultado.motivo).toMatch(/não pode criar Ordens de Serviço/i);
+    expect(resultado.motivo).toMatch(/não tem permissão para criar Ordens de Serviço/i);
   });
 
   it('bloqueia adulteração do número da OS entre requisições', () => {

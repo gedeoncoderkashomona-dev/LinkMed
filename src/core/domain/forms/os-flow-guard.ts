@@ -62,7 +62,7 @@ export function validarTransicaoOsNoServidor(params: {
       return negar('Uma OS nova deve iniciar em andamento.');
     }
     if (!supervisor && perfil !== 'adm' && perfil !== 'tecnico') {
-      return negar('Seu perfil não pode criar Ordens de Serviço.');
+      return negar('Você não tem permissão para criar Ordens de Serviço.');
     }
     return { permitido: true };
   }
@@ -113,10 +113,10 @@ export function validarTransicaoOsNoServidor(params: {
 
     if (ev.tipo === 'CANCELAMENTO') {
       if (!supervisor && perfil !== 'adm') {
-        return negar('Apenas ADM, Gestor ou Diretor podem cancelar uma OS.');
+        return negar('Você não tem permissão para cancelar esta Ordem de Serviço.');
       }
     } else if (ev.tipo === 'REABERTURA') {
-      if (perfil === 'estoquista') return negar('O Almoxarifado não pode reabrir uma OS.');
+      if (perfil === 'estoquista') return negar('Você não tem permissão para reabrir esta Ordem de Serviço.');
     } else {
       if (finalizadaOuCancelada && anterior.estadoGeral === 'cancelada') {
         return negar('OS cancelada: reabra a OS antes de continuar o fluxo.');
@@ -124,7 +124,7 @@ export function validarTransicaoOsNoServidor(params: {
       if (autor !== 'sistema' && !supervisor) {
         if (!meuSetor || String(ev.setorPendenteAnterior) !== meuSetor) {
           return negar(
-            `Etapa sob responsabilidade do setor ${String(ev.setorPendenteAnterior)}. Aguardando ação do login correspondente.`,
+            `Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor ${String(ev.setorPendenteAnterior)}.`,
           );
         }
       }

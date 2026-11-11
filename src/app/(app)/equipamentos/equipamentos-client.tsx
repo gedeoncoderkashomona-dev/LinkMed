@@ -95,9 +95,20 @@ function salvarFluxoStorage(state: OrdemServicoFluxoState) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(state),
-  }).catch((err) => {
-    console.warn('Sincronização de OS no servidor em background:', err);
-  });
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+        if (res.status === 403) {
+          toast.error('Acesso não permitido', {
+            description: payload?.message || 'Você não tem permissão para realizar esta etapa.',
+          });
+        }
+      }
+    })
+    .catch((err) => {
+      console.warn('Sincronização de OS no servidor em background:', err);
+    });
 }
 
 function carregarFluxoStorage(numeroOs?: string): OrdemServicoFluxoState | null {
@@ -611,7 +622,7 @@ export function EquipamentosClient() {
               <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
                 <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                 <span>
-                  Etapa sob responsabilidade do setor <strong>{SETOR_COMPETENCIA_MAP[setorDoPasso]}</strong>. Aguardando ação do login correspondente.
+                  Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor <strong>{SETOR_COMPETENCIA_MAP[setorDoPasso]}</strong>.
                 </span>
               </div>
             ) : (

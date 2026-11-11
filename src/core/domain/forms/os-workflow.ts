@@ -492,7 +492,7 @@ function validarPermissaoSetor(
   const setorAtor = mapa[ator.perfil];
   if (!setorAtor || !setoresPermitidos.includes(setorAtor)) {
     throw new Error(
-      `Ação restrita ao setor ${setoresPermitidos.join(' ou ')}. Seu perfil atual (${ator.perfil}) não pode executar esta etapa.`,
+      `Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor ${setoresPermitidos.join(' ou ')}.`,
     );
   }
 }
