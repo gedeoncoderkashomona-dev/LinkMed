@@ -75,16 +75,21 @@ import {
 import {
   aggregateServiceOrders,
   admMarcarEtiquetaBrancaNoReg016,
+  atFinalizarServicoComEtiquetaVerde,
   atPreencherItem5Reg016,
   atRegistrarReg034,
   confirmarNotificacaoSetor,
   criarOsViaReg022,
-  hydrateFormFieldsFromOs,
   normalizarNumeroOs,
   TAG_SPECS,
   type OrdemServicoFluxoState,
   type ServiceOrderContext,
 } from '@/core/domain/forms/os-workflow';
+import {
+  hydrateFormFieldsFromOsFluxo,
+  mergeOsFluxoIntoServiceOrders,
+  osDeveSincronizarReg016,
+} from '@/core/domain/forms/os-reg016-sync';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import {
   ApiValidationError,
@@ -92,6 +97,8 @@ import {
   useCreateNc,
   useFormRecords,
   useFormsOverview,
+  useOsFlowList,
+  useSaveOsFlow,
 } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
 
@@ -187,7 +194,9 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   const { data: user } = useCurrentUser();
   const { data: recordsData, isLoading } = useFormRecords(tipo);
   const { data: overviewData } = useFormsOverview();
+  const { data: osFlowData } = useOsFlowList();
   const createRecord = useCreateFormRecord();
+  const saveOsFlow = useSaveOsFlow();
   const createNc = useCreateNc();
 
   const [subtipo, setSubtipo] = React.useState<string | null>(() => {
@@ -271,8 +280,12 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   }, [def, subtipo, user?.nomeCompleto, user?.perfil, searchParams]);
 
   const ordensServico = React.useMemo(
-    () => aggregateServiceOrders(overviewData?.records ?? []),
-    [overviewData?.records],
+    () =>
+      mergeOsFluxoIntoServiceOrders(
+        osFlowData?.ordens ?? [],
+        aggregateServiceOrders(overviewData?.records ?? []),
+      ),
+    [osFlowData?.ordens, overviewData?.records],
   );
 
   // Lista consolidada de instrumentos do REG-015 (17 da planilha LinkMed + novos incluídos)
@@ -304,10 +317,43 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     return [...base, ...extras];
   }, [def?.tipo, recordsData?.records]);
 
+  const hydratedFluxoSigRef = React.useRef<string>('');
+
+  const buscarRegistrosPorOs = React.useCallback(
+    (numeroOs: string) => {
+      const alvo = normalizarNumeroOs(numeroOs);
+      const lista = overviewData?.records ?? [];
+      const encontrar = (t: string) =>
+        lista.find(
+          (r) =>
+            r.tipo === t &&
+            normalizarNumeroOs(String(r.dados?.numero_os ?? '')) === alvo,
+        ) ?? null;
+      return {
+        reg016RecordExistente: encontrar('etapas-manutencao'),
+        reg035RecordExistente: encontrar('checklist-manutencao'),
+        reg022RecordExistente: encontrar('inspecao-recebimento'),
+        reg030RecordExistente: encontrar('verificacao-calibracao'),
+      };
+    },
+    [overviewData?.records],
+  );
+
   const aplicarContextoOs = React.useCallback(
-    (osCtx: ServiceOrderContext) => {
+    (osCtx: ServiceOrderContext, options?: { silencioso?: boolean }) => {
       if (!def) return;
-      const herdados = hydrateFormFieldsFromOs(def.tipo, osCtx);
+      const normOs = normalizarNumeroOs(osCtx.numeroOs || osCtx.chave);
+      const osFluxo =
+        (osFlowData?.ordens ?? []).find(
+          (o) => normalizarNumeroOs(o.numeroOs) === normOs,
+        ) ?? null;
+      const relacionados = buscarRegistrosPorOs(normOs);
+      const herdados = hydrateFormFieldsFromOsFluxo(def.tipo, osCtx, {
+        osFluxo,
+        ...relacionados,
+      });
+
+      hydratedFluxoSigRef.current = `${osCtx.chave}:${osFluxo?.atualizadaEm ?? ''}:${relacionados.reg016RecordExistente?.id ?? ''}`;
       setOsSelecionada(osCtx.chave);
       setDados((prev) => {
         const next: Record<string, unknown> = {
@@ -317,7 +363,13 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
           modelo: osCtx.modelo || prev.modelo,
           etiqueta_atual: osCtx.tagColor,
         };
-        if (def.tipo === 'etapas-manutencao' && osCtx.marca) {
+        if (
+          def.tipo === 'etapas-manutencao' &&
+          !next.item5_marca &&
+          osCtx.marca &&
+          osCtx.tagColor !== 'RED' &&
+          osCtx.item5Liberado !== false
+        ) {
           const m = osCtx.marca.toUpperCase();
           if (m.includes('CARDIOS')) next.item5_marca = 'Cardios';
           else if (m.includes('TEB')) next.item5_marca = 'TEB';
@@ -331,23 +383,37 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         else if (m.includes('teb')) setSubtipo('teb');
         else if (m.includes('cardios')) setSubtipo('cardios');
       }
-      toast.success(`Contexto da ${osCtx.numeroOs} carregado!`, {
-        description: `${osCtx.equipamento || 'Equipamento'} · Cliente: ${osCtx.cliente || '—'}`,
-      });
+      if (!options?.silencioso) {
+        toast.success(`Contexto da ${osCtx.numeroOs} carregado!`, {
+          description: `${osCtx.equipamento || 'Equipamento'} · Cliente: ${osCtx.cliente || '—'}`,
+        });
+      }
     },
-    [def],
+    [def, osFlowData?.ordens, buscarRegistrosPorOs],
   );
 
   React.useEffect(() => {
-    if (!osParam || !ordensServico.length || osSelecionada) return;
+    if (!osParam || !ordensServico.length) return;
     const encontrada = ordensServico.find(
       (o) =>
         o.chave === osParam ||
         o.numeroOs.toLowerCase() === osParam.toLowerCase() ||
         o.numeroSerie.toLowerCase() === osParam.toLowerCase(),
     );
-    if (encontrada) aplicarContextoOs(encontrada);
-  }, [osParam, ordensServico, osSelecionada, aplicarContextoOs]);
+    if (!encontrada) return;
+
+    const normOs = normalizarNumeroOs(encontrada.numeroOs || encontrada.chave);
+    const osFluxo =
+      (osFlowData?.ordens ?? []).find(
+        (o) => normalizarNumeroOs(o.numeroOs) === normOs,
+      ) ?? null;
+    const reg016Existente = buscarRegistrosPorOs(normOs).reg016RecordExistente;
+    const sig = `${encontrada.chave}:${osFluxo?.atualizadaEm ?? ''}:${reg016Existente?.id ?? ''}`;
+
+    if (!osSelecionada || (osSelecionada === encontrada.chave && hydratedFluxoSigRef.current !== sig)) {
+      aplicarContextoOs(encontrada, { silencioso: Boolean(osSelecionada) });
+    }
+  }, [osParam, ordensServico, osSelecionada, osFlowData?.ordens, buscarRegistrosPorOs, aplicarContextoOs]);
 
   const osContextoAtual = ordensServico.find((o) => o.chave === osSelecionada) ?? null;
 
@@ -599,11 +665,12 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       if (numOsSalvo) {
         try {
           const storageKey = `regulaon:os_fluxo_v2:${numOsSalvo}`;
-          let osState: OrdemServicoFluxoState | null = null;
-          if (typeof window !== 'undefined') {
-            const rawLocal = localStorage.getItem(storageKey);
-            if (rawLocal) osState = JSON.parse(rawLocal) as OrdemServicoFluxoState;
-          }
+          const numOsNorm = normalizarNumeroOs(numOsSalvo);
+          let osState: OrdemServicoFluxoState | null =
+            (osFlowData?.ordens ?? []).find(
+              (o) => normalizarNumeroOs(o.numeroOs) === numOsNorm,
+            ) ?? null;
+
           if (!osState) {
             try {
               const r = await fetch(`/api/os-flow?os=${encodeURIComponent(numOsSalvo)}`);
@@ -612,6 +679,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
             } catch {
               // ignora falha de rede
             }
+          }
+          if (!osState && typeof window !== 'undefined') {
+            const rawLocal = localStorage.getItem(storageKey);
+            if (rawLocal) osState = JSON.parse(rawLocal) as OrdemServicoFluxoState;
           }
 
           if (def.tipo === 'inspecao-recebimento') {
@@ -626,30 +697,73 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                 acessorios: String(dados.acessorios ?? ''),
                 relatoCliente: String(dados.relato_cliente ?? ''),
               },
-              ator: { ...atorAtual, perfil: 'adm' },
+              ator: atorAtual,
             });
-            osState = admMarcarEtiquetaBrancaNoReg016(criada, { ...atorAtual, perfil: 'adm' });
+            osState = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
+              ? admMarcarEtiquetaBrancaNoReg016(criada, atorAtual)
+              : criada;
           } else if (def.tipo === 'limpeza-equipamento' && osState) {
-            let nextOs = osState;
-            // A etiqueta BRANCA é ato exclusivo do ADM; a AT só continua depois que o ADM a registrou.
-            if (nextOs.passoAtual === 'A1_CRIADA_NO_REG022' && atorAtual.perfil === 'adm') {
+            let nextOs = structuredClone(osState);
+            if (
+              nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
+              ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
+            ) {
               nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
             }
-            if (nextOs.passoAtual === 'A2_BRANCA_NOTIFICA_AT') {
-              nextOs = confirmarNotificacaoSetor(nextOs, { ...atorAtual, perfil: 'tecnico' });
+            if (
+              nextOs.passoAtual === 'A2_BRANCA_NOTIFICA_AT' &&
+              ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
+            ) {
+              nextOs = confirmarNotificacaoSetor(nextOs, atorAtual);
             }
-            if (nextOs.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034') {
-              nextOs = atRegistrarReg034(nextOs, { ...atorAtual, perfil: 'tecnico' });
+            if (
+              nextOs.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034' &&
+              ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
+            ) {
+              nextOs = atRegistrarReg034(nextOs, atorAtual);
             }
             osState = nextOs;
           } else if (def.tipo === 'checklist-manutencao' && osState) {
-            if (osState.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' && !osState.item5Preenchido) {
+            if (
+              osState.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' &&
+              !osState.item5Preenchido &&
+              ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
+            ) {
               osState = atPreencherItem5Reg016(
-                osState,
+                structuredClone(osState),
                 osState.identificacao.marca,
-                { ...atorAtual, perfil: 'tecnico' },
+                atorAtual,
               );
             }
+          } else if (def.tipo === 'etapas-manutencao' && osState) {
+            let nextOs = structuredClone(osState);
+            const podeAdm = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil);
+            const podeAt = ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil);
+
+            if (
+              nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
+              dados.etiqueta_branca_adm === 'C' &&
+              podeAdm
+            ) {
+              nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
+            }
+            if (
+              dados.item5_marca &&
+              !nextOs.item5Preenchido &&
+              nextOs.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' &&
+              podeAt
+            ) {
+              nextOs = atPreencherItem5Reg016(nextOs, String(dados.item5_marca), atorAtual);
+            }
+            if (
+              nextOs.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' &&
+              nextOs.item5Preenchido &&
+              (dados.liberado_qualidade === 'C' || dados.etiqueta_verde_sem_defeito === 'C') &&
+              podeAt
+            ) {
+              nextOs = atFinalizarServicoComEtiquetaVerde(nextOs, atorAtual);
+            }
+            osState = nextOs;
           }
 
           if (osState) {
@@ -657,14 +771,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
               localStorage.setItem(storageKey, JSON.stringify(osState));
               localStorage.setItem('regulaon:os_fluxo_v2:current', osState.numeroOs);
             }
-            await fetch('/api/os-flow', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(osState),
-            }).catch(() => {});
+            await saveOsFlow.mutateAsync(osState).catch(() => {});
           }
         } catch {
-          // transição já avançada anteriormente
+          // transição já avançada anteriormente ou restrita ao setor responsável
         }
       }
 
@@ -1233,6 +1343,12 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {def.tipo === 'etapas-manutencao' && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Pré-preenchido do Fluxo da OS
+                    </span>
+                  )}
                   <span
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',

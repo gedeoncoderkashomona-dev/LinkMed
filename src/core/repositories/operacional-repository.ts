@@ -81,6 +81,12 @@ export interface UpdateTreinamentoEficaciaInput {
 /** Persistência dos módulos operacionais (formulários, NCs, treinamentos). */
 export interface OperacionalRepository {
   createFormRecord(input: CreateFormRecordInput): Promise<FormRecord>;
+  findLatestFormRecordByOs(tipo: FormTipo, numeroOs: string): Promise<FormRecord | null>;
+  upsertFormRecordByOs(
+    tipo: FormTipo,
+    numeroOs: string,
+    input: Omit<CreateFormRecordInput, 'tipo'>,
+  ): Promise<FormRecord>;
   listFormRecords(filter?: ListFormRecordsFilter): Promise<FormRecord[]>;
   /** Quantidade de registros não conformes por tipo de formulário, desde uma data. */
   countFormRecordsPorTipo(desde: string): Promise<Record<string, { total: number; naoConformes: number }>>;

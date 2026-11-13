@@ -1944,9 +1944,17 @@ export function hydrateFormFieldsFromOs(
       else if (m.includes('teb')) base.item5_marca = 'TEB';
       else if (m.includes('olidef')) base.item5_marca = 'OLIDEF';
     }
+    if (ctx.etapasConcluidas.reg022Recebimento) base.conferencia_pecas = 'C';
+    if (ctx.etapasConcluidas.reg016Etapas || ctx.tagColor !== 'WHITE') {
+      base.etiqueta_branca_adm = 'C';
+    }
     if (ctx.etapasConcluidas.reg034Limpeza) base.etiqueta_violeta = 'C';
     if (ctx.etapasConcluidas.reg035Manutencao) base.etiqueta_cinza = 'C';
     if (ctx.emGarantia) base.etiqueta_laranja = 'C';
+    if (ctx.enviadoFabrica) {
+      base.enviado_fabrica = true;
+      if (ctx.tipoTransporte) base.tipo_transporte = ctx.tipoTransporte;
+    }
     if (ctx.etapasConcluidas.reg030Calibracao) base.etiqueta_calibracao = 'C';
   }
 

@@ -7,6 +7,7 @@ import {
   ArrowRight,
   Bell,
   CheckCircle2,
+  FileText,
   Lock,
   History,
   PlayCircle,
@@ -54,35 +55,32 @@ import {
   reabrirOs,
   TAG_SPECS,
   TAG_SPECS_LIST,
+  type AtorAcaoOS,
   type OrdemServicoFluxoState,
   type TagColor,
   type TipoTransporteFabrica,
 } from '@/core/domain/forms/os-workflow';
-import { useFormsOverview } from '@/hooks/use-operacional';
+import {
+  mergeOsFluxoIntoServiceOrders,
+  osDeveSincronizarReg016,
+} from '@/core/domain/forms/os-reg016-sync';
+import {
+  useFormsOverview,
+  useOsFlowList,
+  useSaveOsFlow,
+} from '@/hooks/use-operacional';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { cn } from '@/lib/utils';
 
-const ATOR_ADM = {
+const ATOR_FALLBACK_INICIAL: AtorAcaoOS = {
   usuarioId: 'usr-adm-01',
   usuarioNome: 'Setor Administrativo (ADM)',
-  perfil: 'adm' as const,
-};
-
-const ATOR_AT = {
-  usuarioId: 'usr-at-01',
-  usuarioNome: 'Assistência Técnica (AT)',
-  perfil: 'tecnico' as const,
-};
-
-const ATOR_ALMOX = {
-  usuarioId: 'usr-almox-01',
-  usuarioNome: 'Setor Almoxarifado',
-  perfil: 'estoquista' as const,
+  perfil: 'adm',
 };
 
 const STORAGE_KEY_FLUXO_PREFIX = 'regulaon:os_fluxo_v2:';
 
-function salvarFluxoStorage(state: OrdemServicoFluxoState) {
+function salvarFluxoLocalStorage(state: OrdemServicoFluxoState) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(`${STORAGE_KEY_FLUXO_PREFIX}${state.numeroOs}`, JSON.stringify(state));
@@ -90,25 +88,6 @@ function salvarFluxoStorage(state: OrdemServicoFluxoState) {
   } catch {
     // ignora se storage estiver desabilitado
   }
-  // Sincronização em nuvem (Supabase PostgreSQL) para compartilhar com todos os setores/logins
-  fetch('/api/os-flow', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(state),
-  })
-    .then(async (res) => {
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { message?: string } | null;
-        if (res.status === 403) {
-          toast.error('Acesso não permitido', {
-            description: payload?.message || 'Você não tem permissão para realizar esta etapa.',
-          });
-        }
-      }
-    })
-    .catch((err) => {
-      console.warn('Sincronização de OS no servidor em background:', err);
-    });
 }
 
 function carregarFluxoStorage(numeroOs?: string): OrdemServicoFluxoState | null {
@@ -172,8 +151,24 @@ export function EquipamentosClient() {
   const [etiquetaPrint, setEtiquetaPrint] = React.useState<DadosEtiquetaEquipamento | null>(null);
 
   // Estado interativo da Máquina de Estados v2 (Seções 4 a 7 da Auditoria Linkmed)
+  const { data: osFlowData } = useOsFlowList();
+  const saveOsFlow = useSaveOsFlow();
   const [mostrarPainelFluxoV2, setMostrarPainelFluxoV2] = React.useState(true);
-  const [ordensFluxoServidor, setOrdensFluxoServidor] = React.useState<OrdemServicoFluxoState[]>([]);
+  const ordensFluxoServidor = React.useMemo(
+    () => osFlowData?.ordens ?? [],
+    [osFlowData?.ordens],
+  );
+  const jaAutoSelecionouRef = React.useRef(false);
+
+  const atorLogado: AtorAcaoOS = React.useMemo(
+    () => ({
+      usuarioId: user?.id ?? ATOR_FALLBACK_INICIAL.usuarioId,
+      usuarioNome: user?.nomeCompleto ?? ATOR_FALLBACK_INICIAL.usuarioNome,
+      perfil: user?.perfil ?? ATOR_FALLBACK_INICIAL.perfil,
+    }),
+    [user],
+  );
+
   const [marcaSimulacao, setMarcaSimulacao] = React.useState<'Cardios' | 'TEB' | 'OLIDEF'>('Cardios');
   const [transporteSelecionado, setTransporteSelecionado] =
     React.useState<TipoTransporteFabrica>('transportadora_linkmed');
@@ -195,7 +190,7 @@ export function EquipamentosClient() {
         modelo: 'CardioLight',
         numeroSerie: 'SN-CRD-9921',
       },
-      ator: ATOR_ADM,
+      ator: ATOR_FALLBACK_INICIAL,
     });
   });
 
@@ -223,69 +218,67 @@ export function EquipamentosClient() {
   }, [ordensFluxoServidor, setorOperacionalDoUsuario]);
 
   const ordensServico = React.useMemo(
-    () => aggregateServiceOrders(data?.records ?? []),
-    [data?.records],
+    () =>
+      mergeOsFluxoIntoServiceOrders(
+        ordensFluxoServidor,
+        aggregateServiceOrders(data?.records ?? []),
+      ),
+    [ordensFluxoServidor, data?.records],
   );
 
-  // Busca todas as OSs persistidas no servidor e seleciona automaticamente a OS da URL (?os=) ou a primeira pendente para o setor logado
+  // Sincroniza a OS ativa com as atualizações do servidor (outros setores / formulários)
   React.useEffect(() => {
-    fetch('/api/os-flow?all=true')
-      .then((r) => r.json())
-      .then((res) => {
-        const lista: OrdemServicoFluxoState[] = Array.isArray(res?.data?.ordens)
-          ? res.data.ordens
-          : [];
-        setOrdensFluxoServidor(lista);
+    if (!osFlowData?.ordens) return;
+    const lista = osFlowData.ordens;
 
-        if (osQueryParam) {
-          const alvoLimpo = osQueryParam.replace(/^OS:/i, '').trim().toUpperCase();
-          const encontradaServidor = lista.find(
-            (o) => o.numeroOs.trim().toUpperCase() === alvoLimpo,
-          );
-          if (encontradaServidor) {
-            setFluxoV2(encontradaServidor);
-            setMostrarPainelFluxoV2(true);
-            return;
-          }
-          const salvoLocal = carregarFluxoStorage(alvoLimpo);
-          if (salvoLocal) {
-            setFluxoV2(salvoLocal);
-            setMostrarPainelFluxoV2(true);
-            return;
-          }
-        } else if (setorOperacionalDoUsuario) {
-          const pendenteMeuSetor = lista.find(
-            (o) =>
-              o.estadoGeral !== 'finalizada' &&
-              o.estadoGeral !== 'cancelada' &&
-              o.setorPendente === setorOperacionalDoUsuario,
-          );
-          if (pendenteMeuSetor) {
-            setFluxoV2(pendenteMeuSetor);
-            setMostrarPainelFluxoV2(true);
-          }
-        }
-      })
-      .catch(() => {});
-  }, [osQueryParam, setorOperacionalDoUsuario]);
-
-  React.useEffect(() => {
-    // Sincroniza a OS ativa com o banco de dados Supabase para refletir ações de outros setores
-    if (fluxoV2?.numeroOs) {
-      fetch(`/api/os-flow?os=${encodeURIComponent(fluxoV2.numeroOs)}`)
-        .then((r) => r.json())
-        .then((res) => {
-          if (res?.data?.os) {
-            const serverCount = res.data.os.historico?.length ?? 0;
-            const localCount = fluxoV2.historico?.length ?? 0;
-            if (serverCount >= localCount) {
-              setFluxoV2(res.data.os);
-            }
-          }
-        })
-        .catch(() => {});
+    if (osQueryParam) {
+      const alvoLimpo = osQueryParam.replace(/^OS:/i, '').trim().toUpperCase();
+      const encontradaServidor = lista.find(
+        (o) => o.numeroOs.trim().toUpperCase() === alvoLimpo,
+      );
+      if (encontradaServidor) {
+        setFluxoV2((atual) =>
+          atual.numeroOs.trim().toUpperCase() !== alvoLimpo ||
+          (encontradaServidor.historico?.length ?? 0) >= (atual.historico?.length ?? 0)
+            ? encontradaServidor
+            : atual,
+        );
+        setMostrarPainelFluxoV2(true);
+        return;
+      }
+      const salvoLocal = carregarFluxoStorage(alvoLimpo);
+      if (salvoLocal) {
+        setFluxoV2(salvoLocal);
+        setMostrarPainelFluxoV2(true);
+        return;
+      }
     }
-  }, [fluxoV2?.numeroOs]);
+
+    const correspondenteAtual = lista.find(
+      (o) => o.numeroOs.trim().toUpperCase() === fluxoV2.numeroOs.trim().toUpperCase(),
+    );
+    if (
+      correspondenteAtual &&
+      (correspondenteAtual.historico?.length ?? 0) > (fluxoV2.historico?.length ?? 0)
+    ) {
+      setFluxoV2(correspondenteAtual);
+      return;
+    }
+
+    if (!jaAutoSelecionouRef.current && setorOperacionalDoUsuario && !osQueryParam) {
+      const pendenteMeuSetor = lista.find(
+        (o) =>
+          o.estadoGeral !== 'finalizada' &&
+          o.estadoGeral !== 'cancelada' &&
+          o.setorPendente === setorOperacionalDoUsuario,
+      );
+      if (pendenteMeuSetor) {
+        setFluxoV2(pendenteMeuSetor);
+        setMostrarPainelFluxoV2(true);
+        jaAutoSelecionouRef.current = true;
+      }
+    }
+  }, [osFlowData?.ordens, osQueryParam, setorOperacionalDoUsuario, fluxoV2.numeroOs, fluxoV2.historico?.length]);
 
   const osFiltradas = React.useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -302,23 +295,40 @@ export function EquipamentosClient() {
     });
   }, [ordensServico, filtroCor, busca]);
 
-  function executarTransicao(fn: (s: OrdemServicoFluxoState) => OrdemServicoFluxoState, msg: string) {
+  async function executarTransicao(
+    fn: (s: OrdemServicoFluxoState) => OrdemServicoFluxoState,
+    msg: string,
+  ) {
+    const anterior = fluxoV2;
+    let next: OrdemServicoFluxoState;
     try {
-      setFluxoV2((atual) => {
-        const next = fn(atual);
-        salvarFluxoStorage(next);
-        setOrdensFluxoServidor((prev) => {
-          const idx = prev.findIndex((o) => o.numeroOs === next.numeroOs);
-          if (idx === -1) return [next, ...prev];
-          const clone = [...prev];
-          clone[idx] = next;
-          return clone;
-        });
-        return next;
-      });
-      toast.success(msg);
+      next = fn(structuredClone(anterior));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Transição inválida no fluxo da OS.');
+      return;
+    }
+
+    setFluxoV2(next);
+    salvarFluxoLocalStorage(next);
+
+    try {
+      const res = await saveOsFlow.mutateAsync(next);
+      if (res.reg016Record) {
+        toast.success(msg, {
+          description: 'REG-016 sincronizado e atualizado automaticamente no sistema.',
+        });
+      } else {
+        toast.success(msg);
+      }
+    } catch (err) {
+      setFluxoV2(anterior);
+      salvarFluxoLocalStorage(anterior);
+      toast.error('Acesso ou transição não concluída', {
+        description:
+          err instanceof Error
+            ? err.message
+            : 'Você não tem permissão ou ocorreu erro ao salvar a etapa no servidor.',
+      });
     }
   }
 
@@ -358,10 +368,11 @@ export function EquipamentosClient() {
         modelo: os.modelo || 'Modelo Padrão',
         numeroSerie: os.numeroSerie || 'S/N',
       },
-      ator: ATOR_ADM,
+      ator: atorLogado,
     });
 
-    salvarFluxoStorage(nova);
+    salvarFluxoLocalStorage(nova);
+    void saveOsFlow.mutateAsync(nova).catch(() => {});
     setFluxoV2(nova);
     setMostrarPainelFluxoV2(true);
     toast.info(`Fluxo v2 inicializado para a OS ${os.numeroOs}.`);
@@ -383,9 +394,10 @@ export function EquipamentosClient() {
         modelo: marca === 'Cardios' ? 'CardioLight' : marca === 'TEB' ? 'ECGPC' : 'RN-2000',
         numeroSerie: `SN-${marca.slice(0, 3).toUpperCase()}-2026`,
       },
-      ator: ATOR_ADM,
+      ator: atorLogado,
     });
-    salvarFluxoStorage(nova);
+    salvarFluxoLocalStorage(nova);
+    void saveOsFlow.mutateAsync(nova).catch(() => {});
     setFluxoV2(nova);
     toast.info(`Fluxo v2 reiniciado para equipamento da marca ${marca}.`);
   }
@@ -487,7 +499,7 @@ export function EquipamentosClient() {
                       onClick={() => {
                         setFluxoV2(o);
                         setMostrarPainelFluxoV2(true);
-                        salvarFluxoStorage(o);
+                        salvarFluxoLocalStorage(o);
                         toast.success(`Continuando OS ${o.numeroOs} exatamente na etapa ${o.passoAtual}!`);
                       }}
                       className="h-7 shrink-0 text-xs font-semibold"
@@ -617,6 +629,25 @@ export function EquipamentosClient() {
               </div>
             )}
 
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3.5 py-2 text-xs">
+              <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>
+                  {osDeveSincronizarReg016(fluxoV2)
+                    ? 'REG-016 sincronizado automaticamente conforme cada etapa/etiqueta marcada neste fluxo.'
+                    : 'Ao marcar a Etiqueta BRANCA, o REG-016 será criado e pré-preenchido automaticamente.'}
+                </span>
+              </div>
+              <Link
+                href={`/formularios/etapas-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}
+              >
+                <Button type="button" size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
+                  <FileText className="h-3.5 w-3.5" />
+                  Abrir REG-016 Preenchido
+                </Button>
+              </Link>
+            </div>
+
             {/* Botões de Ação setorizados conforme Auditoria e Ata Linkmed */}
             {!podeExecutarPasso && fluxoV2.estadoGeral !== 'finalizada' && fluxoV2.estadoGeral !== 'cancelada' ? (
               <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
@@ -632,7 +663,7 @@ export function EquipamentosClient() {
                   size="sm"
                   onClick={() =>
                     executarTransicao(
-                      (s) => admMarcarEtiquetaBrancaNoReg016(s, ATOR_ADM),
+                      (s) => admMarcarEtiquetaBrancaNoReg016(s, atorLogado),
                       'Etiqueta BRANCA marcada pelo ADM no REG 016. Notificação enviada à AT!',
                     )
                   }
@@ -646,7 +677,7 @@ export function EquipamentosClient() {
                   size="sm"
                   onClick={() =>
                     executarTransicao(
-                      (s) => confirmarNotificacaoSetor(s, ATOR_AT),
+                      (s) => confirmarNotificacaoSetor(s, atorLogado),
                       'AT confirmou recebimento da OS!',
                     )
                   }
@@ -666,7 +697,7 @@ export function EquipamentosClient() {
                     size="sm"
                     onClick={() =>
                       executarTransicao(
-                        (s) => atRegistrarReg034(s, ATOR_AT),
+                        (s) => atRegistrarReg034(s, atorLogado),
                         'REG 034 (Limpeza com Álcool 70%) registrado pela AT!',
                       )
                     }
@@ -681,7 +712,7 @@ export function EquipamentosClient() {
                   size="sm"
                   onClick={() =>
                     executarTransicao(
-                      (s) => atMarcarEtiquetaVioleta(s, ATOR_AT),
+                      (s) => atMarcarEtiquetaVioleta(s, atorLogado),
                       'Etiqueta VIOLETA (Higienizado) aplicada pela AT!',
                     )
                   }
@@ -695,7 +726,7 @@ export function EquipamentosClient() {
                   size="sm"
                   onClick={() =>
                     executarTransicao(
-                      (s) => atMarcarEtiquetaCinzaAnaliseCompleta(s, ATOR_AT),
+                      (s) => atMarcarEtiquetaCinzaAnaliseCompleta(s, atorLogado),
                       'Etiqueta CINZA marcada! Impressão da etiqueta física liberada.',
                     )
                   }
@@ -710,7 +741,7 @@ export function EquipamentosClient() {
                     size="sm"
                     onClick={() =>
                       executarTransicao(
-                        (s) => atResponderPerguntaGarantia(s, true, ATOR_AT),
+                        (s) => atResponderPerguntaGarantia(s, true, atorLogado),
                         'Ramificação 1 (Garantia): Etiqueta LARANJA automática + Almoxarifado notificado!',
                       )
                     }
@@ -722,7 +753,7 @@ export function EquipamentosClient() {
                     variant="outline"
                     onClick={() =>
                       executarTransicao(
-                        (s) => atResponderPerguntaGarantia(s, false, ATOR_AT),
+                        (s) => atResponderPerguntaGarantia(s, false, atorLogado),
                         'Garantia = NÃO. Próxima pergunta: Envio à fábrica?',
                       )
                     }
@@ -755,7 +786,7 @@ export function EquipamentosClient() {
                           atResponderPerguntaEnvioFabrica(
                             s,
                             { trataSeEnvioFabrica: true, tipoTransporte: transporteSelecionado },
-                            ATOR_AT,
+                            atorLogado,
                           ),
                         'Ramificação 2: OS em Stand-by aguardando envio à fábrica.',
                       )
@@ -772,7 +803,7 @@ export function EquipamentosClient() {
                           atResponderPerguntaEnvioFabrica(
                             s,
                             { trataSeEnvioFabrica: false },
-                            ATOR_AT,
+                            atorLogado,
                           ),
                         'Ramificação 3 (Reparo Direto): ADM notificado para orçamento!',
                       )
@@ -793,7 +824,7 @@ export function EquipamentosClient() {
                           atResponderEquipamentoEnviadoFabrica(
                             s,
                             { foiEnviado: true },
-                            ATOR_AT,
+                            atorLogado,
                           ),
                         'Equipamento enviado! Etiqueta MARROM aplicada + ADM notificado para orçamento.',
                       )
@@ -820,7 +851,7 @@ export function EquipamentosClient() {
                               justificativaNaoEnviado,
                               etiquetaEscolhidaSeNaoEnviado: 'GREEN',
                             },
-                            ATOR_AT,
+                            atorLogado,
                           ),
                         'Não enviado (justificado) → Etiqueta VERDE (Serviço Finalizado).',
                       )
@@ -841,7 +872,7 @@ export function EquipamentosClient() {
                               justificativaNaoEnviado,
                               etiquetaEscolhidaSeNaoEnviado: 'RED',
                             },
-                            ATOR_AT,
+                            atorLogado,
                           ),
                         'Etiqueta VERMELHA aplicada (Item 5 bloqueado e OS finalizada).',
                       )
@@ -858,8 +889,8 @@ export function EquipamentosClient() {
                   onClick={() =>
                     executarTransicao(
                       (s) => {
-                        const c = confirmarNotificacaoSetor(s, ATOR_ADM);
-                        return admMarcarEtiquetaAmarelaOrcamento(c, ATOR_ADM);
+                        const c = confirmarNotificacaoSetor(s, atorLogado);
+                        return admMarcarEtiquetaAmarelaOrcamento(c, atorLogado);
                       },
                       'ADM confirmou e marcou Etiqueta AMARELA (Aguardando aprovação do orçamento).',
                     )
@@ -875,7 +906,7 @@ export function EquipamentosClient() {
                     size="sm"
                     onClick={() =>
                       executarTransicao(
-                        (s) => admResponderOrcamentoAprovado(s, true, ATOR_ADM),
+                        (s) => admResponderOrcamentoAprovado(s, true, atorLogado),
                         'Orçamento APROVADO! Etiqueta AZUL automática + Almoxarifado notificado.',
                       )
                     }
@@ -887,7 +918,7 @@ export function EquipamentosClient() {
                     variant="destructive"
                     onClick={() =>
                       executarTransicao(
-                        (s) => admResponderOrcamentoAprovado(s, false, ATOR_ADM),
+                        (s) => admResponderOrcamentoAprovado(s, false, atorLogado),
                         'Orçamento REPROVADO pelo cliente. AT notificada para confirmar devolução.',
                       )
                     }
@@ -903,7 +934,7 @@ export function EquipamentosClient() {
                   variant="destructive"
                   onClick={() =>
                     executarTransicao(
-                      (s) => confirmarNotificacaoSetor(s, ATOR_AT),
+                      (s) => confirmarNotificacaoSetor(s, atorLogado),
                       'AT confirmou reprovação: Etiqueta VERMELHA automática, Item 5 bloqueado e OS finalizada!',
                     )
                   }
@@ -922,9 +953,9 @@ export function EquipamentosClient() {
                         (s) => {
                           const c =
                             s.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX'
-                              ? confirmarNotificacaoSetor(s, ATOR_ALMOX)
+                              ? confirmarNotificacaoSetor(s, atorLogado)
                               : s;
-                          return almoxarifadoDecidirPecas(c, 'pecas_disponiveis', ATOR_ALMOX);
+                          return almoxarifadoDecidirPecas(c, 'pecas_disponiveis', atorLogado);
                         },
                         'Almoxarifado separou as peças! AT notificada para execução.',
                       )
@@ -940,9 +971,9 @@ export function EquipamentosClient() {
                         (s) => {
                           const c =
                             s.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX'
-                              ? confirmarNotificacaoSetor(s, ATOR_ALMOX)
+                              ? confirmarNotificacaoSetor(s, atorLogado)
                               : s;
-                          return almoxarifadoDecidirPecas(c, 'aguardando_pecas', ATOR_ALMOX);
+                          return almoxarifadoDecidirPecas(c, 'aguardando_pecas', atorLogado);
                         },
                         'Etiqueta PRETA aplicada automaticamente (OS em stand-by aguardando peças).',
                       )
@@ -958,7 +989,7 @@ export function EquipamentosClient() {
                   size="sm"
                   onClick={() =>
                     executarTransicao(
-                      (s) => almoxarifadoRetomarOsDeAguardandoPecas(s, ATOR_ALMOX),
+                      (s) => almoxarifadoRetomarOsDeAguardandoPecas(s, atorLogado),
                       'Peças chegaram! Etiqueta anterior (LARANJA/AZUL) restaurada e AT notificada.',
                     )
                   }
@@ -972,7 +1003,7 @@ export function EquipamentosClient() {
                   size="sm"
                   onClick={() =>
                     executarTransicao(
-                      (s) => confirmarNotificacaoSetor(s, ATOR_AT),
+                      (s) => confirmarNotificacaoSetor(s, atorLogado),
                       'AT confirmou recebimento das peças e liberou o Item 5 do REG 016!',
                     )
                   }
@@ -998,7 +1029,7 @@ export function EquipamentosClient() {
                               atPreencherItem5Reg016(
                                 s,
                                 s.identificacao.marca,
-                                ATOR_AT,
+                                atorLogado,
                               ),
                             `Item 5 (${fluxoV2.item5FormularioTipo}) preenchido para a marca ${fluxoV2.identificacao.marca}!`,
                           )
@@ -1012,7 +1043,7 @@ export function EquipamentosClient() {
                       size="sm"
                       onClick={() =>
                         executarTransicao(
-                          (s) => atFinalizarServicoComEtiquetaVerde(s, ATOR_AT),
+                          (s) => atFinalizarServicoComEtiquetaVerde(s, atorLogado),
                           'Etiqueta VERDE aplicada! Serviço finalizado com sucesso.',
                         )
                       }
@@ -1041,7 +1072,7 @@ export function EquipamentosClient() {
                     variant="outline"
                     onClick={() =>
                       executarTransicao(
-                        (s) => cancelarOs(s, motivoCancelamento, ATOR_ADM),
+                        (s) => cancelarOs(s, motivoCancelamento, atorLogado),
                         'OS cancelada com justificativa registrada no histórico.',
                       )
                     }
@@ -1066,7 +1097,7 @@ export function EquipamentosClient() {
                         reabrirOs(
                           s,
                           'Cliente autorizou prosseguimento da manutenção',
-                          ATOR_ADM,
+                          atorLogado,
                         ),
                       'OS reaberta exatamente na etapa em que estava antes do cancelamento!',
                     )

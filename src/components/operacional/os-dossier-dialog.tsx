@@ -39,7 +39,8 @@ import {
   TAG_SPECS,
   type ServiceOrderContext,
 } from '@/core/domain/forms/os-workflow';
-import { useFormsOverview } from '@/hooks/use-operacional';
+import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
+import { useFormsOverview, useOsFlowList } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -59,9 +60,17 @@ function escapeHtml(str: unknown): string {
 
 export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) {
   const { data } = useFormsOverview();
+  const { data: osFlowData } = useOsFlowList();
   const allRecords = React.useMemo(() => data?.records ?? [], [data?.records]);
 
-  const ordens = React.useMemo(() => aggregateServiceOrders(allRecords), [allRecords]);
+  const ordens = React.useMemo(
+    () =>
+      mergeOsFluxoIntoServiceOrders(
+        osFlowData?.ordens ?? [],
+        aggregateServiceOrders(allRecords),
+      ),
+    [osFlowData?.ordens, allRecords],
+  );
 
   const osCtx: ServiceOrderContext | null = React.useMemo(() => {
     if (!osChaveOuNumero) return null;

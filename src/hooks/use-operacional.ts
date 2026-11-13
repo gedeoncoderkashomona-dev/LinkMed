@@ -15,6 +15,7 @@ import type {
   TreinamentoTipo,
 } from '@/core/domain/entities/operacional';
 import type { FormTipo } from '@/core/domain/forms/definitions';
+import type { OrdemServicoFluxoState } from '@/core/domain/forms/os-workflow';
 
 export class ApiValidationError extends Error {
   fields?: Record<string, string>;
@@ -92,6 +93,39 @@ export function useCreateFormRecord() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['forms'] });
       qc.invalidateQueries({ queryKey: ['forms', 'records', variables.tipo] });
+      qc.invalidateQueries({ queryKey: ['os-flow'] });
+    },
+  });
+}
+
+// ----- Fluxo de Ordem de Serviço (Etiquetas & Notificações REG-016) --------
+
+export function useOsFlowList() {
+  return useQuery({
+    queryKey: ['os-flow'],
+    queryFn: () =>
+      fetchJson<{ ordens: OrdemServicoFluxoState[] }>('/api/os-flow?all=true'),
+    refetchInterval: 20_000,
+  });
+}
+
+export function useSaveOsFlow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (estado: OrdemServicoFluxoState) =>
+      fetchJson<{
+        ok: boolean;
+        directTableOk: boolean;
+        numeroOs: string;
+        reg016Record?: FormRecord | null;
+      }>('/api/os-flow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(estado),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['os-flow'] });
+      qc.invalidateQueries({ queryKey: ['forms'] });
     },
   });
 }

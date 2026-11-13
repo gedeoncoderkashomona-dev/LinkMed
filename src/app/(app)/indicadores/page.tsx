@@ -18,8 +18,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { FORM_DEFS } from '@/core/domain/forms/definitions';
+import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
 import { aggregateServiceOrders, TAG_SPECS, type TagColor } from '@/core/domain/forms/os-workflow';
-import { useFormsOverview, useNcs, useTreinamentos } from '@/hooks/use-operacional';
+import { useFormsOverview, useNcs, useOsFlowList, useTreinamentos } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +39,7 @@ const TAG_ORDER: TagColor[] = [
 
 export default function IndicadoresPage() {
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
+  const { data: osFlowData } = useOsFlowList();
   const { data: popsData, isLoading: loadingPops } = usePops();
   const { data: ncsData, isLoading: loadingNcs } = useNcs();
   const { data: treinosData, isLoading: loadingTreinos } = useTreinamentos();
@@ -74,7 +76,10 @@ export default function IndicadoresPage() {
   // 2. Funil de OS e Etiquetas REG-016
   const osStats = React.useMemo(() => {
     const records = formsData?.records ?? [];
-    const osList = aggregateServiceOrders(records);
+    const osList = mergeOsFluxoIntoServiceOrders(
+      osFlowData?.ordens ?? [],
+      aggregateServiceOrders(records),
+    );
     const totalOs = osList.length;
     const porCor: Record<TagColor, number> = {
       VIOLET: 0,
@@ -104,7 +109,7 @@ export default function IndicadoresPage() {
     const indiceRetrabalho = totalOs > 0 ? Math.round((comRetrabalhoOuNc / totalOs) * 100) : 0;
 
     return { totalOs, porCor, finalizadas, taxaFinalizacao, comRetrabalhoOuNc, indiceRetrabalho };
-  }, [formsData?.records]);
+  }, [formsData?.records, osFlowData?.ordens]);
 
   // 3. Indicadores de Não Conformidade (REG-020)
   const ncStats = React.useMemo(() => {

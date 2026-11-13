@@ -32,9 +32,21 @@ import {
   verificarAtividadesObrigatoriasDiariasPorSetor,
   type NivelAlerta,
 } from '@/core/domain/forms/alerts';
-import type { OrdemServicoFluxoState, SetorOperacional } from '@/core/domain/forms/os-workflow';
+import {
+  confirmarNotificacaoSetor,
+  normalizarNumeroOs,
+  type AtorAcaoOS,
+  type OrdemServicoFluxoState,
+  type SetorOperacional,
+} from '@/core/domain/forms/os-workflow';
 import { useCurrentUser } from '@/hooks/use-current-user';
-import { useFormsOverview, useNcs, useTreinamentos } from '@/hooks/use-operacional';
+import {
+  useFormsOverview,
+  useNcs,
+  useOsFlowList,
+  useSaveOsFlow,
+  useTreinamentos,
+} from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
 import { cn } from '@/lib/utils';
 
@@ -125,6 +137,8 @@ const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
 export default function NotificacoesPage() {
   const { data: user } = useCurrentUser();
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
+  const { data: osFlowData } = useOsFlowList();
+  const saveOsFlow = useSaveOsFlow();
   const { data: ncsData, isLoading: loadingNcs } = useNcs();
   const { data: popsData, isLoading: loadingPops } = usePops();
   const { data: treinosData, isLoading: loadingTreinos } = useTreinamentos();
@@ -144,7 +158,41 @@ export default function NotificacoesPage() {
   const [confirmadasMap, setConfirmadasMap] = React.useState<
     Record<string, { porNome: string; em: string }>
   >({});
-  const [osNotificacoesDinâmicas, setOsNotificacoesDinamicas] = React.useState<NotificacaoItem[]>([]);
+  const [osNotificacoesLocais, setOsNotificacoesLocais] = React.useState<NotificacaoItem[]>([]);
+
+  const osFluxoPorNumero = React.useMemo(() => {
+    const map = new Map<string, OrdemServicoFluxoState>();
+    for (const os of osFlowData?.ordens ?? []) {
+      map.set(normalizarNumeroOs(os.numeroOs), os);
+    }
+    return map;
+  }, [osFlowData?.ordens]);
+
+  const osNotificacoesDinâmicas = React.useMemo<NotificacaoItem[]>(() => {
+    const map = new Map<string, NotificacaoItem>();
+    for (const item of osNotificacoesLocais) {
+      map.set(item.id, item);
+    }
+    for (const os of osFlowData?.ordens ?? []) {
+      if (!Array.isArray(os.notificacoes)) continue;
+      for (const notif of os.notificacoes) {
+        map.set(`os:dyn:${notif.id}`, {
+          id: `os:dyn:${notif.id}`,
+          categoria: 'intersetorial',
+          nivel: notif.retidaForaHorario ? 'warning' : 'info',
+          titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
+          descricao: notif.mensagem,
+          href: `/equipamentos?os=${encodeURIComponent(os.numeroOs)}`,
+          origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
+          destinatarioSetor: notif.destinatario,
+          numeroOs: os.numeroOs,
+          confirmadaEm: notif.confirmadaEm ? new Date(notif.confirmadaEm).toISOString() : null,
+          confirmadaPorNome: notif.confirmadaPorNome,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [osFlowData?.ordens, osNotificacoesLocais]);
 
   React.useEffect(() => {
     try {
@@ -156,7 +204,7 @@ export default function NotificacoesPage() {
       // ignora erro de storage
     }
 
-    // Carregar notificações ativas das OS salvas no localStorage
+    // Fallback offline para notificações salvas localmente antes do envio ao servidor
     if (typeof window !== 'undefined') {
       try {
         const dinâmicas: NotificacaoItem[] = [];
@@ -186,47 +234,10 @@ export default function NotificacoesPage() {
             }
           }
         }
-        setOsNotificacoesDinamicas(dinâmicas);
+        setOsNotificacoesLocais(dinâmicas);
       } catch {
         // ignora erro ao ler storage
       }
-
-      // Sincronização em nuvem com o banco de dados central (todas as OSs de todos os setores)
-      fetch('/api/os-flow?all=true')
-        .then((res) => res.json())
-        .then((json) => {
-          if (json?.data?.ordens && Array.isArray(json.data.ordens)) {
-            const serverNotifs: NotificacaoItem[] = [];
-            for (const os of json.data.ordens) {
-              if (Array.isArray(os.notificacoes)) {
-                for (const notif of os.notificacoes) {
-                  serverNotifs.push({
-                    id: `os:dyn:${notif.id}`,
-                    categoria: 'intersetorial',
-                    nivel: notif.retidaForaHorario ? 'warning' : 'info',
-                    titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
-                    descricao: notif.mensagem,
-                    href: `/equipamentos?os=${encodeURIComponent(os.numeroOs)}`,
-                    origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
-                    destinatarioSetor: notif.destinatario,
-                    numeroOs: os.numeroOs,
-                    confirmadaEm: notif.confirmadaEm ? new Date(notif.confirmadaEm).toISOString() : null,
-                    confirmadaPorNome: notif.confirmadaPorNome,
-                  });
-                }
-              }
-            }
-            if (serverNotifs.length > 0) {
-              setOsNotificacoesDinamicas((prev) => {
-                const map = new Map<string, NotificacaoItem>();
-                for (const item of prev) map.set(item.id, item);
-                for (const item of serverNotifs) map.set(item.id, item);
-                return Array.from(map.values());
-              });
-            }
-          }
-        })
-        .catch(() => {});
     }
   }, []);
 
@@ -239,9 +250,55 @@ export default function NotificacoesPage() {
     }
   }
 
-  function confirmarCienciaIntersetorial(item: NotificacaoItem) {
+  async function confirmarCienciaIntersetorial(item: NotificacaoItem) {
     const nome = user?.nomeCompleto || 'Colaborador Autorizado';
     const agoraIso = new Date().toISOString();
+
+    const osAtual = item.numeroOs
+      ? osFluxoPorNumero.get(normalizarNumeroOs(item.numeroOs)) ?? null
+      : null;
+    const notifAbertaNoServidor =
+      osAtual &&
+      (osAtual.notificacoes ?? []).some(
+        (n) => !n.confirmadaEm && (`os:dyn:${n.id}` === item.id || n.destinatario === item.destinatarioSetor),
+      );
+
+    if (osAtual && notifAbertaNoServidor) {
+      const atorLogado: AtorAcaoOS = {
+        usuarioId: user?.id ?? 'usr-operador',
+        usuarioNome: nome,
+        perfil: user?.perfil ?? 'tecnico',
+      };
+
+      let nextOs: OrdemServicoFluxoState;
+      try {
+        nextOs = confirmarNotificacaoSetor(structuredClone(osAtual), atorLogado);
+      } catch (err) {
+        toast.error('Acesso não permitido', {
+          description:
+            err instanceof Error
+              ? err.message
+              : 'Você não tem permissão para confirmar a notificação deste setor.',
+        });
+        return;
+      }
+
+      try {
+        await saveOsFlow.mutateAsync(nextOs);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`${STORAGE_KEY_FLUXO_PREFIX}${nextOs.numeroOs}`, JSON.stringify(nextOs));
+        }
+      } catch (err) {
+        toast.error('Falha ao sincronizar confirmação', {
+          description:
+            err instanceof Error
+              ? err.message
+              : 'Não foi possível confirmar esta etapa no servidor.',
+        });
+        return;
+      }
+    }
+
     const novoMap = { ...confirmadasMap, [item.id]: { porNome: nome, em: agoraIso } };
     setConfirmadasMap(novoMap);
     try {
@@ -250,7 +307,9 @@ export default function NotificacoesPage() {
       // ignora
     }
     toast.success('Ciência confirmada', {
-      description: `Notificação ${item.numeroOs ?? ''} registrada como recebida por ${nome}.`,
+      description: osAtual && notifAbertaNoServidor
+        ? `OS ${item.numeroOs ?? ''} avançada e REG-016 sincronizado por ${nome}.`
+        : `Notificação ${item.numeroOs ?? ''} registrada como recebida por ${nome}.`,
     });
   }
 
@@ -272,15 +331,18 @@ export default function NotificacoesPage() {
     const hoje = agoraBR().data;
 
     // 1. Notificações Intersetoriais (ADM <-> Almoxarifado <-> Assistência Técnica)
-    // Combina notificações padrão de semente com notificações dinâmicas do fluxo de OS
+    // Prioriza as notificações reais do banco (`os_fluxo`) e exibe exemplos apenas se ainda não houver OS ativa
     const idsVistos = new Set<string>();
-    const intersetoriaisTodas = [...osNotificacoesDinâmicas, ...NOTIFICACOES_SEMENTE_INTERSETORIAIS];
+    const intersetoriaisTodas =
+      osNotificacoesDinâmicas.length > 0
+        ? osNotificacoesDinâmicas
+        : NOTIFICACOES_SEMENTE_INTERSETORIAIS;
 
     for (const notif of intersetoriaisTodas) {
       if (idsVistos.has(notif.id)) continue;
       idsVistos.add(notif.id);
 
-      const confirmacao = confirmadasMap[notif.id];
+      const confirmacao = !notif.confirmadaPorNome ? confirmadasMap[notif.id] : undefined;
       lista.push({
         ...notif,
         confirmadaEm: confirmacao ? confirmacao.em : notif.confirmadaEm,
@@ -769,7 +831,8 @@ export default function NotificacoesPage() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => confirmarCienciaIntersetorial(item)}
+                        disabled={saveOsFlow.isPending}
+                        onClick={() => void confirmarCienciaIntersetorial(item)}
                         className="text-xs"
                       >
                         <Check className="h-3.5 w-3.5" />
@@ -786,9 +849,20 @@ export default function NotificacoesPage() {
                       {lida ? 'Marcar não lida' : 'Marcar lida'}
                     </Button>
 
+                    {isIntersetorial && item.numeroOs && (
+                      <Link
+                        href={`/formularios/etapas-manutencao?os=${encodeURIComponent(item.numeroOs)}`}
+                      >
+                        <Button size="sm" variant="outline" className="text-xs">
+                          <FileText className="h-3.5 w-3.5" />
+                          REG-016
+                        </Button>
+                      </Link>
+                    )}
+
                     <Link href={item.href}>
                       <Button size="sm" variant="outline">
-                        {isIntersetorial ? 'Ver no Fila de OS' : 'Resolver'}
+                        {isIntersetorial ? 'Ver na Fila de OS' : 'Resolver'}
                         <ArrowRight className="h-3.5 w-3.5" />
                       </Button>
                     </Link>

@@ -25,13 +25,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { POP_STATUS_LABEL, POP_STATUS_VARIANT, SETOR_LABEL } from '@/core/domain/enums/pop';
 import { PERFIL_LABEL } from '@/core/domain/enums/user';
 import { calcularAlertas } from '@/core/domain/forms/alerts';
+import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
 import {
   aggregateServiceOrders,
   TAG_SPECS,
-  type OrdemServicoFluxoState,
 } from '@/core/domain/forms/os-workflow';
 import { useCurrentUser } from '@/hooks/use-current-user';
-import { useFormsOverview, useNcs } from '@/hooks/use-operacional';
+import { useFormsOverview, useNcs, useOsFlowList } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
 import { cn } from '@/lib/utils';
 
@@ -40,18 +40,11 @@ export function DashboardPlaceholder() {
   const { data: popsData, isLoading: loadingPops } = usePops();
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
   const { data: ncsData, isLoading: loadingNcs } = useNcs();
-  const [ordensFluxoServidor, setOrdensFluxoServidor] = React.useState<OrdemServicoFluxoState[]>([]);
-
-  React.useEffect(() => {
-    fetch('/api/os-flow?all=true')
-      .then((r) => r.json())
-      .then((res) => {
-        if (Array.isArray(res?.data?.ordens)) {
-          setOrdensFluxoServidor(res.data.ordens);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const { data: osFlowData } = useOsFlowList();
+  const ordensFluxoServidor = React.useMemo(
+    () => osFlowData?.ordens ?? [],
+    [osFlowData?.ordens],
+  );
 
   const ordensPendentesMeuSetor = React.useMemo(() => {
     if (!user) return [];
@@ -79,8 +72,12 @@ export function DashboardPlaceholder() {
   );
 
   const todasOrdensServico = React.useMemo(
-    () => aggregateServiceOrders(formsData?.records ?? []),
-    [formsData?.records],
+    () =>
+      mergeOsFluxoIntoServiceOrders(
+        ordensFluxoServidor,
+        aggregateServiceOrders(formsData?.records ?? []),
+      ),
+    [ordensFluxoServidor, formsData?.records],
   );
 
   const ordensServico = React.useMemo(

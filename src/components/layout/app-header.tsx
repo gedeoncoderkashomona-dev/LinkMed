@@ -6,8 +6,10 @@ import { Bell, Menu } from 'lucide-react';
 
 import type { PublicUser } from '@/core/domain/entities/user';
 import { PERFIL_COR, PERFIL_LABEL, PERFIL_SHORT_LABEL } from '@/core/domain/enums/user';
+import { contarPendenciasOsPorPerfil } from '@/core/domain/forms/os-reg016-sync';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useOsFlowList } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
 
 import { APP_VERSION_LABEL } from '@/lib/version';
@@ -21,6 +23,12 @@ interface Props {
 }
 
 export function AppHeader({ user, onOpenMobile }: Props) {
+  const { data: osFlowData } = useOsFlowList();
+  const pendentesSetor = React.useMemo(
+    () => contarPendenciasOsPorPerfil(osFlowData?.ordens ?? [], user.perfil),
+    [osFlowData?.ordens, user.perfil],
+  );
+
   const iniciais = React.useMemo(() => {
     const parts = user.nomeCompleto.trim().split(/\s+/);
     const first = parts[0]?.[0] ?? '';
@@ -64,10 +72,21 @@ export function AppHeader({ user, onOpenMobile }: Props) {
 
       <ThemeToggle />
 
-      <Link href="/notificacoes" title="Central de Notificações">
+      <Link
+        href="/notificacoes"
+        title={
+          pendentesSetor > 0
+            ? `Central de Notificações (${pendentesSetor} pendência${pendentesSetor > 1 ? 's' : ''} no setor)`
+            : 'Central de Notificações'
+        }
+      >
         <Button variant="ghost" size="icon" aria-label="Notificações" className="relative">
           <Bell className="h-5 w-5" />
-          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" />
+          {pendentesSetor > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+              {pendentesSetor > 9 ? '9+' : pendentesSetor}
+            </span>
+          )}
         </Button>
       </Link>
 

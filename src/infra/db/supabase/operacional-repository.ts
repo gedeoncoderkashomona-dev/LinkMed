@@ -324,6 +324,84 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
     };
   }
 
+  async findLatestFormRecordByOs(tipo: FormTipo, numeroOs: string): Promise<FormRecord | null> {
+    const norm = String(numeroOs ?? '').trim().toUpperCase();
+    if (!norm) return null;
+    const records = await this.listFormRecords({ tipo, limit: 500 });
+    return (
+      records.find((r) => String(r.dados?.numero_os ?? '').trim().toUpperCase() === norm) ?? null
+    );
+  }
+
+  async upsertFormRecordByOs(
+    tipo: FormTipo,
+    numeroOs: string,
+    input: Omit<CreateFormRecordInput, 'tipo'>,
+  ): Promise<FormRecord> {
+    const existing = await this.findLatestFormRecordByOs(tipo, numeroOs);
+    if (!existing) {
+      return this.createFormRecord({ tipo, ...input });
+    }
+
+    if (hasFormRecordsTable !== false) {
+      const { data, error } = await supabaseAdmin
+        .from('form_records')
+        .update({
+          subtipo: input.subtipo,
+          dados: input.dados,
+          status: input.status,
+          data_ref: input.dataRef,
+        })
+        .eq('id', existing.id)
+        .select(FORM_COLS)
+        .maybeSingle();
+
+      if (!error && data) {
+        hasFormRecordsTable = true;
+        return toFormRecord(data as unknown as FormRecordRow);
+      }
+      if (error?.code === 'PGRST205') {
+        hasFormRecordsTable = false;
+      }
+    }
+
+    const { data: storeRow } = await supabaseAdmin
+      .from('audit_logs')
+      .select('*')
+      .eq('entidade', '__db_form_record__')
+      .eq('id', existing.id)
+      .maybeSingle();
+
+    if (storeRow) {
+      const row = storeRow as AuditStoreRow<StoredFormPayload>;
+      const updatedPayload: StoredFormPayload = {
+        ...row.dados_depois,
+        subtipo: input.subtipo,
+        dados: input.dados,
+        status: input.status,
+        dataRef: input.dataRef,
+      };
+      const { error: updateErr } = await supabaseAdmin
+        .from('audit_logs')
+        .update({ dados_depois: updatedPayload })
+        .eq('id', existing.id);
+
+      if (updateErr) {
+        throw new Error(`Falha ao atualizar formulário: ${updateErr.message}`);
+      }
+
+      const criadoPorId = updatedPayload.criadoPor || row.usuario_id;
+      const userNames = await fetchUserNamesMap([criadoPorId]);
+      return {
+        ...updatedPayload,
+        criadoPorNome: userNames.get(criadoPorId) ?? null,
+        createdAt: new Date(updatedPayload.createdAt || row.created_at),
+      };
+    }
+
+    return this.createFormRecord({ tipo, ...input });
+  }
+
   async listFormRecords(filter: ListFormRecordsFilter = {}): Promise<FormRecord[]> {
     if (hasFormRecordsTable !== false) {
       let query = supabaseAdmin

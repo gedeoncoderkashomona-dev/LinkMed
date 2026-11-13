@@ -3,34 +3,23 @@ import type { NextRequest } from 'next/server';
 import { ForbiddenError, ValidationError } from '@/core/domain/errors';
 import { validarTransicaoOsNoServidor } from '@/core/domain/forms/os-flow-guard';
 import {
+  buildReg016DadosFromOsFluxo,
+  osDeveSincronizarReg016,
+} from '@/core/domain/forms/os-reg016-sync';
+import {
   normalizarNumeroOs,
   type OrdemServicoFluxoState,
 } from '@/core/domain/forms/os-workflow';
+import { getRepositories } from '@/infra/db';
 import { supabaseAdmin } from '@/infra/db/supabase/client';
+import { carregarOsFluxoPorNumero } from '@/infra/db/supabase/os-flow-store';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { apiHandler } from '@/lib/http/api-handler';
 
 export const runtime = 'nodejs';
 
 async function carregarEstadoAtual(norm: string): Promise<OrdemServicoFluxoState | null> {
-  // 1. Tabela dedicada os_fluxo
-  const { data: directData, error: directError } = await supabaseAdmin
-    .from('os_fluxo')
-    .select('estado')
-    .eq('numero_os_normalizado', norm)
-    .maybeSingle();
-  if (!directError && directData?.estado) return directData.estado as OrdemServicoFluxoState;
-
-  // 2. Fallback audit_logs
-  const { data: auditData } = await supabaseAdmin
-    .from('audit_logs')
-    .select('dados_depois')
-    .eq('entidade', '__db_os_fluxo__')
-    .eq('entidade_id', norm)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (auditData?.dados_depois as OrdemServicoFluxoState | undefined) ?? null;
+  return carregarOsFluxoPorNumero(norm);
 }
 
 export const GET = apiHandler(async (req: NextRequest) => {
@@ -139,5 +128,45 @@ export const POST = apiHandler(async (req: NextRequest) => {
     created_at: agoraIso,
   });
 
-  return { ok: true, directTableOk: !directError, numeroOs: rawBody.numeroOs };
+  // 3. Sincronização automática e atômica do Fluxo da OS -> REG-016 (etapas-manutencao)
+  const estadoPersistido = rawBody as OrdemServicoFluxoState;
+  let reg016Record = null;
+  if (osDeveSincronizarReg016(estadoPersistido)) {
+    const { operacionalRepository } = getRepositories();
+    const [reg016Existente, reg035Existente, reg022Existente, reg030Existente] =
+      await Promise.all([
+        operacionalRepository.findLatestFormRecordByOs('etapas-manutencao', norm),
+        operacionalRepository.findLatestFormRecordByOs('checklist-manutencao', norm),
+        operacionalRepository.findLatestFormRecordByOs('inspecao-recebimento', norm),
+        operacionalRepository.findLatestFormRecordByOs('verificacao-calibracao', norm),
+      ]);
+
+    const reg016Sync = buildReg016DadosFromOsFluxo({
+      os: estadoPersistido,
+      dadosExistentes: reg016Existente?.dados ?? null,
+      reg035Dados: reg035Existente?.dados ?? null,
+      reg035Subtipo: reg035Existente?.subtipo ?? null,
+      reg022Dados: reg022Existente?.dados ?? null,
+      reg030Dados: reg030Existente?.dados ?? null,
+    });
+
+    reg016Record = await operacionalRepository.upsertFormRecordByOs(
+      'etapas-manutencao',
+      norm,
+      {
+        subtipo: null,
+        dados: reg016Sync.dados,
+        status: reg016Sync.status,
+        dataRef: reg016Sync.dataRef,
+        criadoPor: auth.sub,
+      },
+    );
+  }
+
+  return {
+    ok: true,
+    directTableOk: !directError,
+    numeroOs: rawBody.numeroOs,
+    reg016Record,
+  };
 });
