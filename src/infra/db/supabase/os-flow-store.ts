@@ -31,3 +31,55 @@ export async function carregarOsFluxoPorNumero(
 
   return (auditData?.dados_depois as OrdemServicoFluxoState | undefined) ?? null;
 }
+
+/**
+ * Persiste o estado oficial da OS na tabela `os_fluxo` (e fallback em `audit_logs`)
+ * de forma atômica junto às operações do backend.
+ */
+export async function persistirOsFluxoNoServidor(params: {
+  estado: OrdemServicoFluxoState;
+  usuarioId: string;
+  ip?: string;
+  userAgent?: string | null;
+  acao?: string;
+  createdAt?: string;
+}): Promise<{ directTableOk: boolean; numeroOs: string }> {
+  const {
+    estado,
+    usuarioId,
+    ip = '127.0.0.1',
+    userAgent = null,
+    acao = 'os_fluxo.save',
+    createdAt = new Date().toISOString(),
+  } = params;
+  const norm = normalizarNumeroOs(estado.numeroOs);
+
+  const { error: upsertErr } = await supabaseAdmin
+    .from('os_fluxo')
+    .upsert(
+      {
+        numero_os_normalizado: norm,
+        numero_os: estado.numeroOs.trim(),
+        estado,
+        criado_por: usuarioId,
+        updated_at: createdAt,
+      },
+      { onConflict: 'numero_os_normalizado' },
+    );
+
+  const directTableOk = !upsertErr;
+
+  await supabaseAdmin.from('audit_logs').insert({
+    usuario_id: usuarioId,
+    acao,
+    entidade: '__db_os_fluxo__',
+    entidade_id: norm,
+    dados_antes: null,
+    dados_depois: estado,
+    ip,
+    user_agent: userAgent,
+    created_at: createdAt,
+  });
+
+  return { directTableOk, numeroOs: estado.numeroOs.trim() };
+}

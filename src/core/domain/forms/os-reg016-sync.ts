@@ -246,11 +246,12 @@ export function buildReg016DadosFromOsFluxo(input: Reg016SyncInput): {
     proximo.etiqueta_branca_adm = 'C';
   }
   if (
+    os.reg034Preenchido ||
     rank >= PASSO_RANK.A5_VIOLETA_HIGIENIZADO ||
-    (os.reg034Preenchido && etiquetaEfetiva === 'VIOLET')
+    etiquetaEfetiva === 'VIOLET'
   ) {
     proximo.etiqueta_violeta = 'C';
-  } else if (rank < PASSO_RANK.A5_VIOLETA_HIGIENIZADO && !dadosExistentes?.etiqueta_violeta) {
+  } else if (!dadosExistentes?.etiqueta_violeta) {
     delete proximo.etiqueta_violeta;
   }
 
@@ -378,7 +379,7 @@ export function buildReg016DadosFromOsFluxo(input: Reg016SyncInput): {
       Object.assign(proximo, copiados);
     } else if (
       marcaInferida &&
-      (os.item5Liberado || os.item5Preenchido || prev.item5_marca)
+      (finalizadoVerde || os.item5Preenchido || prev.item5_marca)
     ) {
       proximo.item5_marca = marcaInferida;
     }
@@ -466,8 +467,8 @@ export function mergeOsFluxoIntoServiceOrders(
         reg022Recebimento: os.reg022Preenchido || Boolean(prev?.etapasConcluidas.reg022Recebimento),
         reg034Limpeza: os.reg034Preenchido || Boolean(prev?.etapasConcluidas.reg034Limpeza),
         reg016Etapas:
-          os.reg016Iniciado ||
-          os.etiquetaAtual !== null ||
+          (os.reg034Preenchido &&
+            (os.reg016Iniciado || os.etiquetaAtual !== null)) ||
           Boolean(prev?.etapasConcluidas.reg016Etapas),
         reg035Manutencao: os.item5Preenchido || Boolean(prev?.etapasConcluidas.reg035Manutencao),
         reg030Calibracao: Boolean(prev?.etapasConcluidas.reg030Calibracao),

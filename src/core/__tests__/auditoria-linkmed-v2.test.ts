@@ -42,6 +42,7 @@ import {
   reabrirOs,
   verificarDuplicidadeOs,
   verificarEGerarLembretes7Dias,
+  verificarPreRequisitoFormularioPop020,
   type AtorAcaoOS,
 } from '@/core/domain/forms/os-workflow';
 import {
@@ -207,9 +208,11 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
 
     // D5: AT confirma recebimento das peças
     confirmarNotificacaoSetor(os, atorAt1);
-    // Preenche Item 5 (REG 009 para Cardios) e finaliza em VERDE (D6)
-    atPreencherItem5Reg016(os, 'Cardios', atorAt1);
+    // REG 035 / Item 5 ainda não abre antes da Etiqueta VERDE (POP-020)
+    expect(() => atPreencherItem5Reg016(os, 'Cardios', atorAt1)).toThrow(/Etiqueta VERDE/);
+    // D6: Finaliza em VERDE e libera o REG 035 / Item 5 (REG 009 para Cardios)
     atFinalizarServicoComEtiquetaVerde(os, atorAt1);
+    atPreencherItem5Reg016(os, 'Cardios', atorAt1);
 
     expect(os.etiquetaAtual).toBe('GREEN');
     expect(os.estadoGeral).toBe('finalizada');
@@ -237,8 +240,8 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
     // D4: Almoxarifado marca peças disponíveis
     almoxarifadoDecidirPecas(os, 'pecas_disponiveis', atorAlmox);
     confirmarNotificacaoSetor(os, atorAt1);
-    atPreencherItem5Reg016(os, 'TEB', atorAt1);
     atFinalizarServicoComEtiquetaVerde(os, atorAt1);
+    atPreencherItem5Reg016(os, 'TEB', atorAt1);
 
     expect(os.etiquetaAtual).toBe('GREEN');
     expect(os.estadoGeral).toBe('finalizada');
@@ -276,8 +279,8 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
     confirmarNotificacaoSetor(os, atorAlmox);
     almoxarifadoDecidirPecas(os, 'pecas_disponiveis', atorAlmox);
     confirmarNotificacaoSetor(os, atorAt1);
-    atPreencherItem5Reg016(os, 'OLIDEF', atorAt1);
     atFinalizarServicoComEtiquetaVerde(os, atorAt1);
+    atPreencherItem5Reg016(os, 'OLIDEF', atorAt1);
 
     expect(os.etiquetaAtual).toBe('GREEN');
     expect(os.estadoGeral).toBe('finalizada');
@@ -311,8 +314,8 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
 
     almoxarifadoDecidirPecas(os, 'pecas_disponiveis', atorAlmox);
     confirmarNotificacaoSetor(os, atorAt1);
-    atPreencherItem5Reg016(os, 'OLIDEF', atorAt1);
     atFinalizarServicoComEtiquetaVerde(os, atorAt1);
+    atPreencherItem5Reg016(os, 'OLIDEF', atorAt1);
 
     expect(os.etiquetaAtual).toBe('GREEN');
   });
@@ -345,7 +348,7 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
 
     // Tentativa de preencher Item 5 com etiqueta VERMELHA deve ser bloqueada
     expect(() => atPreencherItem5Reg016(os, 'Cardios', atorAt1)).toThrow(
-      /Item 5 do REG 016 está bloqueado/,
+      /bloqueado porque a OS possui etiqueta VERMELHA/,
     );
   });
 
@@ -419,8 +422,8 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
     confirmarNotificacaoSetor(os, atorAlmox);
     almoxarifadoDecidirPecas(os, 'pecas_disponiveis', atorAlmox);
     confirmarNotificacaoSetor(os, atorAt1);
-    atPreencherItem5Reg016(os, 'TEB', atorAt1);
     atFinalizarServicoComEtiquetaVerde(os, atorAt1);
+    atPreencherItem5Reg016(os, 'TEB', atorAt1);
 
     expect(os.etiquetaAtual).toBe('GREEN');
     expect(os.estadoGeral).toBe('finalizada');
@@ -445,8 +448,8 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
 
     almoxarifadoDecidirPecas(os, 'pecas_disponiveis', atorAlmox);
     confirmarNotificacaoSetor(os, atorAt1);
-    atPreencherItem5Reg016(os, 'OLIDEF', atorAt1);
     atFinalizarServicoComEtiquetaVerde(os, atorAt1);
+    atPreencherItem5Reg016(os, 'OLIDEF', atorAt1);
 
     expect(os.etiquetaAtual).toBe('GREEN');
   });
@@ -650,19 +653,64 @@ describe('Subtarefa 4 — Módulo Treinamentos (Seção 2) e Catálogo Oficial d
       'POP-020',
     ]);
 
-        const formsCodigos = DOCUMENTOS_OFICIAIS_POR_MODULO.formularios.map((f) => f.codigo);
+    const formsCodigos = DOCUMENTOS_OFICIAIS_POR_MODULO.formularios.map((f) => f.codigo);
     expect(formsCodigos).toEqual([
       'REG-018',
       'REG-017',
       'REG-040',
       'REG-030',
       'REG-015',
+      'REG-022',
+      'REG-034',
       'REG-016',
       'REG-009',
       'REG-035',
-      'REG-022',
-      'REG-034',
     ]);
+
+    expect(
+      verificarPreRequisitoFormularioPop020('limpeza-equipamento', {
+        tagColor: 'WHITE',
+        etapasConcluidas: {
+          reg022Recebimento: true,
+          reg034Limpeza: false,
+          reg016Etapas: false,
+          reg035Manutencao: false,
+        },
+      }).liberado,
+    ).toBe(true);
+    expect(
+      verificarPreRequisitoFormularioPop020('etapas-manutencao', {
+        tagColor: 'WHITE',
+        etapasConcluidas: {
+          reg022Recebimento: true,
+          reg034Limpeza: false,
+          reg016Etapas: false,
+          reg035Manutencao: false,
+        },
+      }).liberado,
+    ).toBe(false);
+    expect(
+      verificarPreRequisitoFormularioPop020('checklist-manutencao', {
+        tagColor: 'GRAY',
+        etapasConcluidas: {
+          reg022Recebimento: true,
+          reg034Limpeza: true,
+          reg016Etapas: true,
+          reg035Manutencao: false,
+        },
+      }).liberado,
+    ).toBe(false);
+    expect(
+      verificarPreRequisitoFormularioPop020('checklist-manutencao', {
+        tagColor: 'GREEN',
+        etapasConcluidas: {
+          reg022Recebimento: true,
+          reg034Limpeza: true,
+          reg016Etapas: true,
+          reg035Manutencao: false,
+        },
+      }).liberado,
+    ).toBe(true);
 
     const ncsCodigos = DOCUMENTOS_OFICIAIS_POR_MODULO.naoConformidades.map((n) => n.codigo);
     expect(ncsCodigos).toEqual(['REG-038', 'REG-047']);

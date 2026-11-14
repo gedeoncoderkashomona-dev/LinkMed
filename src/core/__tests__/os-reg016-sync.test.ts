@@ -108,12 +108,15 @@ describe('Sincronização OS Fluxo <-> REG-016 <-> Notificações Setoriais', ()
     expect(sync.dados.enviado_fabrica).toBe(false);
     expect(sync.dados.etiqueta_atual).toBe('ORANGE');
 
-    // D1 -> D4 (Almoxarifado Peças Disponíveis) -> D5 AT confirma -> Item 5 -> D6 VERDE
+    // D1 -> D4 (Almoxarifado Peças Disponíveis) -> D5 AT confirma -> D6 VERDE -> libera Item 5 / REG 035
     os = confirmarNotificacaoSetor(os, ATOR_ALMOX);
     os = almoxarifadoDecidirPecas(os, 'pecas_disponiveis', ATOR_ALMOX);
     os = confirmarNotificacaoSetor(os, ATOR_AT);
-    os = atPreencherItem5Reg016(os, 'OLIDEF', ATOR_AT);
+    expect(() => atPreencherItem5Reg016(structuredClone(os), 'OLIDEF', ATOR_AT)).toThrow(
+      /Etiqueta VERDE/,
+    );
     os = atFinalizarServicoComEtiquetaVerde(os, ATOR_AT);
+    os = atPreencherItem5Reg016(os, 'OLIDEF', ATOR_AT);
 
     // Simula que o técnico também concluiu o checklist OLIDEF (REG-035) e calibração (REG-030)
     const reg035OlidefDef = getFormDef('checklist-manutencao')!;
@@ -266,8 +269,8 @@ describe('Sincronização OS Fluxo <-> REG-016 <-> Notificações Setoriais', ()
     sync = buildReg016DadosFromOsFluxo({ os, dadosExistentes: sync.dados });
     expect(sync.dados.etiqueta_cinza).toBe('C');
     os = reabrirOs(os, 'Cliente liberou retomada', ATOR_ADM);
-    os = atPreencherItem5Reg016(os, 'TEB', ATOR_AT);
     os = atFinalizarServicoComEtiquetaVerde(os, ATOR_AT);
+    os = atPreencherItem5Reg016(os, 'TEB', ATOR_AT);
 
     sync = buildReg016DadosFromOsFluxo({ os, dadosExistentes: sync.dados });
     expect(sync.dados.liberado_qualidade).toBe('C');
@@ -340,5 +343,29 @@ describe('Sincronização OS Fluxo <-> REG-016 <-> Notificações Setoriais', ()
       perfil: 'gestor',
     });
     expect(resGestor.permitido).toBe(true);
+
+    // Após REG-034 concluir, Etiqueta VIOLETA fica marcada no REG-016 enquanto CINZA segue desmarcada
+    let osReg034 = confirmarNotificacaoSetor(structuredClone(osBranca), ATOR_AT);
+    osReg034 = atRegistrarReg034(osReg034, ATOR_AT);
+    const reg016Apos034 = buildReg016DadosFromOsFluxo({ os: osReg034 });
+    expect(reg016Apos034.dados.etiqueta_violeta).toBe('C');
+    expect(reg016Apos034.dados.etiqueta_cinza).toBeUndefined();
+    expect(reg016Apos034.dados.item5_marca).toBeUndefined();
+
+    // Guarda de servidor permite que AT preencha REG-035 / Item 5 imediatamente após Etiqueta VERDE
+    let osPronta = atMarcarEtiquetaVioleta(osReg034, ATOR_AT);
+    osPronta = atMarcarEtiquetaCinzaAnaliseCompleta(osPronta, ATOR_AT);
+    osPronta = atResponderPerguntaGarantia(osPronta, true, ATOR_AT);
+    osPronta = confirmarNotificacaoSetor(osPronta, ATOR_ALMOX);
+    osPronta = almoxarifadoDecidirPecas(osPronta, 'pecas_disponiveis', ATOR_ALMOX);
+    osPronta = confirmarNotificacaoSetor(osPronta, ATOR_AT);
+    const osVerde = atFinalizarServicoComEtiquetaVerde(structuredClone(osPronta), ATOR_AT);
+    const osItem5PosVerde = atPreencherItem5Reg016(structuredClone(osVerde), 'OLIDEF', ATOR_AT);
+    const resItem5PosVerde = validarTransicaoOsNoServidor({
+      anterior: osVerde,
+      proximo: osItem5PosVerde,
+      perfil: 'tecnico',
+    });
+    expect(resItem5PosVerde.permitido).toBe(true);
   });
 });

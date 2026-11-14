@@ -184,6 +184,14 @@ export function DashboardPlaceholder() {
             <div className="grid gap-2 sm:grid-cols-2">
               {ordensPendentesMeuSetor.map((o) => {
                 const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
+                const rotaDireta =
+                  o.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034'
+                    ? `/formularios/limpeza-equipamento?os=${encodeURIComponent(o.numeroOs)}`
+                    : o.etiquetaAtual === 'GREEN' && !o.item5Preenchido
+                      ? `/formularios/checklist-manutencao?os=${encodeURIComponent(o.numeroOs)}`
+                      : o.reg034Preenchido
+                        ? `/formularios/etapas-manutencao?os=${encodeURIComponent(o.numeroOs)}`
+                        : `/equipamentos?os=${encodeURIComponent(o.numeroOs)}`;
                 return (
                   <div
                     key={o.numeroOs}
@@ -202,12 +210,19 @@ export function DashboardPlaceholder() {
                         {ultimaNotif?.mensagem || o.mensagemTelaAtual || `Etapa atual: ${o.passoAtual}`}
                       </p>
                     </div>
-                    <Link href={`/equipamentos?os=${encodeURIComponent(o.numeroOs)}`}>
-                      <Button size="sm" className="h-7 shrink-0 gap-1 text-xs">
-                        Continuar Processo
-                        <ArrowRight className="h-3 w-3" />
-                      </Button>
-                    </Link>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Link href={rotaDireta}>
+                        <Button size="sm" className="h-7 gap-1 text-xs">
+                          Abrir Etapa Atual
+                          <ArrowRight className="h-3 w-3" />
+                        </Button>
+                      </Link>
+                      <Link href={`/equipamentos?os=${encodeURIComponent(o.numeroOs)}`}>
+                        <Button size="sm" variant="outline" className="h-7 text-xs">
+                          Painel OS
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 );
               })}
@@ -352,12 +367,14 @@ export function DashboardPlaceholder() {
               ) : ordensServico.length === 0 ? (
                 <div className="py-6 text-center text-xs text-muted-foreground">
                   Nenhuma Ordem de Serviço registrada ainda.{' '}
-                  <Link
-                    href="/formularios/inspecao-recebimento"
-                    className="font-semibold text-primary underline"
-                  >
-                    Iniciar Inspeção de Recebimento (REG-022)
-                  </Link>
+                  {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+                    <Link
+                      href="/formularios/inspecao-recebimento"
+                      className="font-semibold text-primary underline"
+                    >
+                      Iniciar Inspeção de Recebimento (REG-022)
+                    </Link>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-border">

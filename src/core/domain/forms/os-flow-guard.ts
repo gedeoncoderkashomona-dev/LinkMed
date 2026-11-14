@@ -122,7 +122,17 @@ export function validarTransicaoOsNoServidor(params: {
         return negar('OS cancelada: reabra a OS antes de continuar o fluxo.');
       }
       if (autor !== 'sistema' && !supervisor) {
-        if (!meuSetor || String(ev.setorPendenteAnterior) !== meuSetor) {
+        const isItem5PosVerde =
+          ev.codigoPasso === 'ITEM5_REG016' &&
+          (ev.etiquetaAnterior === 'GREEN' || anterior.etiquetaAtual === 'GREEN') &&
+          anterior.item5Liberado;
+        if (isItem5PosVerde) {
+          if (perfil !== 'tecnico') {
+            return negar(
+              'Somente a Assistência Técnica (AT), Gestor ou Diretor podem preencher o REG-035 / Item 5.',
+            );
+          }
+        } else if (!meuSetor || String(ev.setorPendenteAnterior) !== meuSetor) {
           return negar(
             `Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor ${String(ev.setorPendenteAnterior)}.`,
           );

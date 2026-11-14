@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -135,6 +136,7 @@ const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
 ];
 
 export default function NotificacoesPage() {
+  const router = useRouter();
   const { data: user } = useCurrentUser();
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
   const { data: osFlowData } = useOsFlowList();
@@ -263,6 +265,8 @@ export default function NotificacoesPage() {
         (n) => !n.confirmadaEm && (`os:dyn:${n.id}` === item.id || n.destinatario === item.destinatarioSetor),
       );
 
+    let nextOsPersistida: OrdemServicoFluxoState | null = osAtual;
+
     if (osAtual && notifAbertaNoServidor) {
       const atorLogado: AtorAcaoOS = {
         usuarioId: user?.id ?? 'usr-operador',
@@ -285,8 +289,12 @@ export default function NotificacoesPage() {
 
       try {
         await saveOsFlow.mutateAsync(nextOs);
+        nextOsPersistida = nextOs;
         if (typeof window !== 'undefined') {
-          localStorage.setItem(`${STORAGE_KEY_FLUXO_PREFIX}${nextOs.numeroOs}`, JSON.stringify(nextOs));
+          localStorage.setItem(
+            `${STORAGE_KEY_FLUXO_PREFIX}${nextOs.numeroOs}`,
+            JSON.stringify(nextOs),
+          );
         }
       } catch (err) {
         toast.error('Falha ao sincronizar confirmação', {
@@ -306,6 +314,20 @@ export default function NotificacoesPage() {
     } catch {
       // ignora
     }
+    if (!lidasIds.includes(item.id)) {
+      salvarLidas([...lidasIds, item.id]);
+    }
+
+    if (nextOsPersistida?.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034') {
+      toast.success('Ciência confirmada! Abrindo REG-034 (Limpeza e Higienização)...', {
+        description: `OS ${nextOsPersistida.numeroOs} confirmada por ${nome}. Marque o equipamento como higienizado para liberar o REG-016.`,
+      });
+      router.push(
+        `/formularios/limpeza-equipamento?os=${encodeURIComponent(nextOsPersistida.numeroOs)}`,
+      );
+      return;
+    }
+
     toast.success('Ciência confirmada', {
       description: osAtual && notifAbertaNoServidor
         ? `OS ${item.numeroOs ?? ''} avançada e REG-016 sincronizado por ${nome}.`
@@ -849,16 +871,47 @@ export default function NotificacoesPage() {
                       {lida ? 'Marcar não lida' : 'Marcar lida'}
                     </Button>
 
-                    {isIntersetorial && item.numeroOs && (
-                      <Link
-                        href={`/formularios/etapas-manutencao?os=${encodeURIComponent(item.numeroOs)}`}
-                      >
-                        <Button size="sm" variant="outline" className="text-xs">
-                          <FileText className="h-3.5 w-3.5" />
-                          REG-016
-                        </Button>
-                      </Link>
-                    )}
+                    {isIntersetorial && item.numeroOs && (() => {
+                      const osDaNotif = osFluxoPorNumero.get(normalizarNumeroOs(item.numeroOs));
+                      const reg034Concluido = Boolean(osDaNotif?.reg034Preenchido);
+                      const reg035Liberado = osDaNotif?.etiquetaAtual === 'GREEN';
+
+                      if (!reg034Concluido) {
+                        return (
+                          <Link
+                            href={`/formularios/limpeza-equipamento?os=${encodeURIComponent(item.numeroOs)}`}
+                          >
+                            <Button size="sm" variant="outline" className="text-xs">
+                              <FileText className="h-3.5 w-3.5" />
+                              REG-034
+                            </Button>
+                          </Link>
+                        );
+                      }
+
+                      return (
+                        <>
+                          <Link
+                            href={`/formularios/etapas-manutencao?os=${encodeURIComponent(item.numeroOs)}`}
+                          >
+                            <Button size="sm" variant="outline" className="text-xs">
+                              <FileText className="h-3.5 w-3.5" />
+                              REG-016
+                            </Button>
+                          </Link>
+                          {reg035Liberado && (
+                            <Link
+                              href={`/formularios/checklist-manutencao?os=${encodeURIComponent(item.numeroOs)}`}
+                            >
+                              <Button size="sm" variant="outline" className="text-xs">
+                                <FileText className="h-3.5 w-3.5" />
+                                REG-035
+                              </Button>
+                            </Link>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     <Link href={item.href}>
                       <Button size="sm" variant="outline">

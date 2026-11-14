@@ -60,10 +60,7 @@ import {
   type TagColor,
   type TipoTransporteFabrica,
 } from '@/core/domain/forms/os-workflow';
-import {
-  mergeOsFluxoIntoServiceOrders,
-  osDeveSincronizarReg016,
-} from '@/core/domain/forms/os-reg016-sync';
+import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
 import {
   useFormsOverview,
   useOsFlowList,
@@ -87,19 +84,6 @@ function salvarFluxoLocalStorage(state: OrdemServicoFluxoState) {
     localStorage.setItem(`${STORAGE_KEY_FLUXO_PREFIX}current`, state.numeroOs);
   } catch {
     // ignora se storage estiver desabilitado
-  }
-}
-
-function carregarFluxoStorage(numeroOs?: string): OrdemServicoFluxoState | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const alvo = numeroOs || localStorage.getItem(`${STORAGE_KEY_FLUXO_PREFIX}current`);
-    if (!alvo) return null;
-    const raw = localStorage.getItem(`${STORAGE_KEY_FLUXO_PREFIX}${alvo}`);
-    if (!raw) return null;
-    return JSON.parse(raw) as OrdemServicoFluxoState;
-  } catch {
-    return null;
   }
 }
 
@@ -169,7 +153,6 @@ export function EquipamentosClient() {
     [user],
   );
 
-  const [marcaSimulacao, setMarcaSimulacao] = React.useState<'Cardios' | 'TEB' | 'OLIDEF'>('Cardios');
   const [transporteSelecionado, setTransporteSelecionado] =
     React.useState<TipoTransporteFabrica>('transportadora_linkmed');
   const [justificativaNaoEnviado, setJustificativaNaoEnviado] = React.useState(
@@ -178,23 +161,9 @@ export function EquipamentosClient() {
   const [motivoCancelamento, setMotivoCancelamento] = React.useState(
     'Solicitação temporária do cliente para revisão de contrato',
   );
-  const [fluxoV2, setFluxoV2] = React.useState<OrdemServicoFluxoState>(() => {
-    const salvo = carregarFluxoStorage();
-    if (salvo) return salvo;
-    return criarOsViaReg022({
-      numeroOs: 'OS-2026-V2',
-      identificacao: {
-        cliente: 'Hospital Santa Clara',
-        equipamento: 'Gravador Holter Digital',
-        marca: 'Cardios',
-        modelo: 'CardioLight',
-        numeroSerie: 'SN-CRD-9921',
-      },
-      ator: ATOR_FALLBACK_INICIAL,
-    });
-  });
+  const [fluxoV2, setFluxoV2] = React.useState<OrdemServicoFluxoState | null>(null);
 
-  const setorDoPasso = obterSetorDoPasso(fluxoV2.passoAtual);
+  const setorDoPasso = fluxoV2 ? obterSetorDoPasso(fluxoV2.passoAtual) : 'todos';
   const podeExecutarPasso =
     !user ||
     user.perfil === 'diretor' ||
@@ -226,7 +195,7 @@ export function EquipamentosClient() {
     [ordensFluxoServidor, data?.records],
   );
 
-  // Sincroniza a OS ativa com as atualizações do servidor (outros setores / formulários)
+  // Sincroniza a OS ativa exclusivamente com os registros persistidos no servidor (evita OS fantasma no navegador)
   React.useEffect(() => {
     if (!osFlowData?.ordens) return;
     const lista = osFlowData.ordens;
@@ -238,47 +207,55 @@ export function EquipamentosClient() {
       );
       if (encontradaServidor) {
         setFluxoV2((atual) =>
+          !atual ||
           atual.numeroOs.trim().toUpperCase() !== alvoLimpo ||
           (encontradaServidor.historico?.length ?? 0) >= (atual.historico?.length ?? 0)
             ? encontradaServidor
             : atual,
         );
-        setMostrarPainelFluxoV2(true);
-        return;
-      }
-      const salvoLocal = carregarFluxoStorage(alvoLimpo);
-      if (salvoLocal) {
-        setFluxoV2(salvoLocal);
+        salvarFluxoLocalStorage(encontradaServidor);
         setMostrarPainelFluxoV2(true);
         return;
       }
     }
 
-    const correspondenteAtual = lista.find(
-      (o) => o.numeroOs.trim().toUpperCase() === fluxoV2.numeroOs.trim().toUpperCase(),
-    );
-    if (
-      correspondenteAtual &&
-      (correspondenteAtual.historico?.length ?? 0) > (fluxoV2.historico?.length ?? 0)
-    ) {
-      setFluxoV2(correspondenteAtual);
-      return;
-    }
-
-    if (!jaAutoSelecionouRef.current && setorOperacionalDoUsuario && !osQueryParam) {
-      const pendenteMeuSetor = lista.find(
-        (o) =>
-          o.estadoGeral !== 'finalizada' &&
-          o.estadoGeral !== 'cancelada' &&
-          o.setorPendente === setorOperacionalDoUsuario,
+    if (fluxoV2) {
+      const correspondenteAtual = lista.find(
+        (o) => o.numeroOs.trim().toUpperCase() === fluxoV2.numeroOs.trim().toUpperCase(),
       );
-      if (pendenteMeuSetor) {
-        setFluxoV2(pendenteMeuSetor);
+      if (
+        correspondenteAtual &&
+        (correspondenteAtual.historico?.length ?? 0) > (fluxoV2.historico?.length ?? 0)
+      ) {
+        setFluxoV2(correspondenteAtual);
+        salvarFluxoLocalStorage(correspondenteAtual);
+        return;
+      }
+    }
+
+    if (!jaAutoSelecionouRef.current && lista.length > 0 && !osQueryParam) {
+      const pendenteMeuSetor = setorOperacionalDoUsuario
+        ? lista.find(
+            (o) =>
+              o.estadoGeral !== 'finalizada' &&
+              o.estadoGeral !== 'cancelada' &&
+              o.setorPendente === setorOperacionalDoUsuario,
+          )
+        : null;
+      const alvo = pendenteMeuSetor ?? lista[0] ?? null;
+      if (alvo) {
+        setFluxoV2(alvo);
+        salvarFluxoLocalStorage(alvo);
         setMostrarPainelFluxoV2(true);
         jaAutoSelecionouRef.current = true;
       }
     }
-  }, [osFlowData?.ordens, osQueryParam, setorOperacionalDoUsuario, fluxoV2.numeroOs, fluxoV2.historico?.length]);
+  }, [
+    osFlowData?.ordens,
+    osQueryParam,
+    setorOperacionalDoUsuario,
+    fluxoV2,
+  ]);
 
   const osFiltradas = React.useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -299,6 +276,7 @@ export function EquipamentosClient() {
     fn: (s: OrdemServicoFluxoState) => OrdemServicoFluxoState,
     msg: string,
   ) {
+    if (!fluxoV2) return;
     const anterior = fluxoV2;
     let next: OrdemServicoFluxoState;
     try {
@@ -309,10 +287,11 @@ export function EquipamentosClient() {
     }
 
     setFluxoV2(next);
-    salvarFluxoLocalStorage(next);
 
     try {
       const res = await saveOsFlow.mutateAsync(next);
+      setFluxoV2(next);
+      salvarFluxoLocalStorage(next);
       if (res.reg016Record) {
         toast.success(msg, {
           description: 'REG-016 sincronizado e atualizado automaticamente no sistema.',
@@ -322,7 +301,6 @@ export function EquipamentosClient() {
       }
     } catch (err) {
       setFluxoV2(anterior);
-      salvarFluxoLocalStorage(anterior);
       toast.error('Acesso ou transição não concluída', {
         description:
           err instanceof Error
@@ -332,7 +310,7 @@ export function EquipamentosClient() {
     }
   }
 
-  function carregarOsRealNoFluxoV2(os: {
+  async function carregarOsRealNoFluxoV2(os: {
     numeroOs: string;
     cliente: string;
     equipamento: string;
@@ -346,16 +324,17 @@ export function EquipamentosClient() {
     );
     if (doServidor) {
       setFluxoV2(doServidor);
+      salvarFluxoLocalStorage(doServidor);
       setMostrarPainelFluxoV2(true);
       toast.success(`Fluxo da OS ${os.numeroOs} carregado exatamente da etapa onde parou!`);
       return;
     }
 
-    const salvo = carregarFluxoStorage(os.numeroOs);
-    if (salvo) {
-      setFluxoV2(salvo);
-      setMostrarPainelFluxoV2(true);
-      toast.success(`Fluxo v2 da OS ${os.numeroOs} carregado!`);
+    if (!['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '')) {
+      toast.error('Fluxo da OS ainda não inicializado pelo setor Administrativo (ADM)', {
+        description:
+          'Solicite ao ADM a criação/confirmação inicial desta OS pelo formulário REG-022 (Inspeção de Recebimento).',
+      });
       return;
     }
 
@@ -371,35 +350,20 @@ export function EquipamentosClient() {
       ator: atorLogado,
     });
 
-    salvarFluxoLocalStorage(nova);
-    void saveOsFlow.mutateAsync(nova).catch(() => {});
-    setFluxoV2(nova);
-    setMostrarPainelFluxoV2(true);
-    toast.info(`Fluxo v2 inicializado para a OS ${os.numeroOs}.`);
-  }
-
-  function reiniciarFluxoV2(marca: 'Cardios' | 'TEB' | 'OLIDEF') {
-    setMarcaSimulacao(marca);
-    const nova = criarOsViaReg022({
-      numeroOs: `OS-2026-${marca.toUpperCase()}`,
-      identificacao: {
-        cliente: 'Hospital Santa Clara',
-        equipamento:
-          marca === 'Cardios'
-            ? 'Gravador Holter Digital'
-            : marca === 'TEB'
-              ? 'Eletrocardiógrafo Digital'
-              : 'Incubadora Neonatal',
-        marca,
-        modelo: marca === 'Cardios' ? 'CardioLight' : marca === 'TEB' ? 'ECGPC' : 'RN-2000',
-        numeroSerie: `SN-${marca.slice(0, 3).toUpperCase()}-2026`,
-      },
-      ator: atorLogado,
-    });
-    salvarFluxoLocalStorage(nova);
-    void saveOsFlow.mutateAsync(nova).catch(() => {});
-    setFluxoV2(nova);
-    toast.info(`Fluxo v2 reiniciado para equipamento da marca ${marca}.`);
+    try {
+      await saveOsFlow.mutateAsync(nova);
+      salvarFluxoLocalStorage(nova);
+      setFluxoV2(nova);
+      setMostrarPainelFluxoV2(true);
+      toast.info(`Fluxo oficial inicializado pelo ADM para a OS ${os.numeroOs}.`);
+    } catch (err) {
+      toast.error('Não foi possível inicializar a OS no servidor', {
+        description:
+          err instanceof Error
+            ? err.message
+            : 'Verifique se o registro inicial REG-022 está completo.',
+      });
+    }
   }
 
   return (
@@ -457,7 +421,7 @@ export function EquipamentosClient() {
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {ordensPendentesMeuSetor.map((o) => {
-                const isAtiva = fluxoV2.numeroOs === o.numeroOs;
+                const isAtiva = fluxoV2?.numeroOs === o.numeroOs;
                 const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
                 return (
                   <div
@@ -528,22 +492,30 @@ export function EquipamentosClient() {
                   Execute passo a passo as ramificações 1 (Garantia), 2 (Envio à Fábrica) e 3 (Reparo Direto), Bloco O (Orçamento), Bloco P (Peças), Item 5 por marca e Cancelamento/Reabertura com histórico imutável.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {(['Cardios', 'TEB', 'OLIDEF'] as const).map((m) => (
-                  <Button
-                    key={m}
-                    type="button"
-                    size="sm"
-                    variant={marcaSimulacao === m ? 'default' : 'outline'}
-                    onClick={() => reiniciarFluxoV2(m)}
-                    className="h-7 text-xs"
-                  >
-                    Nova OS ({m})
+              {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+                <Link href="/formularios/inspecao-recebimento">
+                  <Button type="button" size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
+                    <FileText className="h-3.5 w-3.5" />
+                    Abrir Nova OS no REG-022 (ADM)
                   </Button>
-                ))}
-              </div>
+                </Link>
+              )}
             </div>
           </CardHeader>
+          {!fluxoV2 ? (
+            <CardContent className="space-y-3">
+              <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-xs text-muted-foreground space-y-2">
+                <p className="font-semibold text-foreground">
+                  Nenhuma Ordem de Serviço ativa selecionada no painel.
+                </p>
+                <p>
+                  {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '')
+                    ? 'Cadastre uma nova OS pelo REG-022 (Inspeção de Recebimento) ou clique em "Gerenciar Fluxo v2" em uma OS da fila abaixo.'
+                    : 'Aguarde o setor Administrativo (ADM) registrar a Inspeção de Recebimento (REG-022) ou selecione uma OS abaixo na fila.'}
+                </p>
+              </div>
+            </CardContent>
+          ) : (
           <CardContent className="space-y-4">
             {/* Barra de Status da OS no Motor v2 */}
             <div className="grid gap-3 rounded-xl border border-border bg-card p-3.5 sm:grid-cols-4">
@@ -633,19 +605,33 @@ export function EquipamentosClient() {
               <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <span>
-                  {osDeveSincronizarReg016(fluxoV2)
-                    ? 'REG-016 sincronizado automaticamente conforme cada etapa/etiqueta marcada neste fluxo.'
-                    : 'Ao marcar a Etiqueta BRANCA, o REG-016 será criado e pré-preenchido automaticamente.'}
+                  {fluxoV2.reg034Preenchido
+                    ? 'REG-016 desbloqueado e sincronizado (Etiqueta VIOLETA marcada após REG-034; Etiqueta CINZA aguarda conclusão da análise).'
+                    : 'POP-020: Conclua antes o REG-034 (Higienização) para liberar o acesso ao REG-016.'}
                 </span>
               </div>
-              <Link
-                href={`/formularios/etapas-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}
-              >
-                <Button type="button" size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
-                  <FileText className="h-3.5 w-3.5" />
-                  Abrir REG-016 Preenchido
+              {fluxoV2.reg034Preenchido ? (
+                <Link
+                  href={`/formularios/etapas-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}
+                >
+                  <Button type="button" size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
+                    <FileText className="h-3.5 w-3.5" />
+                    Abrir REG-016 Preenchido
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled
+                  className="h-7 gap-1.5 text-xs opacity-60"
+                  title="Conclua o REG-034 (Limpeza e Higienização) para liberar o REG-016"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  REG-016 Bloqueado (Conclua REG-034)
                 </Button>
-              </Link>
+              )}
             </div>
 
             {/* Botões de Ação setorizados conforme Auditoria e Ata Linkmed */}
@@ -1013,46 +999,51 @@ export function EquipamentosClient() {
               )}
 
               {fluxoV2.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' && (
-                <>
-                  {!fluxoV2.item5Preenchido ? (
-                    <>
-                      <Link href={`/formularios/etapas-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}>
-                        <Button size="sm" variant="outline" className="gap-1.5">
-                          Abrir Item 5 no REG-016 ({fluxoV2.item5FormularioTipo})
-                        </Button>
-                      </Link>
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          executarTransicao(
-                            (s) =>
-                              atPreencherItem5Reg016(
-                                s,
-                                s.identificacao.marca,
-                                atorLogado,
-                              ),
-                            `Item 5 (${fluxoV2.item5FormularioTipo}) preenchido para a marca ${fluxoV2.identificacao.marca}!`,
-                          )
-                        }
-                      >
-                        [AT] Preencher Item 5 do REG 016 ({fluxoV2.item5FormularioTipo})
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    executarTransicao(
+                      (s) => atFinalizarServicoComEtiquetaVerde(s, atorLogado),
+                      'Etiqueta VERDE aplicada! REG-035 / Item 5 liberado para finalização.',
+                    )
+                  }
+                >
+                  [AT] D6: Marcar Etiqueta VERDE (Serviço Finalizado)
+                </Button>
+              )}
+
+              {fluxoV2.etiquetaAtual === 'GREEN' &&
+                fluxoV2.item5Liberado &&
+                !fluxoV2.item5Preenchido &&
+                ['tecnico', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+                  <>
+                    <Link
+                      href={`/formularios/checklist-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}
+                    >
+                      <Button size="sm" variant="default" className="gap-1.5">
+                        <FileText className="h-3.5 w-3.5" />
+                        Abrir REG-035 / {fluxoV2.item5FormularioTipo} (Marca {fluxoV2.identificacao.marca})
                       </Button>
-                    </>
-                  ) : (
+                    </Link>
                     <Button
                       size="sm"
+                      variant="outline"
                       onClick={() =>
                         executarTransicao(
-                          (s) => atFinalizarServicoComEtiquetaVerde(s, atorLogado),
-                          'Etiqueta VERDE aplicada! Serviço finalizado com sucesso.',
+                          (s) =>
+                            atPreencherItem5Reg016(
+                              s,
+                              s.identificacao.marca,
+                              atorLogado,
+                            ),
+                          `REG-035 / Item 5 (${fluxoV2.item5FormularioTipo}) concluído para a marca ${fluxoV2.identificacao.marca}!`,
                         )
                       }
                     >
-                      [AT] D6: Marcar Etiqueta VERDE (Serviço Finalizado)
+                      [AT] Concluir {fluxoV2.item5FormularioTipo} (Pós-Serviço)
                     </Button>
-                  )}
-                </>
-              )}
+                  </>
+                )}
             </div>
             )}
 
@@ -1135,6 +1126,7 @@ export function EquipamentosClient() {
               </div>
             </div>
           </CardContent>
+          )}
         </Card>
       )}
 
@@ -1189,27 +1181,46 @@ export function EquipamentosClient() {
               const tag = TAG_SPECS[os.tagColor];
               const analiseJaConcluida =
                 os.tagColor !== 'WHITE' && os.tagColor !== 'VIOLET';
+              const reg022Done = os.etapasConcluidas.reg022Recebimento;
+              const reg034Done = os.etapasConcluidas.reg034Limpeza;
+              const reg016Done = os.etapasConcluidas.reg016Etapas;
+              const reg035LiberadoPorVerde = os.tagColor === 'GREEN';
+              const mostrarReg035 =
+                reg035LiberadoPorVerde || os.etapasConcluidas.reg035Manutencao;
+
               const etapas = [
                 {
                   label: '1. Recebimento ADM (REG-022)',
-                  done: os.etapasConcluidas.reg022Recebimento,
+                  done: reg022Done,
+                  unlocked: true,
+                  lockMsg: '',
                   href: `/formularios/inspecao-recebimento?os=${encodeURIComponent(os.chave)}`,
                 },
                 {
-                  label: '2. Etapas / Etiquetas (REG-016)',
-                  done: os.etapasConcluidas.reg016Etapas,
-                  href: `/formularios/etapas-manutencao?os=${encodeURIComponent(os.chave)}`,
-                },
-                {
-                  label: '3. Higienização AT (REG-034)',
-                  done: os.etapasConcluidas.reg034Limpeza,
+                  label: '2. Higienização AT (REG-034)',
+                  done: reg034Done,
+                  unlocked: reg022Done,
+                  lockMsg: 'Conclua o REG-022 (Recebimento ADM) para liberar o REG-034.',
                   href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(os.chave)}`,
                 },
                 {
-                  label: '4. Finalização por Marca (REG-009 / REG-035)',
-                  done: os.etapasConcluidas.reg035Manutencao,
-                  href: `/formularios/checklist-manutencao?os=${encodeURIComponent(os.chave)}`,
+                  label: '3. Etapas / Etiquetas (REG-016)',
+                  done: reg016Done,
+                  unlocked: reg022Done && reg034Done,
+                  lockMsg: 'Conclua o REG-034 (Higienização) para liberar o REG-016.',
+                  href: `/formularios/etapas-manutencao?os=${encodeURIComponent(os.chave)}`,
                 },
+                ...(mostrarReg035
+                  ? [
+                      {
+                        label: '4. Finalização por Marca (REG-009 / REG-035)',
+                        done: os.etapasConcluidas.reg035Manutencao,
+                        unlocked: reg022Done && reg034Done && reg035LiberadoPorVerde,
+                        lockMsg: 'Disponível somente após acionar a Etiqueta VERDE no REG-016.',
+                        href: `/formularios/checklist-manutencao?os=${encodeURIComponent(os.chave)}`,
+                      },
+                    ]
+                  : []),
               ];
 
               return (
@@ -1297,27 +1308,43 @@ export function EquipamentosClient() {
                       </div>
                     </div>
 
-                    {/* Trilha de Etapas com Autopreenchimento */}
-                    <div className="grid gap-2 border-t border-border pt-3 sm:grid-cols-4">
-                      {etapas.map((etapa) => (
-                        <Link
-                          key={etapa.label}
-                          href={etapa.href}
-                          className={cn(
-                            'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-colors',
-                            etapa.done
-                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                              : 'border-border bg-muted/30 text-muted-foreground hover:bg-accent hover:text-foreground',
-                          )}
-                        >
-                          <span className="truncate">{etapa.label}</span>
-                          {etapa.done ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                          ) : (
-                            <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                          )}
-                        </Link>
-                      ))}
+                    {/* Trilha POP-020 com Bloqueio Sequencial Estrito (REG-022 -> REG-034 -> REG-016 -> REG-035) */}
+                    <div
+                      className={cn(
+                        'grid gap-2 border-t border-border pt-3',
+                        mostrarReg035 ? 'sm:grid-cols-4' : 'sm:grid-cols-3',
+                      )}
+                    >
+                      {etapas.map((etapa) =>
+                        etapa.unlocked || etapa.done ? (
+                          <Link
+                            key={etapa.label}
+                            href={etapa.href}
+                            className={cn(
+                              'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-colors',
+                              etapa.done
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                : 'border-primary/40 bg-primary/5 text-foreground hover:bg-accent',
+                            )}
+                          >
+                            <span className="truncate">{etapa.label}</span>
+                            {etapa.done ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                              <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                            )}
+                          </Link>
+                        ) : (
+                          <div
+                            key={etapa.label}
+                            title={etapa.lockMsg}
+                            className="flex cursor-not-allowed items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-[11px] font-medium text-muted-foreground opacity-65"
+                          >
+                            <span className="truncate">{etapa.label}</span>
+                            <Lock className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                          </div>
+                        ),
+                      )}
                     </div>
                   </CardContent>
                 </Card>

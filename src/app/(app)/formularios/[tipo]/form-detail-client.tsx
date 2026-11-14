@@ -76,19 +76,22 @@ import {
   aggregateServiceOrders,
   admMarcarEtiquetaBrancaNoReg016,
   atFinalizarServicoComEtiquetaVerde,
+  atMarcarEtiquetaCinzaAnaliseCompleta,
+  atMarcarEtiquetaVioleta,
   atPreencherItem5Reg016,
   atRegistrarReg034,
   confirmarNotificacaoSetor,
   criarOsViaReg022,
   normalizarNumeroOs,
   TAG_SPECS,
+  verificarPreRequisitoFormularioPop020,
   type OrdemServicoFluxoState,
   type ServiceOrderContext,
 } from '@/core/domain/forms/os-workflow';
 import {
   hydrateFormFieldsFromOsFluxo,
   mergeOsFluxoIntoServiceOrders,
-  osDeveSincronizarReg016,
+  normalizarMarcaParaItem5,
 } from '@/core/domain/forms/os-reg016-sync';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import {
@@ -353,7 +356,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         ...relacionados,
       });
 
-      hydratedFluxoSigRef.current = `${osCtx.chave}:${osFluxo?.atualizadaEm ?? ''}:${relacionados.reg016RecordExistente?.id ?? ''}`;
+      hydratedFluxoSigRef.current = `${osCtx.chave}:${osFluxo?.atualizadaEm ?? ''}:${relacionados.reg016RecordExistente?.id ?? ''}:${String(relacionados.reg016RecordExistente?.dados?.__sync_atualizado_em ?? '')}:${relacionados.reg035RecordExistente?.id ?? ''}`;
       setOsSelecionada(osCtx.chave);
       setDados((prev) => {
         const next: Record<string, unknown> = {
@@ -367,13 +370,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
           def.tipo === 'etapas-manutencao' &&
           !next.item5_marca &&
           osCtx.marca &&
-          osCtx.tagColor !== 'RED' &&
+          (osCtx.tagColor === 'GREEN' || osCtx.etapasConcluidas.reg035Manutencao) &&
           osCtx.item5Liberado !== false
         ) {
-          const m = osCtx.marca.toUpperCase();
-          if (m.includes('CARDIOS')) next.item5_marca = 'Cardios';
-          else if (m.includes('TEB')) next.item5_marca = 'TEB';
-          else if (m.includes('OLIDEF')) next.item5_marca = 'OLIDEF';
+          next.item5_marca = normalizarMarcaParaItem5(osCtx.marca);
         }
         return next;
       });
@@ -407,8 +407,8 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       (osFlowData?.ordens ?? []).find(
         (o) => normalizarNumeroOs(o.numeroOs) === normOs,
       ) ?? null;
-    const reg016Existente = buscarRegistrosPorOs(normOs).reg016RecordExistente;
-    const sig = `${encontrada.chave}:${osFluxo?.atualizadaEm ?? ''}:${reg016Existente?.id ?? ''}`;
+    const relacionados = buscarRegistrosPorOs(normOs);
+    const sig = `${encontrada.chave}:${osFluxo?.atualizadaEm ?? ''}:${relacionados.reg016RecordExistente?.id ?? ''}:${String(relacionados.reg016RecordExistente?.dados?.__sync_atualizado_em ?? '')}:${relacionados.reg035RecordExistente?.id ?? ''}`;
 
     if (!osSelecionada || (osSelecionada === encontrada.chave && hydratedFluxoSigRef.current !== sig)) {
       aplicarContextoOs(encontrada, { silencioso: Boolean(osSelecionada) });
@@ -416,6 +416,45 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   }, [osParam, ordensServico, osSelecionada, osFlowData?.ordens, buscarRegistrosPorOs, aplicarContextoOs]);
 
   const osContextoAtual = ordensServico.find((o) => o.chave === osSelecionada) ?? null;
+
+  const ordensElegiveisParaFormulario = React.useMemo(() => {
+    if (!def || !FORMS_COM_OS.has(def.tipo) || def.tipo === 'inspecao-recebimento') {
+      return ordensServico;
+    }
+    return ordensServico.filter((o) => verificarPreRequisitoFormularioPop020(def.tipo, o).liberado);
+  }, [def, ordensServico]);
+
+  const prereqPop020 = React.useMemo(() => {
+    if (!def) {
+      return { visivel: true, liberado: true, motivo: null };
+    }
+    if (
+      (def.tipo === 'limpeza-equipamento' ||
+        def.tipo === 'etapas-manutencao' ||
+        def.tipo === 'checklist-manutencao') &&
+      !osContextoAtual
+    ) {
+      const motivo =
+        def.tipo === 'checklist-manutencao'
+          ? 'POP-020: Selecione uma OS com Etiqueta VERDE (serviço finalizado no REG-016) para preencher o REG-035 / REG-009.'
+          : def.tipo === 'etapas-manutencao'
+            ? 'POP-020: Selecione uma OS cuja Limpeza e Higienização (REG-034) já foi concluída para preencher o REG-016.'
+            : 'POP-020: Selecione uma OS registrada pelo setor Administrativo (ADM) no REG-022 para preencher o REG-034.';
+      return {
+        visivel: def.tipo !== 'checklist-manutencao',
+        liberado: false,
+        motivo,
+      };
+    }
+    return verificarPreRequisitoFormularioPop020(def.tipo, osContextoAtual);
+  }, [def, osContextoAtual]);
+
+  const marcaTravadaPeloAdm = Boolean(
+    def &&
+      def.tipo !== 'inspecao-recebimento' &&
+      osContextoAtual?.marca &&
+      user?.perfil === 'tecnico',
+  );
 
   // Verificação em tempo real de OS duplicada no REG-022 (Seção 7.4 / T11)
   const osDuplicadaNoReg022 = React.useMemo(() => {
@@ -538,6 +577,14 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       return;
     }
 
+    if (name === 'marca' && marcaTravadaPeloAdm) {
+      toast.error('Campo bloqueado para Assistência Técnica (AT)', {
+        description:
+          'A marca do equipamento é definida pelo setor Administrativo (ADM) no REG-022 e não pode ser alterada pela AT.',
+      });
+      return;
+    }
+
     if (def?.tipo === 'etapas-manutencao' && name.startsWith('item5_') && bloqueioItem5.bloqueado) {
       toast.error('Item 5 Bloqueado (Etiqueta VERMELHA)', {
         description:
@@ -586,12 +633,18 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   }
 
   function preencherTodosConformes(secaoCampos: FieldDef[], tituloSecao: string) {
+    const naoMarcarAutomatico = new Set([
+      'orcamento_reprovado',
+      'falta_itens_estoque',
+      'etiqueta_cinza',
+      'liberado_qualidade',
+      'etiqueta_verde_sem_defeito',
+    ]);
     setDados((prev) => {
       const next = { ...prev };
       for (const c of secaoCampos) {
         if (c.type === 'cnc' && !next[c.name]) {
-          // No REG 016, não marca automaticamente "orcamento_reprovado" nem "falta_itens_estoque"
-          if (c.name === 'orcamento_reprovado' || c.name === 'falta_itens_estoque') continue;
+          if (naoMarcarAutomatico.has(c.name)) continue;
           next[c.name] = 'C';
         }
       }
@@ -629,6 +682,17 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     setSucessoMsg(null);
     setErros({});
 
+    if (!prereqPop020.liberado) {
+      const msgPrereq =
+        prereqPop020.motivo ??
+        'Pré-requisito obrigatório da Trilha POP-020 não concluído para este formulário.';
+      setErroGeral(msgPrereq);
+      toast.error('Etapa anterior obrigatória (POP-020)', {
+        description: msgPrereq,
+      });
+      return;
+    }
+
     if (osDuplicadaNoReg022) {
       const msgDup = `Já existe uma OS com este número (${osDuplicadaNoReg022.numeroOs}). Não são permitidas OS duplicadas.`;
       setErroGeral(msgDup);
@@ -661,120 +725,145 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         perfil: (user?.perfil ?? 'tecnico') as 'adm' | 'tecnico' | 'estoquista' | 'gestor' | 'diretor',
       };
 
-      // Sincronização automática do Motor de Fluxo Intersetorial v2 (ADM -> AT -> Almoxarifado)
+      // Sincronização automática do Motor de Fluxo Intersetorial v2 (servidor prioritário + fallback local)
       if (numOsSalvo) {
-        try {
-          const storageKey = `regulaon:os_fluxo_v2:${numOsSalvo}`;
-          const numOsNorm = normalizarNumeroOs(numOsSalvo);
-          let osState: OrdemServicoFluxoState | null =
-            (osFlowData?.ordens ?? []).find(
-              (o) => normalizarNumeroOs(o.numeroOs) === numOsNorm,
-            ) ?? null;
+        const storageKey = `regulaon:os_fluxo_v2:${numOsSalvo}`;
+        if (res.osFluxo) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(storageKey, JSON.stringify(res.osFluxo));
+            localStorage.setItem('regulaon:os_fluxo_v2:current', res.osFluxo.numeroOs);
+          }
+        } else {
+          try {
+            const numOsNorm = normalizarNumeroOs(numOsSalvo);
+            let osState: OrdemServicoFluxoState | null =
+              (osFlowData?.ordens ?? []).find(
+                (o) => normalizarNumeroOs(o.numeroOs) === numOsNorm,
+              ) ?? null;
 
-          if (!osState) {
-            try {
+            if (!osState) {
               const r = await fetch(`/api/os-flow?os=${encodeURIComponent(numOsSalvo)}`);
               const j = await r.json();
               if (j?.data?.os) osState = j.data.os as OrdemServicoFluxoState;
-            } catch {
-              // ignora falha de rede
             }
-          }
-          if (!osState && typeof window !== 'undefined') {
-            const rawLocal = localStorage.getItem(storageKey);
-            if (rawLocal) osState = JSON.parse(rawLocal) as OrdemServicoFluxoState;
-          }
 
-          if (def.tipo === 'inspecao-recebimento') {
-            const criada = criarOsViaReg022({
-              numeroOs: numOsSalvo,
-              identificacao: {
-                cliente: String(dados.cliente ?? 'Cliente Hospitalar'),
-                equipamento: String(dados.equipamento ?? 'Equipamento Médico'),
-                marca: String(dados.marca ?? 'Cardios'),
-                modelo: String(dados.modelo ?? 'Modelo Padrão'),
-                numeroSerie: String(dados.numero_serie ?? 'S/N'),
-                acessorios: String(dados.acessorios ?? ''),
-                relatoCliente: String(dados.relato_cliente ?? ''),
-              },
-              ator: atorAtual,
+            if (def.tipo === 'inspecao-recebimento') {
+              const criada = criarOsViaReg022({
+                numeroOs: numOsSalvo,
+                identificacao: {
+                  cliente: String(dados.cliente ?? 'Cliente Hospitalar'),
+                  equipamento: String(dados.equipamento ?? 'Equipamento Médico'),
+                  marca: String(dados.marca ?? 'Cardios'),
+                  modelo: String(dados.modelo ?? 'Modelo Padrão'),
+                  numeroSerie: String(dados.numero_serie ?? 'S/N'),
+                  acessorios: String(dados.acessorios ?? ''),
+                  relatoCliente: String(dados.relato_cliente ?? ''),
+                },
+                ator: atorAtual,
+              });
+              osState = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
+                ? admMarcarEtiquetaBrancaNoReg016(criada, atorAtual)
+                : criada;
+            } else if (def.tipo === 'limpeza-equipamento' && osState) {
+              let nextOs = structuredClone(osState);
+              if (
+                nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
+                ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
+              ) {
+                nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
+              }
+              if (
+                nextOs.passoAtual === 'A2_BRANCA_NOTIFICA_AT' &&
+                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
+              ) {
+                nextOs = confirmarNotificacaoSetor(nextOs, atorAtual);
+              }
+              if (
+                nextOs.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034' &&
+                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
+              ) {
+                nextOs = atRegistrarReg034(nextOs, atorAtual);
+              }
+              if (
+                nextOs.passoAtual === 'A4_REG034_PREENCHIDO' &&
+                dados.limpeza_realizada === 'C' &&
+                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
+              ) {
+                nextOs = atMarcarEtiquetaVioleta(nextOs, atorAtual);
+              }
+              osState = nextOs;
+            } else if (def.tipo === 'checklist-manutencao' && osState) {
+              if (
+                osState.etiquetaAtual === 'GREEN' &&
+                !osState.item5Preenchido &&
+                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
+              ) {
+                osState = atPreencherItem5Reg016(
+                  structuredClone(osState),
+                  osState.identificacao.marca,
+                  atorAtual,
+                );
+              }
+            } else if (def.tipo === 'etapas-manutencao' && osState) {
+              let nextOs = structuredClone(osState);
+              const podeAdm = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil);
+              const podeAt = ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil);
+
+              if (
+                nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
+                dados.etiqueta_branca_adm === 'C' &&
+                podeAdm
+              ) {
+                nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
+              }
+              if (
+                nextOs.passoAtual === 'A4_REG034_PREENCHIDO' &&
+                dados.etiqueta_violeta === 'C' &&
+                podeAt
+              ) {
+                nextOs = atMarcarEtiquetaVioleta(nextOs, atorAtual);
+              }
+              if (
+                nextOs.passoAtual === 'A5_VIOLETA_HIGIENIZADO' &&
+                dados.etiqueta_cinza === 'C' &&
+                podeAt
+              ) {
+                nextOs = atMarcarEtiquetaCinzaAnaliseCompleta(nextOs, atorAtual);
+              }
+              if (
+                nextOs.etiquetaAtual !== 'GREEN' &&
+                nextOs.etiquetaAtual !== 'RED' &&
+                (dados.liberado_qualidade === 'C' || dados.etiqueta_verde_sem_defeito === 'C') &&
+                podeAt
+              ) {
+                nextOs = atFinalizarServicoComEtiquetaVerde(nextOs, atorAtual);
+              }
+              if (
+                dados.item5_marca &&
+                !nextOs.item5Preenchido &&
+                nextOs.etiquetaAtual === 'GREEN' &&
+                podeAt
+              ) {
+                nextOs = atPreencherItem5Reg016(nextOs, nextOs.identificacao.marca, atorAtual);
+              }
+              osState = nextOs;
+            }
+
+            if (osState) {
+              await saveOsFlow.mutateAsync(osState);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(storageKey, JSON.stringify(osState));
+                localStorage.setItem('regulaon:os_fluxo_v2:current', osState.numeroOs);
+              }
+            }
+          } catch (syncErr) {
+            toast.warning('Registro salvo, mas houve pendência ao sincronizar etapa do fluxo', {
+              description:
+                syncErr instanceof Error
+                  ? syncErr.message
+                  : 'Verifique a etapa atual da OS na fila de equipamentos.',
             });
-            osState = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
-              ? admMarcarEtiquetaBrancaNoReg016(criada, atorAtual)
-              : criada;
-          } else if (def.tipo === 'limpeza-equipamento' && osState) {
-            let nextOs = structuredClone(osState);
-            if (
-              nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
-              ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
-            ) {
-              nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
-            }
-            if (
-              nextOs.passoAtual === 'A2_BRANCA_NOTIFICA_AT' &&
-              ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
-            ) {
-              nextOs = confirmarNotificacaoSetor(nextOs, atorAtual);
-            }
-            if (
-              nextOs.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034' &&
-              ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
-            ) {
-              nextOs = atRegistrarReg034(nextOs, atorAtual);
-            }
-            osState = nextOs;
-          } else if (def.tipo === 'checklist-manutencao' && osState) {
-            if (
-              osState.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' &&
-              !osState.item5Preenchido &&
-              ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
-            ) {
-              osState = atPreencherItem5Reg016(
-                structuredClone(osState),
-                osState.identificacao.marca,
-                atorAtual,
-              );
-            }
-          } else if (def.tipo === 'etapas-manutencao' && osState) {
-            let nextOs = structuredClone(osState);
-            const podeAdm = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil);
-            const podeAt = ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil);
-
-            if (
-              nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
-              dados.etiqueta_branca_adm === 'C' &&
-              podeAdm
-            ) {
-              nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
-            }
-            if (
-              dados.item5_marca &&
-              !nextOs.item5Preenchido &&
-              nextOs.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' &&
-              podeAt
-            ) {
-              nextOs = atPreencherItem5Reg016(nextOs, String(dados.item5_marca), atorAtual);
-            }
-            if (
-              nextOs.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' &&
-              nextOs.item5Preenchido &&
-              (dados.liberado_qualidade === 'C' || dados.etiqueta_verde_sem_defeito === 'C') &&
-              podeAt
-            ) {
-              nextOs = atFinalizarServicoComEtiquetaVerde(nextOs, atorAtual);
-            }
-            osState = nextOs;
           }
-
-          if (osState) {
-            if (typeof window !== 'undefined') {
-              localStorage.setItem(storageKey, JSON.stringify(osState));
-              localStorage.setItem('regulaon:os_fluxo_v2:current', osState.numeroOs);
-            }
-            await saveOsFlow.mutateAsync(osState).catch(() => {});
-          }
-        } catch {
-          // transição já avançada anteriormente ou restrita ao setor responsável
         }
       }
 
@@ -810,11 +899,20 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       setOsSelecionada('');
 
       if (!abriuModalEtiqueta) {
-        const destino = FORMS_COM_OS.has(def.tipo)
-          ? numOsSalvo
-            ? `/equipamentos?os=${encodeURIComponent(numOsSalvo)}`
-            : '/equipamentos'
-          : '/formularios';
+        const verdeAcionadaAgora =
+          def.tipo === 'etapas-manutencao' &&
+          (dados.liberado_qualidade === 'C' || dados.etiqueta_verde_sem_defeito === 'C');
+
+        const destino = !FORMS_COM_OS.has(def.tipo)
+          ? '/formularios'
+          : def.tipo === 'limpeza-equipamento' && numOsSalvo
+            ? `/formularios/etapas-manutencao?os=${encodeURIComponent(numOsSalvo)}`
+            : verdeAcionadaAgora && numOsSalvo
+              ? `/formularios/checklist-manutencao?os=${encodeURIComponent(numOsSalvo)}`
+              : numOsSalvo
+                ? `/equipamentos?os=${encodeURIComponent(numOsSalvo)}`
+                : '/equipamentos';
+
         setTimeout(() => {
           router.push(destino);
         }, 700);
@@ -1303,11 +1401,19 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                   }}
                 >
                   <option value="">
-                    {ordensServico.length > 0
-                      ? '⚡ Selecionar OS / Equipamento em andamento...'
-                      : 'Nenhuma OS anterior registrada ainda'}
+                    {ordensElegiveisParaFormulario.length > 0
+                      ? '⚡ Selecionar OS liberada para esta etapa...'
+                      : def.tipo === 'checklist-manutencao'
+                        ? 'Nenhuma OS com Etiqueta VERDE no REG-016'
+                        : def.tipo === 'etapas-manutencao'
+                          ? 'Nenhuma OS com REG-034 concluído'
+                          : 'Nenhuma OS anterior registrada ainda'}
                   </option>
-                  {ordensServico.map((o) => (
+                  {(osContextoAtual &&
+                  !ordensElegiveisParaFormulario.some((o) => o.chave === osContextoAtual.chave)
+                    ? [osContextoAtual, ...ordensElegiveisParaFormulario]
+                    : ordensElegiveisParaFormulario
+                  ).map((o) => (
                     <option key={o.chave} value={o.chave}>
                       {o.numeroOs !== 'S/N' ? `OS ${o.numeroOs}` : `S/N ${o.numeroSerie}`} —{' '}
                       {o.equipamento || 'Equipamento'} ({o.cliente || 'Cliente'})
@@ -1316,6 +1422,42 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                 </SelectNative>
               </div>
             </div>
+
+            {!prereqPop020.liberado && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>
+                    <strong>Etapa Bloqueada (POP-020):</strong> {prereqPop020.motivo}
+                  </span>
+                </div>
+                {osContextoAtual &&
+                  def.tipo === 'etapas-manutencao' &&
+                  osContextoAtual.etapasConcluidas.reg022Recebimento &&
+                  !osContextoAtual.etapasConcluidas.reg034Limpeza && (
+                    <Link
+                      href={`/formularios/limpeza-equipamento?os=${encodeURIComponent(osContextoAtual.chave)}`}
+                    >
+                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs">
+                        Preencher REG-034 Agora
+                      </Button>
+                    </Link>
+                  )}
+                {osContextoAtual &&
+                  def.tipo === 'checklist-manutencao' &&
+                  osContextoAtual.etapasConcluidas.reg034Limpeza &&
+                  osContextoAtual.tagColor !== 'GREEN' &&
+                  osContextoAtual.tagColor !== 'RED' && (
+                    <Link
+                      href={`/formularios/etapas-manutencao?os=${encodeURIComponent(osContextoAtual.chave)}`}
+                    >
+                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs">
+                        Abrir REG-016
+                      </Button>
+                    </Link>
+                  )}
+              </div>
+            )}
 
             {osContextoAtual && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 text-xs">
@@ -1366,7 +1508,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         </Card>
       )}
 
-      {/* Seletor de Submódulo (ex: REG-035 OLIDEF / TEB / Cardios) */}
+      {/* Seletor de Submódulo (ex: REG-035 OLIDEF / TEB / Cardios) — bloqueado para AT quando ADM já definiu a marca */}
       {def.subtipos && (
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
@@ -1375,23 +1517,32 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
               <div>
                 <p className="text-sm font-medium">Submódulo por Fabricante / Marca</p>
                 <p className="text-xs text-muted-foreground">
-                  Selecione a marca do equipamento para carregar os itens específicos do checklist.
+                  {marcaTravadaPeloAdm && osContextoAtual?.marca
+                    ? `Marca definida automaticamente pelo setor Administrativo (ADM) no REG-022: ${osContextoAtual.marca}.`
+                    : 'Selecione a marca do equipamento para carregar os itens específicos do checklist.'}
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {def.subtipos.map((st) => (
-                <Button
-                  key={st.key}
-                  type="button"
-                  variant={subtipo === st.key ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSubtipo(st.key)}
-                >
-                  Marca {st.label}
-                </Button>
-              ))}
-            </div>
+            {marcaTravadaPeloAdm && osContextoAtual?.marca ? (
+              <Badge variant="secondary" className="gap-1.5 text-xs">
+                <Lock className="h-3.5 w-3.5" />
+                Marca ADM: {osContextoAtual.marca} ({def.subtipos.find((s) => s.key === subtipo)?.label ?? subtipo})
+              </Badge>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                {def.subtipos.map((st) => (
+                  <Button
+                    key={st.key}
+                    type="button"
+                    variant={subtipo === st.key ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSubtipo(st.key)}
+                  >
+                    Marca {st.label}
+                  </Button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1473,6 +1624,16 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         {secoes.map((secao, idx) => {
           const isSecaoItem5Reg016 =
             def.tipo === 'etapas-manutencao' && secao.titulo.startsWith('5. Item 5');
+          const etiquetaVerdeNoForm =
+            def.tipo === 'etapas-manutencao' &&
+            (dados.liberado_qualidade === 'C' ||
+              dados.etiqueta_verde_sem_defeito === 'C' ||
+              osContextoAtual?.tagColor === 'GREEN' ||
+              Boolean(osContextoAtual?.etapasConcluidas.reg035Manutencao));
+          // REG 035 / Item 5 só aparece quando Etiqueta VERDE estiver acionada (ou bloqueado em VERMELHO para explicitar o bloqueio)
+          if (isSecaoItem5Reg016 && !bloqueioItem5.bloqueado && !etiquetaVerdeNoForm) {
+            return null;
+          }
           const camposVisiveis = secao.campos.filter((c) => campoVisivel(c, dados));
           if (camposVisiveis.length === 0) return null;
           const temCnc = camposVisiveis.some((c) => c.type === 'cnc');
@@ -1725,12 +1886,15 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                               <SelectNative
                                 id={campo.name}
                                 value={String(dados[campo.name] ?? '')}
-                                disabled={campo.governanceOnly && !podeEditarGovernanca}
+                                disabled={
+                                  (campo.governanceOnly && !podeEditarGovernanca) ||
+                                  (campo.name === 'marca' && marcaTravadaPeloAdm)
+                                }
                                 onChange={(e) => atualizarCampo(campo.name, e.target.value)}
                                 className={cn(
                                   erroCampo && 'border-rose-500',
-                                  campo.governanceOnly &&
-                                    !podeEditarGovernanca &&
+                                  ((campo.governanceOnly && !podeEditarGovernanca) ||
+                                    (campo.name === 'marca' && marcaTravadaPeloAdm)) &&
                                     'bg-muted/60 cursor-not-allowed text-muted-foreground font-medium',
                                 )}
                               >
@@ -1748,16 +1912,29 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                                 step={campo.step}
                                 value={String(dados[campo.name] ?? '')}
                                 placeholder={placeholderTexto}
-                                disabled={campo.governanceOnly && !podeEditarGovernanca}
-                                readOnly={campo.governanceOnly && !podeEditarGovernanca}
+                                disabled={
+                                  (campo.governanceOnly && !podeEditarGovernanca) ||
+                                  (campo.name === 'marca' && marcaTravadaPeloAdm)
+                                }
+                                readOnly={
+                                  (campo.governanceOnly && !podeEditarGovernanca) ||
+                                  (campo.name === 'marca' && marcaTravadaPeloAdm)
+                                }
                                 onChange={(e) => atualizarCampo(campo.name, e.target.value)}
                                 className={cn(
                                   erroCampo && 'border-rose-500',
-                                  campo.governanceOnly &&
-                                    !podeEditarGovernanca &&
+                                  ((campo.governanceOnly && !podeEditarGovernanca) ||
+                                    (campo.name === 'marca' && marcaTravadaPeloAdm)) &&
                                     'bg-muted/60 cursor-not-allowed text-muted-foreground font-medium',
                                 )}
                               />
+                            )}
+
+                            {campo.name === 'marca' && marcaTravadaPeloAdm && (
+                              <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                <Lock className="h-3 w-3" />
+                                Marca definida obrigatoriamente pelo ADM no REG-022 (somente leitura para AT).
+                              </p>
                             )}
 
                             {campo.governanceOnly && !podeEditarGovernanca && (
@@ -1813,7 +1990,11 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
             >
               Limpar campos
             </Button>
-            <Button type="submit" disabled={createRecord.isPending} className="min-w-44">
+            <Button
+              type="submit"
+              disabled={createRecord.isPending || !prereqPop020.liberado}
+              className="min-w-44"
+            >
               {createRecord.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />

@@ -4,8 +4,10 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
+  CheckCircle2,
   ClipboardCheck,
   FileCheck2,
+  Lock,
   PackageCheck,
   Search,
   Tag,
@@ -26,43 +28,133 @@ import {
   type FormTipo,
   type SetorFormulario,
 } from '@/core/domain/forms/definitions';
-import { TAG_SPECS_LIST } from '@/core/domain/forms/os-workflow';
+import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
+import {
+  aggregateServiceOrders,
+  TAG_SPECS_LIST,
+  verificarPreRequisitoFormularioPop020,
+} from '@/core/domain/forms/os-workflow';
 import { useCurrentUser } from '@/hooks/use-current-user';
-import { useFormsOverview } from '@/hooks/use-operacional';
+import { useFormsOverview, useOsFlowList } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
 
 /**
- * Ordem operacional definida na Ata Linkmed:
- * 1. REG 022 (Recebimento - ADM)
- * 2. REG 016 (Etapas da Manutenção - Início do fluxo operacional)
- * 3. REG 034 (Limpeza de Equipamentos - AT)
- * 4. REG 018 (Higienização de Bancada - POP 006 - AT)
- * 5. REG 017 (Temperatura e Umidade - POP 007 - AT e Almoxarifado)
- * 6. REG 040 (Teste da Pulseira Antiestática - POP 007 - AT)
- * 7. REG 015 (Instrumentos de Medição e Validades - POP 011 - AT)
- * 8. REG 030 (Verificação da Calibração Interna vinculada ao REG 015 - POP 011 - AT)
- * 9. REG 009 / REG 035 (Checklist Final de Manutenção por Marca - Final do fluxo operacional - AT)
+ * Ordem operacional estrita conforme Trilha de Execução POP-020 e Auditoria Linkmed:
+ * 1. REG 022 (Inspeção de Recebimento - ADM)
+ * 2. REG 034 (Limpeza / Higienização de Equipamentos - AT)
+ * 3. REG 016 (Etapas da Manutenção & Etiquetas - Central AT / ADM / Almox)
+ * 4. REG 009 / REG 035 (Checklist Final Pós-Serviço — visível somente após Etiqueta VERDE no REG 016)
+ * 5. REG 018 (Higienização de Bancada - POP 006 - AT)
+ * 6. REG 017 (Temperatura e Umidade - POP 007 - AT e Almoxarifado)
+ * 7. REG 040 (Teste da Pulseira Antiestática - POP 007 - AT)
+ * 8. REG 015 (Instrumentos de Medição e Validades - POP 011 - AT)
+ * 9. REG 030 (Verificação da Calibração Interna vinculada ao REG 015 - POP 011 - AT)
  */
 const ORDEM_OPERACIONAL_TIPOS: Record<FormTipo, number> = {
   'inspecao-recebimento': 1,
-  'etapas-manutencao': 2,
-  'limpeza-equipamento': 3,
-  'higienizacao-bancada': 4,
-  'temperatura-umidade': 5,
-  'pulseira-antiestatica': 6,
-  'validade-calibracao': 7,
-  'verificacao-calibracao': 8,
-  'checklist-manutencao': 9,
+  'limpeza-equipamento': 2,
+  'etapas-manutencao': 3,
+  'checklist-manutencao': 4,
+  'higienizacao-bancada': 5,
+  'temperatura-umidade': 6,
+  'pulseira-antiestatica': 7,
+  'validade-calibracao': 8,
+  'verificacao-calibracao': 9,
 };
 
 export function FormulariosClient() {
   const { data: user } = useCurrentUser();
   const { data, isLoading } = useFormsOverview();
+  const { data: osFlowData } = useOsFlowList();
   const [setor, setSetor] = React.useState<SetorFormulario | ''>('');
   const [busca, setBusca] = React.useState('');
+  const [osSelecionadaChave, setOsSelecionadaChave] = React.useState('');
   const [mostrarLegendaCores, setMostrarLegendaCores] = React.useState(false);
 
-  // Filtragem e ordenação estrita por perfil de setor conforme ata da reunião e auditoria Linkmed v2
+  const ordensServico = React.useMemo(
+    () =>
+      mergeOsFluxoIntoServiceOrders(
+        osFlowData?.ordens ?? [],
+        aggregateServiceOrders(data?.records ?? []),
+      ),
+    [osFlowData?.ordens, data?.records],
+  );
+
+  const osAtiva = React.useMemo(
+    () => ordensServico.find((o) => o.chave === osSelecionadaChave) ?? null,
+    [ordensServico, osSelecionadaChave],
+  );
+
+  const resumoPop020Geral = React.useMemo(() => {
+    const temReg022 = ordensServico.some((o) => o.etapasConcluidas.reg022Recebimento);
+    const temReg034 = ordensServico.some((o) => o.etapasConcluidas.reg034Limpeza);
+    const temEtiquetaVerde = ordensServico.some(
+      (o) => o.tagColor === 'GREEN' || o.etapasConcluidas.reg035Manutencao,
+    );
+    return { temReg022, temReg034, temEtiquetaVerde };
+  }, [ordensServico]);
+
+  const avaliarAcessoFormulario = React.useCallback(
+    (tipo: FormTipo) => {
+      if (osAtiva) {
+        const res = verificarPreRequisitoFormularioPop020(tipo, osAtiva);
+        return { ...res, osDestinoChave: osAtiva.chave };
+      }
+
+      if (tipo === 'limpeza-equipamento') {
+        const candidata = ordensServico.find(
+          (o) => o.etapasConcluidas.reg022Recebimento && !o.etapasConcluidas.reg034Limpeza,
+        ) ?? ordensServico.find((o) => o.etapasConcluidas.reg022Recebimento);
+        if (!resumoPop020Geral.temReg022) {
+          return {
+            visivel: true,
+            liberado: false,
+            motivo: 'Pré-requisito obrigatório (POP-020): nenhuma OS concluída no REG-022 ainda.',
+            osDestinoChave: null,
+          };
+        }
+        return { visivel: true, liberado: true, motivo: null, osDestinoChave: candidata?.chave ?? null };
+      }
+
+      if (tipo === 'etapas-manutencao') {
+        const candidata = ordensServico.find((o) => o.etapasConcluidas.reg034Limpeza);
+        if (!resumoPop020Geral.temReg034) {
+          return {
+            visivel: true,
+            liberado: false,
+            motivo:
+              'Pré-requisito obrigatório (POP-020): conclua antes o REG-034 (Higienização) de alguma OS.',
+            osDestinoChave: null,
+          };
+        }
+        return { visivel: true, liberado: true, motivo: null, osDestinoChave: candidata?.chave ?? null };
+      }
+
+      if (tipo === 'checklist-manutencao') {
+        const candidataVerde = ordensServico.find((o) => o.tagColor === 'GREEN');
+        if (!candidataVerde) {
+          return {
+            visivel: false,
+            liberado: false,
+            motivo:
+              'Pré-requisito obrigatório (POP-020): o REG-035 só fica visível após acionar a Etiqueta VERDE no REG-016.',
+            osDestinoChave: null,
+          };
+        }
+        return {
+          visivel: true,
+          liberado: true,
+          motivo: null,
+          osDestinoChave: candidataVerde.chave,
+        };
+      }
+
+      return { visivel: true, liberado: true, motivo: null, osDestinoChave: null };
+    },
+    [osAtiva, ordensServico, resumoPop020Geral],
+  );
+
+  // Filtragem, visibilidade condicional e ordenação estrita POP-020
   const formulariosFiltrados = React.useMemo(() => {
     const q = busca.trim().toLowerCase();
     const perfil = user?.perfil;
@@ -86,10 +178,15 @@ export function FormulariosClient() {
         }
       }
 
-      // 2. Filtro do dropdown de setor se preenchido
+      // 2. Condicional de visibilidade do REG-035 vinculada à Etiqueta VERDE no fluxo
+      if (!avaliarAcessoFormulario(f.tipo).visivel) {
+        return false;
+      }
+
+      // 3. Filtro do dropdown de setor se preenchido
       if (setor && !f.setores.includes(setor)) return false;
 
-      // 3. Busca por texto
+      // 4. Busca por texto
       if (!q) return true;
       return (
         f.titulo.toLowerCase().includes(q) ||
@@ -102,7 +199,7 @@ export function FormulariosClient() {
     return [...filtrados].sort(
       (a, b) => (ORDEM_OPERACIONAL_TIPOS[a.tipo] ?? 99) - (ORDEM_OPERACIONAL_TIPOS[b.tipo] ?? 99),
     );
-  }, [setor, busca, user?.perfil]);
+  }, [setor, busca, user?.perfil, avaliarAcessoFormulario]);
 
   return (
     <div className="space-y-6">
@@ -167,7 +264,20 @@ export function FormulariosClient() {
                 return item.codigo === 'REG-017';
               }
               if (user?.perfil === 'tecnico') {
-                return item.codigo !== 'REG-022';
+                if (item.codigo === 'REG-022') return false;
+                if (
+                  (item.codigo === 'REG-035' || item.codigo === 'REG-009') &&
+                  !resumoPop020Geral.temEtiquetaVerde
+                ) {
+                  return false;
+                }
+                return true;
+              }
+              if (
+                (item.codigo === 'REG-035' || item.codigo === 'REG-009') &&
+                !resumoPop020Geral.temEtiquetaVerde
+              ) {
+                return false;
               }
               return true;
             })
@@ -182,17 +292,16 @@ export function FormulariosClient() {
                 <span className="text-muted-foreground">— Pasta: {item.pastaPop}</span>
               </button>
             ))}
-          {user?.perfil === 'adm' && (
-            <button
-              type="button"
-              onClick={() => setBusca('REG-022')}
-              className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-background px-2.5 py-1 text-[11px] font-medium transition hover:border-primary hover:bg-primary/10"
-            >
-              <span className="font-mono font-bold text-primary">REG-022</span>
-              <span className="text-muted-foreground">— Inspeção de Recebimento (POP-020)</span>
-            </button>
-          )}
         </div>
+        {user?.perfil !== 'estoquista' && (
+          <p className="text-[11px] text-muted-foreground">
+            <strong>Trilha POP-020:</strong> REG-022 → REG-034 → REG-016 → REG-035. Cada registro só é liberado após o anterior estar concluído; o{' '}
+            <span className="font-mono font-semibold text-foreground">REG-035 / REG-009</span>{' '}
+            só aparece quando a{' '}
+            <span className="font-semibold text-emerald-700 dark:text-emerald-300">Etiqueta VERDE</span>{' '}
+            é acionada no REG-016.
+          </p>
+        )}
       </div>
 
       {/* Legenda Oficial das 10 Etiquetas do REG-016 (Auditoria Linkmed - Seção 4.1) */}
@@ -251,9 +360,9 @@ export function FormulariosClient() {
         </Card>
       )}
 
-      {/* Filtros */}
+      {/* Filtros + Seleção opcional de OS da Trilha POP-020 */}
       <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_200px]">
+        <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_200px_240px]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -271,6 +380,17 @@ export function FormulariosClient() {
             {(Object.keys(SETOR_FORM_LABEL) as SetorFormulario[]).map((s) => (
               <option key={s} value={s}>
                 {SETOR_FORM_LABEL[s]}
+              </option>
+            ))}
+          </SelectNative>
+          <SelectNative
+            value={osSelecionadaChave}
+            onChange={(e) => setOsSelecionadaChave(e.target.value)}
+          >
+            <option value="">Todas as OS (visão geral)</option>
+            {ordensServico.map((o) => (
+              <option key={o.chave} value={o.chave}>
+                OS {o.numeroOs} — {o.equipamento} ({o.marca})
               </option>
             ))}
           </SelectNative>
@@ -300,11 +420,18 @@ export function FormulariosClient() {
             const resumo = data?.contagens[def.tipo];
             const total = resumo?.total ?? 0;
             const nc = resumo?.naoConformes ?? 0;
+            const acesso = avaliarAcessoFormulario(def.tipo);
+            const hrefDestino = acesso.osDestinoChave
+              ? `/formularios/${def.tipo}?os=${encodeURIComponent(acesso.osDestinoChave)}`
+              : `/formularios/${def.tipo}`;
 
             return (
               <Card
                 key={def.tipo}
-                className="flex flex-col justify-between transition-shadow hover:shadow-card"
+                className={cn(
+                  'flex flex-col justify-between transition-shadow hover:shadow-card',
+                  !acesso.liberado && 'border-amber-500/35 bg-muted/20 opacity-90',
+                )}
               >
                 <CardHeader className="space-y-2 pb-3">
                   <div className="flex items-start justify-between gap-2">
@@ -367,16 +494,31 @@ export function FormulariosClient() {
                     ))}
                   </div>
 
+                  {!acesso.liberado && acesso.motivo && (
+                    <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-900 dark:text-amber-200">
+                      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                      <span>{acesso.motivo}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between border-t border-border pt-3">
                     <span className="text-xs text-muted-foreground">
                       {total} {total === 1 ? 'registro' : 'registros'}
                     </span>
-                    <Link href={`/formularios/${def.tipo}`}>
-                      <Button size="sm">
-                        Acessar
-                        <ArrowRight className="h-3.5 w-3.5" />
+                    {acesso.liberado ? (
+                      <Link href={hrefDestino}>
+                        <Button size="sm">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Acessar
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </Link>
+                    ) : (
+                      <Button size="sm" variant="outline" disabled className="cursor-not-allowed">
+                        <Lock className="h-3.5 w-3.5" />
+                        Bloqueado
                       </Button>
-                    </Link>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -12,7 +12,10 @@ import {
 } from '@/core/domain/forms/os-workflow';
 import { getRepositories } from '@/infra/db';
 import { supabaseAdmin } from '@/infra/db/supabase/client';
-import { carregarOsFluxoPorNumero } from '@/infra/db/supabase/os-flow-store';
+import {
+  carregarOsFluxoPorNumero,
+  persistirOsFluxoNoServidor,
+} from '@/infra/db/supabase/os-flow-store';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { apiHandler } from '@/lib/http/api-handler';
 
@@ -102,34 +105,19 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const agoraIso = new Date().toISOString();
   const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';
   const userAgent = req.headers.get('user-agent') ?? 'browser';
+  const estadoPersistido = rawBody as OrdemServicoFluxoState;
 
-  // 1. Upsert na tabela os_fluxo
-  const { error: directError } = await supabaseAdmin.from('os_fluxo').upsert(
-    {
-      numero_os: rawBody.numeroOs,
-      numero_os_normalizado: norm,
-      estado: rawBody,
-      updated_at: agoraIso,
-      criado_por: auth.sub,
-    },
-    { onConflict: 'numero_os_normalizado' },
-  );
-
-  // 2. Persistência resiliente e trilha imutável no audit_logs
-  await supabaseAdmin.from('audit_logs').insert({
-    usuario_id: auth.sub,
-    acao: 'os_fluxo.atualizar',
-    entidade: '__db_os_fluxo__',
-    entidade_id: norm,
-    dados_antes: null,
-    dados_depois: rawBody,
+  // 1-2. Upsert na tabela os_fluxo + trilha imutável no audit_logs
+  const { directTableOk, numeroOs } = await persistirOsFluxoNoServidor({
+    estado: estadoPersistido,
+    usuarioId: auth.sub,
     ip,
-    user_agent: userAgent,
-    created_at: agoraIso,
+    userAgent,
+    acao: 'os_fluxo.atualizar',
+    createdAt: agoraIso,
   });
 
   // 3. Sincronização automática e atômica do Fluxo da OS -> REG-016 (etapas-manutencao)
-  const estadoPersistido = rawBody as OrdemServicoFluxoState;
   let reg016Record = null;
   if (osDeveSincronizarReg016(estadoPersistido)) {
     const { operacionalRepository } = getRepositories();
@@ -165,8 +153,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   return {
     ok: true,
-    directTableOk: !directError,
-    numeroOs: rawBody.numeroOs,
+    directTableOk,
+    numeroOs,
     reg016Record,
   };
 });

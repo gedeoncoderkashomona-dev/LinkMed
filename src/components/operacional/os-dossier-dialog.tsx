@@ -10,6 +10,7 @@ import {
   Cpu,
   FileCheck2,
   Layers,
+  Lock,
   ShieldCheck,
   Tag,
   UserCheck,
@@ -37,6 +38,7 @@ import {
 import {
   aggregateServiceOrders,
   TAG_SPECS,
+  verificarPreRequisitoFormularioPop020,
   type ServiceOrderContext,
 } from '@/core/domain/forms/os-workflow';
 import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
@@ -129,12 +131,20 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
 
   const tag = osCtx ? TAG_SPECS[osCtx.tagColor] : TAG_SPECS.WHITE;
 
+  const reg022Prereq = verificarPreRequisitoFormularioPop020('inspecao-recebimento', osCtx);
+  const reg034Prereq = verificarPreRequisitoFormularioPop020('limpeza-equipamento', osCtx);
+  const reg016Prereq = verificarPreRequisitoFormularioPop020('etapas-manutencao', osCtx);
+  const reg035Prereq = verificarPreRequisitoFormularioPop020('checklist-manutencao', osCtx);
+
   const etapas = [
     {
       tipo: 'inspecao-recebimento',
       codigo: 'REG-022',
       titulo: '1. Inspeção de Recebimento',
       done: Boolean(osCtx?.etapasConcluidas.reg022Recebimento),
+      visivel: reg022Prereq.visivel,
+      liberado: reg022Prereq.liberado,
+      motivoBloqueio: reg022Prereq.motivo,
       href: `/formularios/inspecao-recebimento?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
     },
     {
@@ -142,23 +152,33 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
       codigo: 'REG-034',
       titulo: '2. Higienização & Limpeza (Álcool 70%)',
       done: Boolean(osCtx?.etapasConcluidas.reg034Limpeza),
+      visivel: reg034Prereq.visivel,
+      liberado: reg034Prereq.liberado,
+      motivoBloqueio: reg034Prereq.motivo,
       href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
-    },
-    {
-      tipo: 'checklist-manutencao',
-      codigo: 'REG-035',
-      titulo: '3. Diagnóstico Técnico & Manutenção',
-      done: Boolean(osCtx?.etapasConcluidas.reg035Manutencao),
-      href: `/formularios/checklist-manutencao?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
     },
     {
       tipo: 'etapas-manutencao',
       codigo: 'REG-016',
-      titulo: '4. Etapas da Manutenção & Etiquetas',
+      titulo: '3. Etapas da Manutenção & Etiquetas',
       done: Boolean(osCtx?.etapasConcluidas.reg016Etapas),
+      visivel: reg016Prereq.visivel,
+      liberado: reg016Prereq.liberado,
+      motivoBloqueio: reg016Prereq.motivo,
       href: `/formularios/etapas-manutencao?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
-    }
+    },
+    {
+      tipo: 'checklist-manutencao',
+      codigo: 'REG-035',
+      titulo: '4. Pós-Serviço & Checklist Final',
+      done: Boolean(osCtx?.etapasConcluidas.reg035Manutencao),
+      visivel: reg035Prereq.visivel || Boolean(osCtx?.etapasConcluidas.reg035Manutencao),
+      liberado: reg035Prereq.liberado,
+      motivoBloqueio: reg035Prereq.motivo,
+      href: `/formularios/checklist-manutencao?os=${encodeURIComponent(osCtx?.chave ?? '')}`,
+    },
   ];
+  const etapasVisiveis = etapas.filter((e) => e.visivel);
 
 
   function handlePrintDossier() {
@@ -338,41 +358,70 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
-          {/* Trilha visual das 5 etapas da OS */}
+          {/* Trilha visual estrita das etapas da OS (POP-020: REG-022 -> REG-034 -> REG-016 -> REG-035) */}
           <div className="rounded-xl border border-border bg-muted/20 p-3">
             <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Trilha de Execução da Assistência Técnica (POP-020)
             </p>
-            <div className="grid gap-2 sm:grid-cols-5">
-              {etapas.map((et, i) => (
-                <Link
-                  key={et.codigo}
-                  href={et.href}
-                  onClick={() => onOpenChange(false)}
-                  className={cn(
-                    'flex flex-col justify-between rounded-lg border p-2 text-left transition-all hover:border-primary/50',
-                    et.done
-                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
-                      : 'border-border/80 bg-background text-muted-foreground',
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] font-bold">{et.codigo}</span>
-                    {et.done ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                    ) : (
-                      <Clock className="h-3.5 w-3.5 opacity-50" />
+            <div
+              className={cn(
+                'grid gap-2',
+                etapasVisiveis.length >= 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3',
+              )}
+            >
+              {etapasVisiveis.map((et) =>
+                et.liberado || et.done ? (
+                  <Link
+                    key={et.codigo}
+                    href={et.href}
+                    onClick={() => onOpenChange(false)}
+                    className={cn(
+                      'flex flex-col justify-between rounded-lg border p-2 text-left transition-all hover:border-primary/50',
+                      et.done
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
+                        : 'border-border/80 bg-background text-foreground',
                     )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] font-bold">{et.codigo}</span>
+                      {et.done ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <Clock className="h-3.5 w-3.5 opacity-60" />
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-tight">
+                      {et.titulo}
+                    </p>
+                    <span className="mt-2 text-[10px] font-semibold underline opacity-80">
+                      {et.done ? 'Ver / Atualizar' : 'Preencher'}
+                    </span>
+                  </Link>
+                ) : (
+                  <div
+                    key={et.codigo}
+                    title={et.motivoBloqueio ?? 'Aguardando etapa anterior'}
+                    className="flex cursor-not-allowed flex-col justify-between rounded-lg border border-border/60 bg-muted/40 p-2 text-left text-muted-foreground opacity-70"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] font-bold">{et.codigo}</span>
+                      <Lock className="h-3.5 w-3.5 opacity-70" />
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-tight">
+                      {et.titulo}
+                    </p>
+                    <span className="mt-2 text-[10px] font-medium">
+                      Bloqueado (aguardando etapa anterior)
+                    </span>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-tight">
-                    {et.titulo}
-                  </p>
-                  <span className="mt-2 text-[10px] font-semibold underline opacity-80">
-                    {et.done ? 'Ver / Atualizar' : 'Preencher'}
-                  </span>
-                </Link>
-              ))}
+                ),
+              )}
             </div>
+            {!reg035Prereq.visivel && (
+              <p className="mt-2 text-[10px] text-muted-foreground">
+                {reg035Prereq.motivo}
+              </p>
+            )}
           </div>
 
           {/* Dossiê com tudo que já foi preenchido por etapa */}

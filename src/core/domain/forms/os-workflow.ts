@@ -408,6 +408,82 @@ export function isItem5Reg016Liberado(
   return true;
 }
 
+/**
+ * Regra estrita da Trilha de Execução POP-020:
+ *   REG-022 -> REG-034 -> REG-016 -> REG-035
+ * Cada REG somente é liberado após conclusão do REG anterior, e o REG-035
+ * só se torna visível e acessível quando a Etiqueta VERDE estiver acionada no REG-016.
+ */
+export function verificarPreRequisitoFormularioPop020(
+  formTipo: FormTipo | string,
+  osCtx?: {
+    tagColor: TagColor;
+    etapasConcluidas: {
+      reg022Recebimento: boolean;
+      reg034Limpeza: boolean;
+      reg016Etapas: boolean;
+      reg035Manutencao: boolean;
+    };
+  } | null,
+): {
+  visivel: boolean;
+  liberado: boolean;
+  motivo: string | null;
+} {
+  switch (formTipo) {
+    case 'inspecao-recebimento':
+      return { visivel: true, liberado: true, motivo: null };
+    case 'limpeza-equipamento':
+      if (osCtx && !osCtx.etapasConcluidas.reg022Recebimento) {
+        return {
+          visivel: true,
+          liberado: false,
+          motivo:
+            'Pré-requisito obrigatório (POP-020): conclua primeiro o REG-022 (Inspeção de Recebimento) para esta OS.',
+        };
+      }
+      return { visivel: true, liberado: true, motivo: null };
+    case 'etapas-manutencao':
+      if (osCtx && !osCtx.etapasConcluidas.reg034Limpeza) {
+        return {
+          visivel: true,
+          liberado: false,
+          motivo:
+            'Pré-requisito obrigatório (POP-020): conclua primeiro o REG-034 (Limpeza e Higienização) para liberar o REG-016.',
+        };
+      }
+      return { visivel: true, liberado: true, motivo: null };
+    case 'checklist-manutencao':
+      if (!osCtx) {
+        return {
+          visivel: false,
+          liberado: false,
+          motivo:
+            'Pré-requisito obrigatório (POP-020): o REG-035 só fica visível e disponível quando alguma OS tiver a Etiqueta VERDE acionada no REG-016.',
+        };
+      }
+      if (osCtx.tagColor === 'RED') {
+        return {
+          visivel: false,
+          liberado: false,
+          motivo:
+            'Item bloqueado (POP-020): o equipamento recebeu Etiqueta VERMELHA (orçamento reprovado).',
+        };
+      }
+      if (osCtx.tagColor === 'GREEN') {
+        return { visivel: true, liberado: true, motivo: null };
+      }
+      return {
+        visivel: false,
+        liberado: false,
+        motivo:
+          'Pré-requisito obrigatório (POP-020): o REG-035 só é visível e liberado após acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016.',
+      };
+    default:
+      return { visivel: true, liberado: true, motivo: null };
+  }
+}
+
 function clonarSnapshotSemListas(
   state: OrdemServicoFluxoState,
 ): Omit<OrdemServicoFluxoState, 'historico' | 'notificacoes'> {
@@ -724,7 +800,8 @@ export function confirmarNotificacaoSetor(
     // A2 / D5: AT confirma o recebimento da mensagem de disponibilidade das peças
     validarPermissaoSetor(ator, ['AT']);
     os.passoAtual = 'D5_AT_PRONTO_PARA_FINALIZAR';
-    os.mensagemTelaAtual = 'Peças recebidas pela AT. Realize o reparo, preencha o Item 5 do REG 016 e marque a etiqueta VERDE ao finalizar.';
+    os.mensagemTelaAtual =
+      'Peças recebidas pela AT. Realize o reparo e marque a etiqueta VERDE no REG 016 para liberar o REG 035 (Checklist Pós-Serviço).';
 
     registrarEvento(os, {
       codigoPasso: 'D5',
@@ -1377,8 +1454,9 @@ export function almoxarifadoRetomarOsDeAguardandoPecas(
 }
 
 /**
- * Registra o preenchimento do Item 5 do REG 016 (REG 009 para Cardios ou REG 035 para TEB/OLIDEF).
- * Respeita estritamente a regra de bloqueio (Seção 3.2).
+ * Registra o preenchimento do Item 5 / REG 035 (REG 009 para Cardios ou REG 035 para TEB/OLIDEF).
+ * Respeita estritamente a regra de bloqueio (Etiqueta VERMELHA) e o pré-requisito da Trilha POP-020:
+ * somente liberado após a Etiqueta VERDE (serviço finalizado) estar acionada no REG 016.
  */
 export function atPreencherItem5Reg016(
   os: OrdemServicoFluxoState,
@@ -1388,14 +1466,20 @@ export function atPreencherItem5Reg016(
   validarPermissaoSetor(ator, ['AT']);
   if (!isItem5Reg016Liberado(os.etiquetaAtual, os.orcamentoAprovado)) {
     throw new Error(
-      'O Item 5 do REG 016 está bloqueado porque a OS possui etiqueta VERMELHA (orçamento não aprovado).',
+      'O Item 5 do REG 016 / REG 035 está bloqueado porque a OS possui etiqueta VERMELHA (orçamento não aprovado).',
+    );
+  }
+  if (os.etiquetaAtual !== 'GREEN') {
+    throw new Error(
+      'Pré-requisito obrigatório (POP-020): o REG 035 / Item 5 só é liberado após acionar a Etiqueta VERDE (serviço finalizado) no REG 016.',
     );
   }
 
   const agora = ator.dataHora ?? new Date();
   const snap = clonarSnapshotSemListas(os);
-  os.identificacao.marca = marcaSelecionada;
-  os.item5FormularioTipo = determinarFormularioItem5PorMarca(marcaSelecionada);
+  const marcaFinal = os.identificacao.marca?.trim() || marcaSelecionada;
+  os.identificacao.marca = marcaFinal;
+  os.item5FormularioTipo = determinarFormularioItem5PorMarca(marcaFinal);
   os.item5Preenchido = true;
   os.atualizadaEm = agora;
 
@@ -1404,14 +1488,14 @@ export function atPreencherItem5Reg016(
     tipo: 'PREENCHIMENTO_FORMULARIO',
     chaveAcao: 'item5_reg016',
     valorAnterior: 'Item 5 pendente',
-    valorNovo: `${os.item5FormularioTipo} (${marcaSelecionada}) preenchido`,
+    valorNovo: `${os.item5FormularioTipo} (${marcaFinal}) preenchido`,
     etiquetaAnterior: os.etiquetaAtual,
     etiquetaNova: os.etiquetaAtual,
     setorPendenteAnterior: os.setorPendente,
     setorPendenteNovo: os.setorPendente,
     ator,
     agora,
-    observacao: `Item 5 do REG 016 preenchido para a marca ${marcaSelecionada} (${os.item5FormularioTipo}).`,
+    observacao: `Checklist Pós-Serviço preenchido para a marca ${marcaFinal} (${os.item5FormularioTipo}).`,
     snapshotAnterior: snap,
   });
 
@@ -1419,8 +1503,8 @@ export function atPreencherItem5Reg016(
 }
 
 /**
- * D6 / A3: AT finaliza o trabalho e marca a etiqueta VERDE (serviço finalizado).
- * Padrão Seção 9 Item 4: O Item 5 do REG 016 (REG 009 ou 035) é obrigatório para marcar VERDE, quando liberado!
+ * D6 / A3: AT finaliza o serviço e marca a etiqueta VERDE (serviço finalizado),
+ * liberando a visibilidade e acesso ao REG 035 / REG 009 na Trilha POP-020.
  */
 export function atFinalizarServicoComEtiquetaVerde(
   os: OrdemServicoFluxoState,
@@ -1428,7 +1512,12 @@ export function atFinalizarServicoComEtiquetaVerde(
   opcoes?: { exigirItem5QuandoLiberado?: boolean },
 ): OrdemServicoFluxoState {
   validarPermissaoSetor(ator, ['AT']);
-  const exigirItem5 = opcoes?.exigirItem5QuandoLiberado ?? true;
+  if (!isItem5Reg016Liberado(os.etiquetaAtual, os.orcamentoAprovado)) {
+    throw new Error(
+      'OS com orçamento reprovado (Etiqueta VERMELHA) não pode receber Etiqueta VERDE.',
+    );
+  }
+  const exigirItem5 = opcoes?.exigirItem5QuandoLiberado ?? false;
   if (exigirItem5 && os.item5Liberado && !os.item5Preenchido) {
     throw new Error(
       `Para marcar a etiqueta VERDE (serviço finalizado), é obrigatório concluir antes o Item 5 do REG 016 (${os.item5FormularioTipo ?? 'REG 009 / REG 035'}).`,
@@ -1444,7 +1533,9 @@ export function atFinalizarServicoComEtiquetaVerde(
   os.estadoGeral = 'finalizada';
   os.setorPendente = 'NENHUM';
   os.passoAtual = 'FINALIZADA';
-  os.mensagemTelaAtual = 'Fim da OS.';
+  os.mensagemTelaAtual = os.item5Preenchido
+    ? 'Fim da OS.'
+    : 'Etiqueta VERDE acionada! REG 035 / REG 009 liberado para preenchimento final.';
   os.perguntaPendenteAtual = null;
   os.atualizadaEm = agora;
 
@@ -1874,7 +1965,15 @@ export function aggregateServiceOrders(records: FormRecord[]): ServiceOrderConte
         }
         break;
       case 'etapas-manutencao': {
-        atual.etapasConcluidas.reg016Etapas = true;
+        const syncPasso = typeof d.__sync_passo === 'string' ? d.__sync_passo : '';
+        const apenasRascunhoInicial =
+          d.__sync_origem === 'os_fluxo' &&
+          (syncPasso === 'A1_CRIADA_NO_REG022' ||
+            syncPasso === 'A2_BRANCA_NOTIFICA_AT' ||
+            syncPasso === 'A3_AT_CONFIRMOU_PREENCHER_REG034');
+        if (!apenasRascunhoInicial) {
+          atual.etapasConcluidas.reg016Etapas = true;
+        }
         const cor = inferirTagDoReg016(d);
         atual.tagColor = cor;
         atual.osStatus = TAG_SPECS[cor].status;
@@ -1949,7 +2048,6 @@ export function hydrateFormFieldsFromOs(
       base.etiqueta_branca_adm = 'C';
     }
     if (ctx.etapasConcluidas.reg034Limpeza) base.etiqueta_violeta = 'C';
-    if (ctx.etapasConcluidas.reg035Manutencao) base.etiqueta_cinza = 'C';
     if (ctx.emGarantia) base.etiqueta_laranja = 'C';
     if (ctx.enviadoFabrica) {
       base.enviado_fabrica = true;

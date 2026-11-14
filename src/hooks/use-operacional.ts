@@ -85,7 +85,7 @@ export function useCreateFormRecord() {
       subtipo?: string | null;
       dados: Record<string, unknown>;
     }) =>
-      fetchJson<{ record: FormRecord }>('/api/forms', {
+      fetchJson<{ record: FormRecord; osFluxo?: OrdemServicoFluxoState | null }>('/api/forms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
