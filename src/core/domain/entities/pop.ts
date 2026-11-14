@@ -51,9 +51,12 @@ export interface PopChangeRequest {
   id: string;
   popId: string;
   solicitanteId: string;
+  solicitanteNome?: string | null;
+  solicitanteEmail?: string | null;
   descricao: string;
   status: ChangeRequestStatus;
   respondidoPor: string | null;
+  respondidoPorNome?: string | null;
   resposta: string | null;
   respondidoEm: Date | null;
   createdAt: Date;
@@ -66,4 +69,5 @@ export interface PopWithDetails extends Pop {
   totalVersoes: number;
   totalConfirmacoes: number;
   totalPendentes: number;
+  totalSugestoesPendentes?: number;
 }

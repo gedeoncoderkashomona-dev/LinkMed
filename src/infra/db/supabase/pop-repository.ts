@@ -7,7 +7,11 @@ import type {
   PopChangeRequest,
   PopWithDetails,
 } from '@/core/domain/entities/pop';
-import { SETOR_SIGLA, type Setor } from '@/core/domain/enums/pop';
+import {
+  SETOR_SIGLA,
+  type Setor,
+  type ChangeRequestStatus,
+} from '@/core/domain/enums/pop';
 import type {
   CreatePopInput,
   CreatePopVersionInput,
@@ -161,12 +165,15 @@ function toReadConfirmationEntity(row: PopReadConfirmationRow): PopReadConfirmat
 }
 
 function toChangeRequestEntity(row: PopChangeRequestRow): PopChangeRequest {
+  const normalizedStatus = String(row.status ?? 'pendente')
+    .trim()
+    .toLowerCase() as ChangeRequestStatus;
   return {
     id: row.id,
     popId: row.pop_id,
     solicitanteId: row.solicitante_id,
     descricao: row.descricao,
-    status: row.status as any,
+    status: normalizedStatus,
     respondidoPor: row.respondido_por,
     resposta: row.resposta,
     respondidoEm: row.respondido_em ? new Date(row.respondido_em) : null,
@@ -279,20 +286,35 @@ export class SupabasePopRepository implements PopRepository {
 
     const popIds = pops.map((p) => p.id);
 
-    const [{ data: versionRows }, { count: targetUsersCount }] = await Promise.all([
-      supabaseAdmin
-        .from('pop_versions')
-        .select('*')
-        .in('pop_id', popIds)
-        .is('deleted_at', null)
-        .order('numero_versao', { ascending: false }),
-      supabaseAdmin
-        .from('users')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'ativo')
-        .neq('perfil', 'diretor')
-        .is('deleted_at', null),
-    ]);
+    const [{ data: versionRows }, { count: targetUsersCount }, { data: pendingCrRows }] =
+      await Promise.all([
+        supabaseAdmin
+          .from('pop_versions')
+          .select('*')
+          .in('pop_id', popIds)
+          .is('deleted_at', null)
+          .order('numero_versao', { ascending: false }),
+        supabaseAdmin
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'ativo')
+          .neq('perfil', 'diretor')
+          .is('deleted_at', null),
+        supabaseAdmin
+          .from('pop_change_requests')
+          .select('pop_id')
+          .in('pop_id', popIds)
+          .in('status', ['pendente', 'PENDENTE'])
+          .is('deleted_at', null),
+      ]);
+
+    const pendingSuggestionsByPop = new Map<string, number>();
+    for (const row of (pendingCrRows ?? []) as { pop_id: string }[]) {
+      pendingSuggestionsByPop.set(
+        row.pop_id,
+        (pendingSuggestionsByPop.get(row.pop_id) ?? 0) + 1,
+      );
+    }
 
     const versionsByPop = new Map<string, PopVersion[]>();
     const vigenteByPop = new Map<string, PopVersion>();
@@ -342,6 +364,7 @@ export class SupabasePopRepository implements PopRepository {
         totalVersoes: versions.length,
         totalConfirmacoes,
         totalPendentes,
+        totalSugestoesPendentes: pendingSuggestionsByPop.get(pop.id) ?? 0,
       };
     });
   }

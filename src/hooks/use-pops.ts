@@ -39,12 +39,27 @@ export function usePops(filters?: ListFilters) {
   });
 }
 
+export interface SuggestionEmailStatus {
+  recipient: string;
+  configured: boolean;
+}
+
+export interface MailDeliveryResult {
+  configured: boolean;
+  delivered: boolean;
+  provider: 'resend' | 'smtp' | 'sendgrid' | 'none';
+  recipient: string;
+  messageId?: string;
+  error?: string;
+}
+
 export interface PopDetail {
   pop: Pop;
   versaoVigente: PopVersion | null;
   versoes: PopVersion[];
   changeRequests: PopChangeRequest[];
   leituraConfirmadaPorMim?: boolean;
+  suggestionEmail?: SuggestionEmailStatus;
 }
 
 export function usePop(id: string | null) {
@@ -173,7 +188,7 @@ export function useCreateChangeRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { id: string; descricao: string }) =>
-      fetchJson<{ changeRequest: PopChangeRequest }>(
+      fetchJson<{ changeRequest: PopChangeRequest; emailDelivery?: MailDeliveryResult }>(
         `/api/pops/${input.id}/change-requests`,
         {
           method: 'POST',

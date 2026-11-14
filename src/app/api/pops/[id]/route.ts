@@ -5,6 +5,7 @@ import { ForbiddenError } from '@/core/domain/errors';
 import { canEditGovernance } from '@/core/domain/forms/definitions';
 import { GetPopUseCase } from '@/core/use-cases/pops';
 import { getRepositories } from '@/infra/db';
+import { getPopSuggestionRecipient, isMailTransportConfigured } from '@/infra/mail/mailer';
 import { requireAuth } from '@/lib/auth/require-auth';
 import { apiHandler } from '@/lib/http/api-handler';
 
@@ -19,9 +20,31 @@ const updateGovernanceSchema = z.object({
 export const GET = apiHandler(async (_req: NextRequest, { params }: { params: { id: string } }) => {
   const auth = await requireAuth();
 
-  const { popRepository } = getRepositories();
+  const { popRepository, userRepository } = getRepositories();
   const detail = await new GetPopUseCase(popRepository).execute(params.id, auth.sub);
-  return detail;
+
+  if (detail.changeRequests.length > 0) {
+    const users = await userRepository.list();
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    detail.changeRequests = detail.changeRequests.map((cr) => {
+      const author = userMap.get(cr.solicitanteId);
+      const responder = cr.respondidoPor ? userMap.get(cr.respondidoPor) : undefined;
+      return {
+        ...cr,
+        solicitanteNome: author?.nomeCompleto ?? 'Colaborador',
+        solicitanteEmail: author?.email ?? null,
+        respondidoPorNome: responder?.nomeCompleto ?? null,
+      };
+    });
+  }
+
+  return {
+    ...detail,
+    suggestionEmail: {
+      recipient: getPopSuggestionRecipient(),
+      configured: isMailTransportConfigured(),
+    },
+  };
 });
 
 export const PATCH = apiHandler(async (req: NextRequest, { params }: { params: { id: string } }) => {

@@ -434,6 +434,18 @@ export default function NotificacoesPage() {
           origemLabel: 'Gestão Documental (POPs)',
         });
       }
+
+      if ((pop.totalSugestoesPendentes ?? 0) > 0) {
+        lista.push({
+          id: `pop:sug:${pop.id}`,
+          categoria: 'pops',
+          nivel: 'warning',
+          titulo: `${pop.codigo} possui ${pop.totalSugestoesPendentes} sugestão(ões) de melhoria pendente(s)`,
+          descricao: `${pop.titulo} — acesse a aba Sugestões do POP para analisar e aprovar ou rejeitar.`,
+          href: `/pops?popId=${encodeURIComponent(pop.id)}&tab=sugestoes`,
+          origemLabel: 'Sugestões em POPs (Gestão Documental)',
+        });
+      }
     }
 
     // 5. Treinamentos vencidos ou vencendo em até 30 dias

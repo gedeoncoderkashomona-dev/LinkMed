@@ -9,6 +9,7 @@ import {
   FileText,
   History,
   Lock,
+  Mail,
   MessageSquare,
   PenTool,
   Save,
@@ -51,10 +52,11 @@ import { ReadReportPanel } from './read-report-panel';
 
 interface Props {
   popId: string;
+  initialTab?: 'procedimento' | 'versoes' | 'leituras' | 'sugestoes';
   onClose: () => void;
 }
 
-export function PopDetailDrawer({ popId, onClose }: Props) {
+export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }: Props) {
   const { data: user } = useCurrentUser();
   const { data, isLoading, refetch } = usePop(popId);
   const publish = usePublishPop();
@@ -83,9 +85,14 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
     }
   }, [data?.pop]);
 
+  const [activeTab, setActiveTab] = React.useState(initialTab);
+  React.useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab, popId]);
+
   const canApprove = user ? can(user.perfil, 'pops:approve') : false;
   const canPublish = user ? can(user.perfil, 'pops:upload') : false;
-  const canRespondCr = user ? can(user.perfil, 'pops:approve') : false;
+  const canRespondCr = user ? can(user.perfil, 'pops:upload') : false;
   const podeEditarGov = user?.perfil === 'gestor' || user?.perfil === 'diretor';
 
   async function handleSalvarGovernanca() {
@@ -122,9 +129,25 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
     e.preventDefault();
     if (!crText.trim()) return;
     try {
-      await createCr.mutateAsync({ id: popId, descricao: crText });
-      toast.success('Sugestão enviada com sucesso!');
+      const res = await createCr.mutateAsync({ id: popId, descricao: crText });
+      const delivery = res.emailDelivery;
+      if (delivery?.delivered) {
+        toast.success('Sugestão enviada e notificada por e-mail!', {
+          description: `Registrada no POP e encaminhada para ${delivery.recipient}.`,
+        });
+      } else if (delivery && !delivery.configured) {
+        toast.warning('Sugestão registrada no sistema', {
+          description: `Salva no histórico do POP e em Notificações/Auditoria. Para disparar e-mail real para ${delivery.recipient}, configure RESEND_API_KEY ou SMTP_PASS na Vercel.`,
+        });
+      } else if (delivery && delivery.error) {
+        toast.warning('Sugestão salva no sistema (falha no e-mail)', {
+          description: `A sugestão foi gravada no POP, mas o envio para ${delivery.recipient} falhou: ${delivery.error}`,
+        });
+      } else {
+        toast.success('Sugestão enviada com sucesso!');
+      }
       setCrText('');
+      await refetch();
     } catch (err: any) {
       toast.error(err?.message ?? 'Erro ao enviar sugestão.');
     }
@@ -140,6 +163,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
       await respondCr.mutateAsync({ popId, crId, status, resposta });
       toast.success('Sugestão respondida.');
       setResponseText((prev) => ({ ...prev, [crId]: '' }));
+      await refetch();
     } catch (err: any) {
       toast.error(err?.message ?? 'Erro ao responder sugestão.');
     }
@@ -300,7 +324,12 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
               )}
             </div>
 
-            <Tabs defaultValue="procedimento">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) =>
+                setActiveTab(v as 'procedimento' | 'versoes' | 'leituras' | 'sugestoes')
+              }
+            >
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="procedimento">
                   <FileText className="mr-1.5 h-3.5 w-3.5 text-primary" />
@@ -430,6 +459,28 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
               </TabsContent>
 
               <TabsContent value="sugestoes" className="space-y-4">
+                <div className="rounded-xl border border-border/80 bg-muted/25 p-3 text-xs space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+                      <Mail className="h-3.5 w-3.5 text-primary" />
+                      Destino das sugestões deste POP
+                    </span>
+                    <Badge variant={data.suggestionEmail?.configured ? 'success' : 'warning'}>
+                      {data.suggestionEmail?.configured
+                        ? 'Envio por e-mail ativo'
+                        : 'E-mail aguardando chave SMTP/Resend'}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    As sugestões são gravadas no histórico deste POP (banco de dados + Trilha de Auditoria para a{' '}
+                    <strong className="text-foreground">Qualidade / Diretoria</strong>) e enviadas por e-mail para{' '}
+                    <span className="font-mono text-foreground">
+                      {data.suggestionEmail?.recipient ?? 'gedeoncoderkashomona@gmail.com'}
+                    </span>
+                    .
+                  </p>
+                </div>
+
                 <form onSubmit={handleCreateCr} className="space-y-2">
                   <Textarea
                     placeholder="Descreva a sugestão de melhoria ou alteração para este POP..."
@@ -438,9 +489,9 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                     rows={3}
                   />
                   <div className="flex justify-end">
-                    <Button type="submit" size="sm" disabled={createCr.isPending}>
+                    <Button type="submit" size="sm" disabled={createCr.isPending || crText.trim().length < 5}>
                       <Send className="mr-1.5 h-3.5 w-3.5" />
-                      Enviar Sugestão
+                      {createCr.isPending ? 'Enviando...' : 'Enviar Sugestão'}
                     </Button>
                   </div>
                 </form>
@@ -448,28 +499,88 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                 <Separator />
 
                 <div className="space-y-3">
-                  {data.changeRequests.map((cr) => (
-                    <div
-                      key={cr.id}
-                      className="rounded-lg border border-border bg-card p-3 text-xs space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Sugestão #{cr.id.slice(0, 8)}</span>
-                        <Badge
-                          variant={
-                            cr.status === 'aprovada'
-                              ? 'success'
-                              : cr.status === 'rejeitada'
-                              ? 'destructive'
-                              : 'warning'
-                          }
-                        >
-                          {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
-                        </Badge>
+                  {data.changeRequests.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      Nenhuma sugestão registrada para este POP até o momento.
+                    </p>
+                  ) : (
+                    data.changeRequests.map((cr) => (
+                      <div
+                        key={cr.id}
+                        className="rounded-lg border border-border bg-card p-3 text-xs space-y-2"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <span className="font-semibold text-foreground">
+                              Sugestão #{cr.id.slice(0, 8)}
+                            </span>
+                            <span className="ml-2 text-[11px] text-muted-foreground">
+                              por {cr.solicitanteNome ?? 'Colaborador'} ·{' '}
+                              {new Date(cr.createdAt).toLocaleString('pt-BR', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })}
+                            </span>
+                          </div>
+                          <Badge
+                            variant={
+                              cr.status === 'aprovada'
+                                ? 'success'
+                                : cr.status === 'rejeitada'
+                                ? 'destructive'
+                                : 'warning'
+                            }
+                          >
+                            {CHANGE_REQUEST_STATUS_LABEL[cr.status] ?? cr.status}
+                          </Badge>
+                        </div>
+
+                        <p className="whitespace-pre-wrap text-muted-foreground">{cr.descricao}</p>
+
+                        {cr.resposta && (
+                          <div className="rounded-md border border-border/70 bg-muted/25 p-2.5 text-[11px] space-y-0.5">
+                            <p className="font-semibold text-foreground">
+                              Parecer{cr.respondidoPorNome ? ` (${cr.respondidoPorNome})` : ''}:
+                            </p>
+                            <p className="text-muted-foreground">{cr.resposta}</p>
+                          </div>
+                        )}
+
+                        {canRespondCr && cr.status === 'pendente' && (
+                          <div className="space-y-2 border-t border-border/60 pt-2">
+                            <Input
+                              placeholder="Justificativa da Qualidade / Diretoria..."
+                              value={responseText[cr.id] ?? ''}
+                              onChange={(e) =>
+                                setResponseText((prev) => ({ ...prev, [cr.id]: e.target.value }))
+                              }
+                              className="h-8 text-xs"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={respondCr.isPending}
+                                onClick={() => handleRespondCr(cr.id, 'rejeitada')}
+                              >
+                                Rejeitar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={respondCr.isPending}
+                                onClick={() => handleRespondCr(cr.id, 'aprovada')}
+                              >
+                                <Check className="mr-1 h-3.5 w-3.5" />
+                                Aprovar Sugestão
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-muted-foreground">{cr.descricao}</p>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </TabsContent>
             </Tabs>

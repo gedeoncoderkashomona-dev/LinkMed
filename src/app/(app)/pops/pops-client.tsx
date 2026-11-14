@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Download,
   Eye,
@@ -37,13 +38,35 @@ import { PopDetailDrawer } from './pop-detail-drawer';
 import { UploadPopDialog } from './upload-pop-dialog';
 
 export function PopsClient() {
+  const searchParams = useSearchParams();
   const { data: user } = useCurrentUser();
   const [search, setSearch] = React.useState('');
   const [setor, setSetor] = React.useState<Setor | ''>('');
   const [status, setStatus] = React.useState<PopStatus | ''>('');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedTab, setSelectedTab] = React.useState<
+    'procedimento' | 'versoes' | 'leituras' | 'sugestoes'
+  >('procedimento');
   const [inlinePopId, setInlinePopId] = React.useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const popIdParam = searchParams.get('popId');
+    const tabParam = searchParams.get('tab');
+    if (popIdParam) {
+      setSelectedId(popIdParam);
+      if (
+        tabParam === 'sugestoes' ||
+        tabParam === 'versoes' ||
+        tabParam === 'leituras' ||
+        tabParam === 'procedimento'
+      ) {
+        setSelectedTab(tabParam);
+      } else {
+        setSelectedTab('procedimento');
+      }
+    }
+  }, [searchParams]);
 
   const { data, isLoading } = usePops({
     search: search || undefined,
@@ -195,6 +218,11 @@ export function PopsClient() {
                           {POP_STATUS_LABEL[pop.status]}
                         </Badge>
                         <Badge variant="secondary">{SETOR_LABEL[pop.setor] ?? pop.setor}</Badge>
+                        {(pop.totalSugestoesPendentes ?? 0) > 0 && (
+                          <Badge variant="warning">
+                            {pop.totalSugestoesPendentes} sugestão(ões) pendente(s)
+                          </Badge>
+                        )}
                         <span className="text-[11px] text-muted-foreground">
                           Rev. {String(pop.versaoAtual).padStart(2, '0')}
                         </span>
@@ -214,6 +242,7 @@ export function PopsClient() {
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setSelectedTab('procedimento');
                             setSelectedId(pop.id);
                           }}
                           className="h-8 gap-1.5 text-xs"
@@ -300,7 +329,10 @@ export function PopsClient() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setSelectedId(inlinePop.pop.id)}
+                  onClick={() => {
+                    setSelectedTab('procedimento');
+                    setSelectedId(inlinePop.pop.id);
+                  }}
                 >
                   <Eye className="mr-1.5 h-3.5 w-3.5" />
                   Abrir no Painel
@@ -384,7 +416,11 @@ export function PopsClient() {
 
       <UploadPopDialog open={uploadOpen} onOpenChange={setUploadOpen} />
       {selectedId && (
-        <PopDetailDrawer popId={selectedId} onClose={() => setSelectedId(null)} />
+        <PopDetailDrawer
+          popId={selectedId}
+          initialTab={selectedTab}
+          onClose={() => setSelectedId(null)}
+        />
       )}
     </div>
   );
