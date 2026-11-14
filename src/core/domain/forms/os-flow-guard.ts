@@ -1,5 +1,6 @@
 import type { Perfil } from '@/core/domain/enums/user';
 
+import { formatarNomeSetorCompleto } from './os-schedule-helpers';
 import type { OrdemServicoFluxoState } from './os-workflow';
 
 /**
@@ -36,10 +37,11 @@ function negar(motivo: string): ResultadoGuardaOs {
 
 export function validarTransicaoOsNoServidor(params: {
   perfil: Perfil;
+  usuarioId?: string;
   anterior: OrdemServicoFluxoState | null;
   proximo: OrdemServicoFluxoState;
 }): ResultadoGuardaOs {
-  const { perfil, anterior, proximo } = params;
+  const { perfil, usuarioId, anterior, proximo } = params;
   const supervisor = SUPERVISORES.includes(perfil);
   const meuSetor = SETOR_POR_PERFIL[perfil];
 
@@ -53,16 +55,24 @@ export function validarTransicaoOsNoServidor(params: {
   // ---- Criação ----
   if (!anterior) {
     if (!PASSOS_INICIAIS.has(proximo.passoAtual)) {
-      return negar('Uma OS nova só pode ser criada no estado inicial (REG-022 / Etiqueta BRANCA).');
+      return negar(
+        'Acesso ou transição não concluída: toda OS nova só pode ser criada no estado inicial (REG-022 / Etiqueta BRANCA). Responsável inicial: Setor Administrativo (ADM). Abra o formulário REG-022 (Inspeção de Recebimento) para iniciar esta OS.',
+      );
     }
     if (proximo.historico.length === 0 || proximo.historico.length > 3) {
-      return negar('Histórico inicial da OS inconsistente.');
+      return negar(
+        'Não foi possível criar a OS porque o histórico inicial está inconsistente. Inicie o fluxo novamente a partir do REG-022 (Setor Administrativo - ADM).',
+      );
     }
     if (proximo.estadoGeral !== 'em_andamento') {
-      return negar('Uma OS nova deve iniciar em andamento.');
+      return negar(
+        'Toda OS nova precisa iniciar "Em andamento" após o preenchimento do REG-022 pelo Setor Administrativo (ADM).',
+      );
     }
     if (!supervisor && perfil !== 'adm' && perfil !== 'tecnico') {
-      return negar('Você não tem permissão para criar Ordens de Serviço.');
+      return negar(
+        'Você não tem permissão para criar Ordens de Serviço. Toda OS deve começar no REG-022 (Inspeção de Recebimento), sob responsabilidade do Setor Administrativo (ADM) ou Assistência Técnica (AT).',
+      );
     }
     return { permitido: true };
   }
@@ -104,6 +114,7 @@ export function validarTransicaoOsNoServidor(params: {
   let setorCorrente: string = String(anterior.setorPendente);
   const finalizadaOuCancelada =
     anterior.estadoGeral === 'finalizada' || anterior.estadoGeral === 'cancelada';
+  const ehLoteCorrecaoDono = novos[novos.length - 1]?.tipo === 'CORRECAO_MARCACAO';
 
   for (const ev of novos) {
     const autor = ev.usuarioPerfil as string;
@@ -112,14 +123,41 @@ export function validarTransicaoOsNoServidor(params: {
     }
 
     if (ev.tipo === 'CANCELAMENTO') {
-      if (!supervisor && perfil !== 'adm') {
-        return negar('Você não tem permissão para cancelar esta Ordem de Serviço.');
+      if (!supervisor && perfil !== 'adm' && perfil !== 'tecnico') {
+        return negar(
+          'Você não tem permissão para cancelar esta Ordem de Serviço. O cancelamento é restrito ao Setor Administrativo (ADM), Assistência Técnica (AT) ou Diretoria/Gestão.',
+        );
       }
     } else if (ev.tipo === 'REABERTURA') {
-      if (perfil === 'estoquista') return negar('Você não tem permissão para reabrir esta Ordem de Serviço.');
+      if (perfil === 'estoquista') {
+        return negar(
+          'Você não tem permissão para reabrir esta Ordem de Serviço. Solicite ao Setor Administrativo (ADM), Assistência Técnica (AT) ou Diretoria/Gestão.',
+        );
+      }
+    } else if (ev.tipo === 'CORRECAO_MARCACAO') {
+      if (anterior.estadoGeral === 'cancelada') {
+        return negar(
+          'Esta Ordem de Serviço está cancelada. Reabra a OS antes de corrigir marcações.',
+        );
+      }
+      if (!supervisor) {
+        const possuiRegistroProprio = anterior.historico.some(
+          (h) =>
+            h.usuarioPerfil === perfil &&
+            (!usuarioId || !h.usuarioId || h.usuarioId === usuarioId) &&
+            (!ev.chaveAcao || !h.chaveAcao || h.chaveAcao === ev.chaveAcao),
+        );
+        if (!possuiRegistroProprio) {
+          return negar(
+            'Apenas o próprio usuário que realizou o registro original pode corrigi-lo.',
+          );
+        }
+      }
     } else {
       if (finalizadaOuCancelada && anterior.estadoGeral === 'cancelada') {
-        return negar('OS cancelada: reabra a OS antes de continuar o fluxo.');
+        return negar(
+          'Esta Ordem de Serviço está cancelada. Solicite ao Setor Administrativo (ADM), Assistência Técnica (AT) ou Gestor que reabra a OS antes de continuar o fluxo.',
+        );
       }
       if (autor !== 'sistema' && !supervisor) {
         const isItem5PosVerde =
@@ -129,18 +167,27 @@ export function validarTransicaoOsNoServidor(params: {
         if (isItem5PosVerde) {
           if (perfil !== 'tecnico') {
             return negar(
-              'Somente a Assistência Técnica (AT), Gestor ou Diretor podem preencher o REG-035 / Item 5.',
+              'Somente a Assistência Técnica (AT), Gestor ou Diretor podem preencher o REG-035 (Item 5) após a Etiqueta VERDE no REG-016.',
             );
           }
-        } else if (!meuSetor || String(ev.setorPendenteAnterior) !== meuSetor) {
+        } else if (!meuSetor || (!ehLoteCorrecaoDono && String(ev.setorPendenteAnterior) !== meuSetor)) {
+          const nomeSetor = formatarNomeSetorCompleto(String(ev.setorPendenteAnterior));
           return negar(
-            `Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor ${String(ev.setorPendenteAnterior)}.`,
+            `Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor ${nomeSetor}. Toda OS começa no REG-022 (ADM) e avança conforme a vez de cada setor.`,
           );
+        } else if (ehLoteCorrecaoDono && String(ev.setorPendenteAnterior) !== meuSetor) {
+          return negar('A correção de etapa é permitida apenas para ações do seu próprio setor.');
         }
       }
     }
 
-    if (autor !== 'sistema' && !supervisor && ev.tipo !== 'CANCELAMENTO' && ev.tipo !== 'REABERTURA') {
+    if (
+      autor !== 'sistema' &&
+      !supervisor &&
+      !ehLoteCorrecaoDono &&
+      ev.tipo !== 'CANCELAMENTO' &&
+      ev.tipo !== 'REABERTURA'
+    ) {
       // Encadeamento coerente de setor entre eventos da mesma requisição.
       if (String(ev.setorPendenteAnterior) !== setorCorrente && novos.length > 1) {
         if (String(ev.setorPendenteAnterior) !== meuSetor) {

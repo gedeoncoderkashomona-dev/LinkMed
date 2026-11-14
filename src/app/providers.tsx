@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { RuleNoticeHost } from '@/components/ui/rule-notice-dialog';
+
 /**
  * Provider global: React Query + (futuro) tema, auth context, etc.
  */
@@ -21,5 +23,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       }),
   );
 
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      {children}
+      <RuleNoticeHost />
+    </QueryClientProvider>
+  );
 }

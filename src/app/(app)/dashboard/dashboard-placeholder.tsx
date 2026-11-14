@@ -120,32 +120,32 @@ export function DashboardPlaceholder() {
 
         <div className="flex flex-wrap items-center gap-2">
           {user?.perfil === 'diretor' && (
-            <div className="flex items-center gap-1 rounded-lg border border-border/80 bg-card p-1 shadow-2xs">
+            <div className="flex items-center gap-1 rounded-xl bg-black/[0.045] p-1 dark:bg-white/[0.06]">
               <button
                 type="button"
                 onClick={() => setVisaoDiretor('estrategica')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all touch-manipulation',
+                  'ios-touch flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all touch-manipulation',
                   visaoDiretor === 'estrategica'
-                    ? 'bg-primary text-primary-foreground shadow-2xs'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                    ? 'bg-card text-foreground shadow-soft'
+                    : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <BarChart3 className="h-3.5 w-3.5" />
-                <span>Estatísticas & Evolução</span>
+                <BarChart3 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <span>Estatísticas</span>
               </button>
               <button
                 type="button"
                 onClick={() => setVisaoDiretor('operacional')}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all touch-manipulation',
+                  'ios-touch flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all touch-manipulation',
                   visaoDiretor === 'operacional'
-                    ? 'bg-primary text-primary-foreground shadow-2xs'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                    ? 'bg-card text-foreground shadow-soft'
+                    : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <LayoutDashboard className="h-3.5 w-3.5" />
-                <span>Visão de Bancada</span>
+                <LayoutDashboard className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <span>Bancada</span>
               </button>
             </div>
           )}
@@ -159,76 +159,76 @@ export function DashboardPlaceholder() {
         </div>
       </div>
 
-      {/* Alerta Direto de Continuidade do Processo para o Setor Logado */}
+      {/* Alerta Direto de Continuidade do Processo para o Setor Logado (iOS grouped list) */}
       {ordensPendentesMeuSetor.length > 0 && (
-        <Card className="border-emerald-500/40 bg-emerald-500/5 shadow-xs">
-          <CardContent className="space-y-3 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <div>
-                  <p className="text-xs font-bold text-foreground">
-                    Notificações de Continuidade para o Seu Setor ({ordensPendentesMeuSetor.length} OS aguardando sua ação)
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Continue diretamente da etapa onde o departamento anterior parou, com todos os dados herdados automaticamente.
-                  </p>
-                </div>
+        <div className="ios-card overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.06] bg-primary/[0.04] px-4 py-3 dark:border-white/[0.08]">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                <Bell className="h-4 w-4" strokeWidth={1.5} />
               </div>
-              <Link href="/notificacoes">
-                <Button variant="outline" size="sm" className="h-7 text-xs">
-                  Ver Notificações
-                </Button>
-              </Link>
+              <div>
+                <p className="text-[13px] font-semibold text-foreground">
+                  Para Fazer Agora ({ordensPendentesMeuSetor.length} OS aguardando seu setor)
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Retome diretamente da etapa atual com os dados herdados automaticamente.
+                </p>
+              </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {ordensPendentesMeuSetor.map((o) => {
-                const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
-                const rotaDireta =
-                  o.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034'
-                    ? `/formularios/limpeza-equipamento?os=${encodeURIComponent(o.numeroOs)}`
-                    : o.etiquetaAtual === 'GREEN' && !o.item5Preenchido
-                      ? `/formularios/checklist-manutencao?os=${encodeURIComponent(o.numeroOs)}`
-                      : o.reg034Preenchido
-                        ? `/formularios/etapas-manutencao?os=${encodeURIComponent(o.numeroOs)}`
-                        : `/equipamentos?os=${encodeURIComponent(o.numeroOs)}`;
-                return (
-                  <div
-                    key={o.numeroOs}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3 text-xs"
-                  >
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant="default" className="font-mono text-[10px]">
-                          {o.numeroOs}
-                        </Badge>
-                        <span className="font-semibold text-foreground truncate">
-                          {o.identificacao.equipamento} ({o.identificacao.marca})
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {ultimaNotif?.mensagem || o.mensagemTelaAtual || `Etapa atual: ${o.passoAtual}`}
-                      </p>
+            <Link href="/notificacoes">
+              <Button variant="outline" size="sm" className="h-8 text-xs">
+                Ver Avisos
+              </Button>
+            </Link>
+          </div>
+          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+            {ordensPendentesMeuSetor.map((o) => {
+              const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
+              const rotaDireta =
+                o.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034'
+                  ? `/formularios/limpeza-equipamento?os=${encodeURIComponent(o.numeroOs)}`
+                  : o.etiquetaAtual === 'GREEN' && !o.item5Preenchido
+                    ? `/formularios/checklist-manutencao?os=${encodeURIComponent(o.numeroOs)}`
+                    : o.reg034Preenchido
+                      ? `/formularios/etapas-manutencao?os=${encodeURIComponent(o.numeroOs)}`
+                      : `/equipamentos?os=${encodeURIComponent(o.numeroOs)}`;
+              return (
+                <div
+                  key={o.numeroOs}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs transition-colors hover:bg-muted/30"
+                >
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-semibold text-primary">
+                        OS {o.numeroOs}
+                      </span>
+                      <span className="truncate font-medium text-foreground">
+                        {o.identificacao.equipamento} · {o.identificacao.marca}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Link href={rotaDireta}>
-                        <Button size="sm" className="h-7 gap-1 text-xs">
-                          Abrir Etapa Atual
-                          <ArrowRight className="h-3 w-3" />
-                        </Button>
-                      </Link>
-                      <Link href={`/equipamentos?os=${encodeURIComponent(o.numeroOs)}`}>
-                        <Button size="sm" variant="outline" className="h-7 text-xs">
-                          Painel OS
-                        </Button>
-                      </Link>
-                    </div>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {ultimaNotif?.mensagem || o.mensagemTelaAtual || 'Aguardando ação do setor'}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Link href={rotaDireta}>
+                      <Button size="sm" className="h-8 gap-1 text-xs">
+                        Continuar
+                        <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      </Button>
+                    </Link>
+                    <Link href={`/equipamentos?os=${encodeURIComponent(o.numeroOs)}`}>
+                      <Button size="sm" variant="outline" className="h-8 text-xs">
+                        Painel OS
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Se o perfil for Diretor e estiver na visão estratégica, renderiza o painel executivo */}
@@ -239,6 +239,9 @@ export function DashboardPlaceholder() {
           totalPops={popsData?.pops.length ?? 0}
           ncsResumo={resumoNc}
           ordensServico={todasOrdensServico}
+          ordensFluxo={ordensFluxoServidor}
+          formRecords={formsData?.records ?? []}
+          formContagens={formsData?.contagens ?? {}}
         />
       ) : (
         <>

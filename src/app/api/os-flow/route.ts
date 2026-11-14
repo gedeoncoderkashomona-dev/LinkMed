@@ -95,6 +95,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const atual = await carregarEstadoAtual(norm);
   const guarda = validarTransicaoOsNoServidor({
     perfil: auth.perfil,
+    usuarioId: auth.sub,
     anterior: atual,
     proximo: rawBody as OrdemServicoFluxoState,
   });

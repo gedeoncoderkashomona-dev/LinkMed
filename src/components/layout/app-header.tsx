@@ -12,8 +12,6 @@ import { Button } from '@/components/ui/button';
 import { useOsFlowList } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
 
-import { APP_VERSION_LABEL } from '@/lib/version';
-
 import { ThemeToggle } from './theme-toggle';
 import { UserMenu } from './user-menu';
 
@@ -37,35 +35,31 @@ export function AppHeader({ user, onOpenMobile }: Props) {
   }, [user.nomeCompleto]);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-2.5 sm:gap-3 border-b border-border/80 bg-background/90 px-3 sm:px-6 lg:px-8 backdrop-blur-md shadow-2xs">
+    <header className="ios-glass sticky top-0 z-30 flex h-14 items-center gap-2.5 border-b border-black/[0.06] px-3.5 sm:gap-3 sm:px-6 lg:px-8 dark:border-white/[0.08]">
       {/* Botão menu mobile (smartphones e tablets) */}
       <Button
         variant="ghost"
         size="icon"
         onClick={onOpenMobile}
-        className="md:hidden touch-manipulation h-9 w-9 text-foreground hover:bg-accent"
+        className="h-9 w-9 text-foreground hover:bg-black/[0.05] dark:hover:bg-white/[0.08] md:hidden touch-manipulation"
         aria-label="Abrir menu de navegação"
       >
-        <Menu className="h-5 w-5" />
+        <Menu className="h-5 w-5" strokeWidth={1.5} />
       </Button>
 
-      <div className="min-w-0 flex-1 flex items-center gap-2">
-        <p className="truncate text-xs sm:text-sm font-medium text-muted-foreground">
-          Bem-vindo(a), <span className="font-semibold text-foreground">{user.nomeCompleto.split(' ')[0]}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <p className="truncate text-[13px] font-normal text-muted-foreground sm:text-sm">
+          Olá, <span className="font-medium text-foreground">{user.nomeCompleto.split(' ')[0]}</span>
         </p>
-        <span
-          title="LinkMed Release Oficial v2.0 (Fluxo Revisado RDC 665/22 & LGPD)"
-          className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shadow-2xs"
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Release {APP_VERSION_LABEL}
-        </span>
       </div>
 
       <Badge
         variant="outline"
         title={PERFIL_LABEL[user.perfil]}
-        className={cn('hidden sm:inline-flex text-xs font-semibold px-2.5 py-0.5 border shadow-2xs', PERFIL_COR[user.perfil])}
+        className={cn(
+          'hidden border-black/10 px-2.5 py-0.5 text-[11px] font-medium sm:inline-flex dark:border-white/10',
+          PERFIL_COR[user.perfil],
+        )}
       >
         {PERFIL_SHORT_LABEL[user.perfil] ?? PERFIL_LABEL[user.perfil]}
       </Badge>
@@ -81,9 +75,9 @@ export function AppHeader({ user, onOpenMobile }: Props) {
         }
       >
         <Button variant="ghost" size="icon" aria-label="Notificações" className="relative">
-          <Bell className="h-5 w-5" />
+          <Bell className="h-[18px] w-[18px]" strokeWidth={1.5} />
           {pendentesSetor > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-white tabular-nums">
               {pendentesSetor > 9 ? '9+' : pendentesSetor}
             </span>
           )}

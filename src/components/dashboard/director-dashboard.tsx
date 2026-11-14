@@ -4,31 +4,25 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   Activity,
-  ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
-  Award,
-  BarChart2,
   Calendar,
-  CheckCircle2,
   Clock,
-  FileCheck2,
-  Filter,
   Layers,
   LineChart,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
-  TrendingUp,
-  Users2,
   Wrench,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { TAG_SPECS, type TagColor } from '@/core/domain/forms/os-workflow';
+import type { FormRecord } from '@/core/domain/entities/operacional';
+import {
+  TAG_SPECS,
+  type OrdemServicoFluxoState,
+  type TagColor,
+} from '@/core/domain/forms/os-workflow';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -45,6 +39,28 @@ interface Props {
     tagColor: TagColor;
     ultimaAtualizacao: string;
   }>;
+  ordensFluxo?: OrdemServicoFluxoState[];
+  formRecords?: FormRecord[];
+  formContagens?: Record<string, { total: number }>;
+}
+
+const MESES_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+function toYearMonthKey(raw: string | Date | null | undefined): string | null {
+  if (!raw) return null;
+  const d = raw instanceof Date ? raw : new Date(raw);
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  }
+  const str = String(raw).trim();
+  const match = str.match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : null;
+}
+
+function daysThreshold(periodo: '30d' | '90d' | '12m'): number {
+  return periodo === '30d' ? 30 : periodo === '90d' ? 90 : 365;
 }
 
 export function DirectorDashboard({
@@ -53,22 +69,120 @@ export function DirectorDashboard({
   totalPops,
   ncsResumo,
   ordensServico,
+  ordensFluxo = [],
+  formRecords = [],
+  formContagens = {},
 }: Props) {
   const [periodo, setPeriodo] = React.useState<'30d' | '90d' | '12m'>('30d');
 
-  // Dados de evolução mensal simulando os últimos 6 meses com base no histórico
-  const evolucaoMensal = React.useMemo(() => {
-    return [
-      { mes: 'Mai', concluidas: 18, recebidas: 22, taxa: 81 },
-      { mes: 'Jun', concluidas: 24, recebidas: 28, taxa: 85 },
-      { mes: 'Jul', concluidas: 29, recebidas: 31, taxa: 93 },
-      { mes: 'Ago', concluidas: 32, recebidas: 35, taxa: 91 },
-      { mes: 'Set', concluidas: 38, recebidas: 40, taxa: 95 },
-      { mes: 'Out (Atual)', concluidas: Math.max(14, ordensServico.length), recebidas: Math.max(16, ordensServico.length + 2), taxa: 96 },
-    ];
-  }, [ordensServico.length]);
+  const ordensNoPeriodo = React.useMemo(() => {
+    const limiteMs = Date.now() - daysThreshold(periodo) * 86_400_000;
+    return ordensServico.filter((os) => {
+      const ts = Date.parse(os.ultimaAtualizacao);
+      return Number.isNaN(ts) || ts >= limiteMs;
+    });
+  }, [ordensServico, periodo]);
 
-  // Contagem de equipamentos por status da etiqueta REG-016
+  const fluxoNoPeriodo = React.useMemo(() => {
+    const limiteMs = Date.now() - daysThreshold(periodo) * 86_400_000;
+    return ordensFluxo.filter((o) => {
+      const ts = new Date(o.atualizadaEm ?? o.criadaEm).getTime();
+      return Number.isNaN(ts) || ts >= limiteMs;
+    });
+  }, [ordensFluxo, periodo]);
+
+  const osFinalizadasPeriodo = React.useMemo(
+    () => ordensNoPeriodo.filter((os) => os.tagColor === 'GREEN').length,
+    [ordensNoPeriodo],
+  );
+
+  const osEmFluxoPeriodo = React.useMemo(
+    () => ordensNoPeriodo.filter((os) => os.tagColor !== 'GREEN' && os.tagColor !== 'RED').length,
+    [ordensNoPeriodo],
+  );
+
+  const taxaConclusaoOs =
+    ordensNoPeriodo.length > 0
+      ? Math.round((osFinalizadasPeriodo / ordensNoPeriodo.length) * 100)
+      : 0;
+
+  const tempoMedioCiclo = React.useMemo(() => {
+    const fechadas = fluxoNoPeriodo.filter((o) => o.estadoGeral === 'finalizada');
+    if (fechadas.length === 0) return null;
+    const totalDias = fechadas.reduce((acc, o) => {
+      const inicio = new Date(o.criadaEm).getTime();
+      const fim = new Date(o.atualizadaEm).getTime();
+      if (Number.isNaN(inicio) || Number.isNaN(fim) || fim < inicio) return acc;
+      return acc + Math.max(0.1, (fim - inicio) / 86_400_000);
+    }, 0);
+    return Number((totalDias / fechadas.length).toFixed(1));
+  }, [fluxoNoPeriodo]);
+
+  // Evolução mensal real nos últimos 6 meses com base em OS e registros salvos
+  const evolucaoMensal = React.useMemo(() => {
+    const agora = new Date();
+    const buckets: Array<{
+      key: string;
+      mes: string;
+      recebidas: number;
+      concluidas: number;
+      taxa: number;
+    }> = [];
+    const byKey = new Map<string, { recebidas: Set<string>; concluidas: Set<string> }>();
+
+    for (let i = 5; i >= 0; i -= 1) {
+      const ref = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+      const key = `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, '0')}`;
+      const label = i === 0 ? `${MESES_PT[ref.getMonth()]} (Atual)` : MESES_PT[ref.getMonth()] ?? '';
+      byKey.set(key, { recebidas: new Set(), concluidas: new Set() });
+      buckets.push({ key, mes: label, recebidas: 0, concluidas: 0, taxa: 0 });
+    }
+
+    for (const o of ordensFluxo) {
+      const k = toYearMonthKey(o.criadaEm);
+      if (k && byKey.has(k)) {
+        byKey.get(k)!.recebidas.add(o.numeroOsNormalizado || o.numeroOs);
+      }
+      if (o.estadoGeral === 'finalizada' || o.etiquetaAtual === 'GREEN') {
+        const kf = toYearMonthKey(o.atualizadaEm);
+        if (kf && byKey.has(kf)) {
+          byKey.get(kf)!.concluidas.add(o.numeroOsNormalizado || o.numeroOs);
+        }
+      }
+    }
+
+    for (const os of ordensServico) {
+      const k = toYearMonthKey(os.ultimaAtualizacao);
+      if (k && byKey.has(k)) {
+        const id = os.numeroOs.trim().toUpperCase();
+        byKey.get(k)!.recebidas.add(id);
+        if (os.tagColor === 'GREEN') {
+          byKey.get(k)!.concluidas.add(id);
+        }
+      }
+    }
+
+    return buckets.map((b) => {
+      const entry = byKey.get(b.key)!;
+      const recebidas = entry.recebidas.size;
+      const concluidas = entry.concluidas.size;
+      const taxa = recebidas > 0 ? Math.min(100, Math.round((concluidas / recebidas) * 100)) : 0;
+      return { ...b, recebidas, concluidas, taxa };
+    });
+  }, [ordensFluxo, ordensServico]);
+
+  const maxBarras = React.useMemo(
+    () => Math.max(1, ...evolucaoMensal.map((m) => Math.max(m.recebidas, m.concluidas))),
+    [evolucaoMensal],
+  );
+
+  const resumoSemestre = React.useMemo(() => {
+    const rec = evolucaoMensal.reduce((acc, m) => acc + m.recebidas, 0);
+    const conc = evolucaoMensal.reduce((acc, m) => acc + m.concluidas, 0);
+    const taxa = rec > 0 ? Math.round((conc / rec) * 100) : 0;
+    return { rec, conc, taxa };
+  }, [evolucaoMensal]);
+
   const distribuicaoStatus = React.useMemo(() => {
     const counts: Record<TagColor, number> = {
       VIOLET: 0,
@@ -83,226 +197,252 @@ export function DirectorDashboard({
       GREEN: 0,
     };
 
-    ordensServico.forEach((os) => {
+    ordensNoPeriodo.forEach((os) => {
       counts[os.tagColor] = (counts[os.tagColor] ?? 0) + 1;
     });
 
-    const total = ordensServico.length || 1;
+    const total = ordensNoPeriodo.length || 1;
     return Object.entries(counts)
       .map(([cor, qtd]) => ({
         cor: cor as TagColor,
         spec: TAG_SPECS[cor as TagColor],
         qtd,
-        pct: Math.round((qtd / total) * 100),
+        pct: ordensNoPeriodo.length > 0 ? Math.round((qtd / total) * 100) : 0,
       }))
-      .filter((item) => item.qtd > 0 || ['GREEN', 'YELLOW', 'BLUE', 'ORANGE', 'RED'].includes(item.cor))
+      .filter((item) => item.qtd > 0 || ['WHITE', 'VIOLET', 'GREEN', 'YELLOW', 'RED'].includes(item.cor))
       .slice(0, 6);
-  }, [ordensServico]);
+  }, [ordensNoPeriodo]);
 
-  const taxaConformidadePops = totalPops > 0 ? Math.round((totalPopsVigentes / totalPops) * 100) : 100;
+  const metricasSetoriais = React.useMemo(() => {
+    const totalAtForms =
+      (formContagens['etapas-manutencao']?.total ?? 0) +
+      (formContagens['limpeza-equipamento']?.total ?? 0) +
+      (formContagens['checklist-manutencao']?.total ?? 0);
+    const osPendentesAt = ordensFluxo.filter(
+      (o) => o.setorPendente === 'AT' && o.estadoGeral !== 'finalizada' && o.estadoGeral !== 'cancelada',
+    ).length;
+
+    const totalCalibracao = formContagens['verificacao-calibracao']?.total ?? 0;
+    const calibAprovadas = formRecords.filter(
+      (r) => r.tipo === 'verificacao-calibracao' && r.status === 'conforme',
+    ).length;
+
+    const totalRecebimento = formContagens['inspecao-recebimento']?.total ?? 0;
+    const osAguardandoPecas = ordensServico.filter((o) => o.tagColor === 'BLACK').length;
+
+    return {
+      totalAtForms,
+      osPendentesAt,
+      totalCalibracao,
+      calibAprovadas,
+      totalRecebimento,
+      osAguardandoPecas,
+    };
+  }, [formContagens, formRecords, ordensFluxo, ordensServico]);
+
+  const taxaConformidadePops = totalPops > 0 ? Math.round((totalPopsVigentes / totalPops) * 100) : 0;
   const taxaResolucaoNc =
-    ncsResumo.total > 0
-      ? Math.round((ncsResumo.concluidas / ncsResumo.total) * 100)
-      : 100;
+    ncsResumo.total > 0 ? Math.round((ncsResumo.concluidas / ncsResumo.total) * 100) : 100;
 
   return (
-    <div className="space-y-6">
-      {/* Banner de Boas-Vindas Executivo do Diretor */}
-      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-background to-emerald-500/10 p-5 sm:p-6 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="flex h-6 items-center gap-1.5 rounded-full bg-primary/20 px-2.5 text-[11px] font-bold text-primary border border-primary/30">
-                <Sparkles className="h-3.5 w-3.5" />
-                VISÃO ESTRATÉGICA DA DIRETORIA
-              </span>
-              <span className="text-xs text-muted-foreground">· Indicadores Executivos em Tempo Real</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-              Painel de Governança e Evolução da Assistência Técnica
-            </h2>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Acompanhamento de conformidade regulatória (RDC 665/22), produtividade de bancada e eficácia dos processos.
-            </p>
-          </div>
+    <div className="space-y-5">
+      {/* Cabeçalho e seletor de período iOS segmented */}
+      <div className="ios-card flex flex-col justify-between gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-primary">
+            Governança & Conformidade RDC 665/22
+          </p>
+          <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+            Visão Executiva em Tempo Real
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Dados consolidados diretamente dos registros operacionais, ordens de serviço e auditoria.
+          </p>
+        </div>
 
-          <div className="flex items-center gap-1.5 rounded-lg border border-border/80 bg-background/90 p-1 shadow-2xs text-xs">
-            <span className="px-2 text-muted-foreground font-medium flex items-center gap-1 text-[11px]">
-              <Calendar className="h-3 w-3" />
-              Período:
-            </span>
-            {(['30d', '90d', '12m'] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPeriodo(p)}
-                className={cn(
-                  'rounded-md px-2.5 py-1 text-xs font-semibold transition-all touch-manipulation',
-                  periodo === p
-                    ? 'bg-primary text-primary-foreground shadow-2xs'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-                )}
-              >
-                {p === '30d' ? '30 dias' : p === '90d' ? '90 dias' : '12 meses'}
-              </button>
-            ))}
-          </div>
+        <div className="inline-flex w-fit items-center gap-1 rounded-xl bg-black/[0.045] p-1 text-xs dark:bg-white/[0.06]">
+          <span className="hidden items-center gap-1 px-2 text-[11px] font-medium text-muted-foreground sm:inline-flex">
+            <Calendar className="h-3.5 w-3.5" strokeWidth={1.5} />
+            Janela:
+          </span>
+          {(['30d', '90d', '12m'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriodo(p)}
+              className={cn(
+                'ios-touch rounded-lg px-3 py-1.5 text-xs font-medium transition-all touch-manipulation',
+                periodo === p
+                  ? 'bg-card text-foreground shadow-soft'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {p === '30d' ? '30d' : p === '90d' ? '90d' : '12m'}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* 4 Grandes Indicadores Executivos com Taxa de Evolução */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Card 1: Índice de Conformidade */}
-        <Card className="border-border/80 shadow-2xs hover:shadow-xs transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Conformidade Global SGQ
+      {/* 4 Indicadores Executivos Reais */}
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
+            <CardTitle className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              POPs Vigentes
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="h-4 w-4" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <ShieldCheck className="h-4 w-4" strokeWidth={1.5} />
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-1.5">
+          <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-foreground">98.4%</span>
-              <span className="flex items-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                <ArrowUpRight className="h-3.5 w-3.5" />
-                +2.4%
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                {taxaConformidadePops}%
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {totalPopsVigentes}/{totalPops}
               </span>
             </div>
-            <Progress value={98.4} className="h-1.5" />
-            <p className="text-[11px] text-muted-foreground pt-1">
-              RDC 665/22 · {totalPopsVigentes} de {totalPops} POPs em vigência plena
+            <Progress value={taxaConformidadePops} className="h-1.5" />
+            <p className="text-[11px] text-muted-foreground">
+              {totalPops > 0
+                ? `${totalPopsVigentes} de ${totalPops} POP(s) publicados`
+                : 'Nenhum POP cadastrado'}
             </p>
           </CardContent>
         </Card>
 
-        {/* Card 2: Volume de Atendimentos */}
-        <Card className="border-border/80 shadow-2xs hover:shadow-xs transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Eficiência de Ordens de Serviço
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
+            <CardTitle className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Ordens no Período
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Wrench className="h-4 w-4" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
+              <Wrench className="h-4 w-4" strokeWidth={1.5} />
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-1.5">
+          <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-foreground">
-                {Math.max(42, ordensServico.length * 3 + 18)} OS
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                {ordensNoPeriodo.length} OS
               </span>
-              <span className="flex items-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                <ArrowUpRight className="h-3.5 w-3.5" />
-                +14.8%
+              <span className="text-xs font-medium text-primary tabular-nums">
+                {taxaConclusaoOs}% concluídas
               </span>
             </div>
-            <Progress value={92} className="h-1.5" />
-            <p className="text-[11px] text-muted-foreground pt-1">
-              92% dos atendimentos dentro do prazo contratual (SLA)
+            <Progress value={taxaConclusaoOs} className="h-1.5" />
+            <p className="text-[11px] text-muted-foreground tabular-nums">
+              {osFinalizadasPeriodo} finalizada(s) · {osEmFluxoPeriodo} em andamento
             </p>
           </CardContent>
         </Card>
 
-        {/* Card 3: Tempo Médio de Bancada (MTTR) */}
-        <Card className="border-border/80 shadow-2xs hover:shadow-xs transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Tempo Médio de Reparo (MTTR)
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
+            <CardTitle className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Ciclo Médio (MTTR)
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-              <Clock className="h-4 w-4" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+              <Clock className="h-4 w-4" strokeWidth={1.5} />
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-1.5">
+          <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-foreground">2.4 dias</span>
-              <span className="flex items-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                <ArrowDownRight className="h-3.5 w-3.5" />
-                -18.5%
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                {tempoMedioCiclo !== null ? `${tempoMedioCiclo} dias` : `${osEmFluxoPeriodo} ativas`}
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {fluxoNoPeriodo.filter((o) => o.estadoGeral === 'finalizada').length} fechada(s)
               </span>
             </div>
-            <Progress value={82} className="h-1.5" />
-            <p className="text-[11px] text-muted-foreground pt-1">
-              Velocidade recorde desde o recebimento até a calibração
+            <Progress
+              value={tempoMedioCiclo !== null ? Math.min(100, Math.round(taxaConclusaoOs)) : 0}
+              className="h-1.5"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              {tempoMedioCiclo !== null
+                ? 'Tempo médio entre abertura no REG-022 e Etiqueta Verde'
+                : 'Aguardando conclusão das primeiras OS neste período'}
             </p>
           </CardContent>
         </Card>
 
-        {/* Card 4: Resolução de Não Conformidades (CAPA) */}
-        <Card className="border-border/80 shadow-2xs hover:shadow-xs transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Eficácia de Ações Corretivas (CAPA)
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
+            <CardTitle className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Resolução de NCs
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <ShieldAlert className="h-4 w-4" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <ShieldAlert className="h-4 w-4" strokeWidth={1.5} />
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-1.5">
+          <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold text-foreground">{taxaResolucaoNc}%</span>
-              <span className="text-xs font-medium text-muted-foreground">
-                {ncsResumo.concluidas} concluídas
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+                {taxaResolucaoNc}%
+              </span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {ncsResumo.concluidas}/{ncsResumo.total}
               </span>
             </div>
             <Progress value={taxaResolucaoNc} className="h-1.5" />
-            <p className="text-[11px] text-muted-foreground pt-1">
-              {ncsResumo.abertas + ncsResumo.emAndamento} ocorrência(s) em plano de ação
+            <p className="text-[11px] text-muted-foreground tabular-nums">
+              {ncsResumo.abertas + ncsResumo.emAndamento} ocorrência(s) em tratamento
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Gráficos Visuais de Evolução: Barras Mensais + Funil de Status */}
+      {/* Gráficos Reais: Evolução Mensal + Funil de Status REG-016 */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Gráfico 1: Evolução Mensal de Ordens de Serviço (Últimos 6 meses) */}
-        <Card className="lg:col-span-2 border-border/80 shadow-2xs">
+        <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
-              <CardTitle className="text-base font-bold flex items-center gap-2">
-                <LineChart className="h-4 w-4 text-primary" />
-                Evolução Mensal de Manutenções e Atendimentos
+              <CardTitle className="flex items-center gap-2 text-[15px] font-semibold">
+                <LineChart className="h-4 w-4 text-primary" strokeWidth={1.5} />
+                Evolução Mensal Real (Últimos 6 Meses)
               </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Comparativo de equipamentos recebidos versus equipamentos liberados pelo CQ.
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Entradas registradas versus OS concluídas com Etiqueta Verde.
               </p>
             </div>
-            <Badge variant="outline" className="hidden sm:inline-flex text-[11px] font-semibold gap-1.5">
-              <TrendingUp className="h-3 w-3 text-emerald-600" />
-              Crescimento de +18%
+            <Badge variant="outline" className="hidden tabular-nums sm:inline-flex">
+              {resumoSemestre.conc} de {resumoSemestre.rec} concluídas ({resumoSemestre.taxa}%)
             </Badge>
           </CardHeader>
-          <CardContent className="pt-2">
-            {/* Visualização de Gráfico de Barras Responsivo */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-6 gap-2 sm:gap-4 items-end h-44 pt-6 border-b border-border/70 pb-2">
+          <CardContent className="pt-1">
+            <div className="space-y-3">
+              <div className="grid h-44 grid-cols-6 items-end gap-2 border-b border-black/[0.06] pb-2 pt-6 sm:gap-4 dark:border-white/[0.08]">
                 {evolucaoMensal.map((item) => {
-                  const maxVal = 45;
-                  const alturaRecebidas = Math.min(100, Math.round((item.recebidas / maxVal) * 100));
-                  const alturaConcluidas = Math.min(100, Math.round((item.concluidas / maxVal) * 100));
+                  const alturaRecebidas =
+                    item.recebidas > 0
+                      ? Math.max(8, Math.round((item.recebidas / maxBarras) * 100))
+                      : 4;
+                  const alturaConcluidas =
+                    item.concluidas > 0
+                      ? Math.max(8, Math.round((item.concluidas / maxBarras) * 100))
+                      : 0;
 
                   return (
-                    <div key={item.mes} className="flex flex-col items-center gap-1.5 h-full justify-end group">
-                      <div className="flex items-end gap-1 sm:gap-1.5 h-full w-full justify-center">
-                        {/* Barra Recebidas */}
+                    <div
+                      key={item.key}
+                      className="group flex h-full flex-col items-center justify-end gap-1.5"
+                    >
+                      <div className="flex h-full w-full items-end justify-center gap-1 sm:gap-1.5">
                         <div
                           style={{ height: `${alturaRecebidas}%` }}
-                          className="w-3 sm:w-5 rounded-t-md bg-muted-foreground/30 transition-all group-hover:bg-muted-foreground/45 relative"
-                          title={`Recebidas em ${item.mes}: ${item.recebidas}`}
+                          className="relative w-3 rounded-t-md bg-muted-foreground/25 transition-all group-hover:bg-muted-foreground/45 sm:w-5"
+                          title={`Entradas em ${item.mes}: ${item.recebidas}`}
                         />
-                        {/* Barra Concluídas (Verde Primário) */}
-                        <div
-                          style={{ height: `${alturaConcluidas}%` }}
-                          className="w-3 sm:w-5 rounded-t-md bg-primary transition-all group-hover:bg-primary/90 relative shadow-2xs"
-                          title={`Liberadas em ${item.mes}: ${item.concluidas} (${item.taxa}% eficácia)`}
-                        >
-                          <span className="hidden group-hover:block absolute -top-6 left-1/2 -translate-x-1/2 rounded bg-foreground px-1.5 py-0.5 text-[9px] font-bold text-background shadow-md whitespace-nowrap z-10">
-                            {item.concluidas} OS
-                          </span>
-                        </div>
+                        {alturaConcluidas > 0 && (
+                          <div
+                            style={{ height: `${alturaConcluidas}%` }}
+                            className="relative w-3 rounded-t-md bg-primary transition-all group-hover:bg-primary/90 sm:w-5"
+                            title={`Concluídas em ${item.mes}: ${item.concluidas}`}
+                          />
+                        )}
                       </div>
-                      <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground">
+                      <span className="truncate text-[10px] font-medium text-muted-foreground sm:text-xs">
                         {item.mes}
                       </span>
                     </div>
@@ -310,149 +450,134 @@ export function DirectorDashboard({
                 })}
               </div>
 
-              {/* Legenda do Gráfico */}
-              <div className="flex flex-wrap items-center justify-between text-xs text-muted-foreground gap-2 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-1.5">
-                    <span className="h-3 w-3 rounded-xs bg-primary" />
-                    <span className="text-foreground font-medium">Concluídas & Liberadas</span>
+                    <span className="h-2.5 w-2.5 rounded-sm bg-primary" />
+                    <span className="font-medium text-foreground">Concluídas (Verde)</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="h-3 w-3 rounded-xs bg-muted-foreground/35" />
-                    <span>Entradas / Recebidas</span>
+                    <span className="h-2.5 w-2.5 rounded-sm bg-muted-foreground/30" />
+                    <span>Registradas no mês</span>
                   </div>
                 </div>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  Média de resolução: 91.2%
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  Taxa real de encerramento: {resumoSemestre.taxa}%
                 </span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Gráfico 2: Distribuição no Funil de Bancada (Etiquetas REG-016) */}
-        <Card className="border-border/80 shadow-2xs">
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              Equipamentos por Status (REG-016)
+            <CardTitle className="flex items-center gap-2 text-[15px] font-semibold">
+              <Layers className="h-4 w-4 text-primary" strokeWidth={1.5} />
+              Equipamentos por Etiqueta
             </CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Carga de trabalho atual na oficina por etapa física.
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Distribuição atual das OS no REG-016.
             </p>
           </CardHeader>
           <CardContent className="space-y-3 pt-1">
             {distribuicaoStatus.map((item) => (
               <div key={item.cor} className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5 font-medium text-foreground">
+                  <span className="flex items-center gap-2 font-medium text-foreground">
                     <span
-                      className="h-2.5 w-2.5 rounded-full shrink-0 border border-black/20"
-                      style={{
-                        backgroundColor:
-                          item.cor === 'GREEN'
-                            ? '#059669'
-                            : item.cor === 'YELLOW'
-                              ? '#eab308'
-                              : item.cor === 'BLUE'
-                                ? '#0284c7'
-                                : item.cor === 'ORANGE'
-                                  ? '#f97316'
-                                  : item.cor === 'RED'
-                                    ? '#e11d48'
-                                    : '#8b5cf6',
-                      }}
+                      className={cn(
+                        'h-2.5 w-2.5 shrink-0 rounded-full',
+                        item.spec.dotClass,
+                      )}
                     />
                     {item.spec.labelStatus}
                   </span>
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    <strong className="text-foreground">{item.qtd}</strong> ({item.pct}%)
+                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                    <strong className="font-medium text-foreground">{item.qtd}</strong> ({item.pct}%)
                   </span>
                 </div>
                 <Progress value={item.pct} className="h-1.5" />
               </div>
             ))}
 
-            <div className="border-t border-border/70 pt-3">
-              <Link href="/equipamentos" className="text-xs font-semibold text-primary hover:underline flex items-center justify-between">
-                <span>Ver fila completa de equipamentos</span>
-                <ArrowRight className="h-3.5 w-3.5" />
+            <div className="border-t border-black/[0.06] pt-3 dark:border-white/[0.08]">
+              <Link
+                href="/equipamentos"
+                className="flex items-center justify-between text-xs font-medium text-primary hover:underline"
+              >
+                <span>Ver fila completa de OS</span>
+                <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
               </Link>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Matriz Setorial de Produtividade & Governança */}
-      <Card className="border-border/80 shadow-2xs">
+      {/* Panorama Operacional por Setor (Dados Reais) */}
+      <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" />
-            Performance Operacional por Setor da Unidade
+          <CardTitle className="flex items-center gap-2 text-[15px] font-semibold">
+            <Activity className="h-4 w-4 text-primary" strokeWidth={1.5} />
+            Atividade Real por Área da Unidade
           </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Acompanhamento de conformidade regulatória e entrega de rotinas por departamento.
-          </p>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+            <div className="rounded-xl border border-black/[0.06] bg-muted/30 p-3.5 dark:border-white/[0.07]">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground">Assistência Técnica</span>
-                <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20 text-[10px]">
-                  99% Conforme
-                </Badge>
+                <span className="text-xs font-medium text-foreground">Assistência Técnica</span>
+                <Badge variant="outline">{metricasSetoriais.osPendentesAt} pendente(s)</Badge>
               </div>
-              <p className="text-2xl font-bold text-foreground">
-                {Math.max(28, ordensServico.length * 2)} <span className="text-xs font-normal text-muted-foreground">rotinas</span>
+              <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+                {metricasSetoriais.totalAtForms}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">registros</span>
               </p>
-              <p className="text-[11px] text-muted-foreground">
-                Bancadas higienizadas, pulseiras ESD e manutenções concluídas.
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                REG-034, REG-016 e REG-035 salvos na base.
               </p>
             </div>
 
-            <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+            <div className="rounded-xl border border-black/[0.06] bg-muted/30 p-3.5 dark:border-white/[0.07]">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground">Metrologia & Calibração</span>
-                <Badge variant="outline" className="text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20 text-[10px]">
-                  100% Em Dia
-                </Badge>
+                <span className="text-xs font-medium text-foreground">Metrologia (REG-030)</span>
+                <Badge variant="outline">{metricasSetoriais.calibAprovadas} aprovada(s)</Badge>
               </div>
-              <p className="text-2xl font-bold text-foreground">
-                12 <span className="text-xs font-normal text-muted-foreground">padrões RBC</span>
+              <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+                {metricasSetoriais.totalCalibracao}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">verificações</span>
               </p>
-              <p className="text-[11px] text-muted-foreground">
-                Todos os instrumentos padrão dentro do prazo metrológico INMETRO.
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Verificações periódicas e calibrações registradas.
               </p>
             </div>
 
-            <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+            <div className="rounded-xl border border-black/[0.06] bg-muted/30 p-3.5 dark:border-white/[0.07]">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground">Almoxarifado & Logística</span>
-                <Badge variant="outline" className="text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20 text-[10px]">
-                  100% Rastreável
+                <span className="text-xs font-medium text-foreground">Recebimento & Peças</span>
+                <Badge variant={metricasSetoriais.osAguardandoPecas > 0 ? 'warning' : 'outline'}>
+                  {metricasSetoriais.osAguardandoPecas} em espera
                 </Badge>
               </div>
-              <p className="text-2xl font-bold text-foreground">
-                {Math.max(16, ordensServico.length)} <span className="text-xs font-normal text-muted-foreground">cargas</span>
+              <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+                {metricasSetoriais.totalRecebimento}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">REG-022</span>
               </p>
-              <p className="text-[11px] text-muted-foreground">
-                Inspeção de recebimento (REG-022) e expedição com rastreabilidade total.
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Inspeções de entrada e pendências de almoxarifado.
               </p>
             </div>
 
-            <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+            <div className="rounded-xl border border-black/[0.06] bg-muted/30 p-3.5 dark:border-white/[0.07]">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground">Garantia da Qualidade</span>
-                <Badge variant="outline" className="text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/20 text-[10px]">
-                  Auditável
-                </Badge>
+                <span className="text-xs font-medium text-foreground">Qualidade & Auditoria</span>
+                <Badge variant="success">Auditável</Badge>
               </div>
-              <p className="text-2xl font-bold text-foreground">
-                {totalForms} <span className="text-xs font-normal text-muted-foreground">registros</span>
+              <p className="mt-2 text-2xl font-semibold text-foreground tabular-nums">
+                {totalForms}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">formulários</span>
               </p>
-              <p className="text-[11px] text-muted-foreground">
-                Trilha de auditoria append-only pronta para fiscalizações sanitárias.
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Registros imutáveis + {totalPopsVigentes} POP(s) publicados.
               </p>
             </div>
           </div>
@@ -461,4 +586,3 @@ export function DirectorDashboard({
     </div>
   );
 }
-

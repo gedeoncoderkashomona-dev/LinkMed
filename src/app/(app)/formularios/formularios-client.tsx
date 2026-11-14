@@ -37,6 +37,7 @@ import {
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFormsOverview, useOsFlowList } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
+import { showRuleNotice } from '@/lib/rule-notice';
 
 /**
  * Ordem operacional estrita conforme Trilha de Execução POP-020 e Auditoria Linkmed:
@@ -202,14 +203,14 @@ export function FormulariosClient() {
   }, [setor, busca, user?.perfil, avaliarAcessoFormulario]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
             Formulários Operacionais (REGs)
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Checklists e registros da Assistência Técnica, Almoxarifado e Administrativo (ADM) setorizados conforme Auditoria Linkmed v2 (RDC 665/22).
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Checklists e registros oficiais por setor seguindo a Trilha POP-020.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -218,38 +219,38 @@ export function FormulariosClient() {
             size="sm"
             onClick={() => setMostrarLegendaCores((v) => !v)}
           >
-            <Tag className="h-4 w-4" />
-            {mostrarLegendaCores ? 'Ocultar Etiquetas REG-016' : 'Legenda de Etiquetas (REG-016)'}
+            <Tag className="h-4 w-4" strokeWidth={1.6} />
+            {mostrarLegendaCores ? 'Ocultar Etiquetas' : 'Etiquetas REG-016'}
           </Button>
           <Link href="/equipamentos">
             <Button size="sm" variant="secondary">
-              Fila de OS / Equipamentos
-              <ArrowRight className="h-4 w-4" />
+              Fila de OS
+              <ArrowRight className="h-4 w-4" strokeWidth={1.6} />
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Catálogo Oficial de Documentos por Setor — Seção 1 da Auditoria Linkmed */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs space-y-2">
+      {/* Filtro rápido de REGs por setor + Trilha POP-020 */}
+      <div className="rounded-2xl border border-border/70 bg-card/80 p-3.5 text-xs space-y-2.5 shadow-2xs">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 font-semibold text-primary">
-            <FileCheck2 className="h-4 w-4" />
+          <div className="flex items-center gap-2 font-medium text-foreground">
+            <FileCheck2 className="h-4 w-4 text-primary" strokeWidth={1.6} />
             <span>
               {user?.perfil === 'adm'
-                ? 'REGs Exclusivos do Setor Administrativo (ADM):'
+                ? 'REGs do Setor Administrativo (ADM)'
                 : user?.perfil === 'estoquista'
-                ? 'REGs Exclusivos do Almoxarifado / Estoque:'
-                : user?.perfil === 'tecnico'
-                ? 'REGs Exclusivos da Assistência Técnica (AT — Ordem Operacional):'
-                : 'Catálogo Geral de Formulários Oficiais Linkmed (RDC 665/22):'}
+                  ? 'REGs do Almoxarifado / Estoque'
+                  : user?.perfil === 'tecnico'
+                    ? 'REGs da Assistência Técnica (Ordem POP-020)'
+                    : 'Acesso rápido por código de registro'}
             </span>
           </div>
           {user?.perfil === 'estoquista' && (
             <Link href="/equipamentos">
               <Button size="sm" variant="default" className="h-7 gap-1.5 text-xs">
-                <PackageCheck className="h-3.5 w-3.5" />
-                Ir para Separação de Peças da OS (Bloco P)
+                <PackageCheck className="h-3.5 w-3.5" strokeWidth={1.6} />
+                Separação de Peças da OS
               </Button>
             </Link>
           )}
@@ -286,20 +287,20 @@ export function FormulariosClient() {
                 key={item.codigo}
                 type="button"
                 onClick={() => setBusca(item.codigo)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-background px-2.5 py-1 text-[11px] font-medium transition hover:border-primary hover:bg-primary/10"
+                className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3 py-1 text-[11px] font-medium transition hover:border-primary/50 hover:bg-primary/5 active:scale-[0.98]"
               >
-                <span className="font-mono font-bold text-primary">{item.codigo}</span>
-                <span className="text-muted-foreground">— Pasta: {item.pastaPop}</span>
+                <span className="font-mono font-semibold text-primary">{item.codigo}</span>
+                <span className="text-muted-foreground">· {item.pastaPop}</span>
               </button>
             ))}
         </div>
         {user?.perfil !== 'estoquista' && (
           <p className="text-[11px] text-muted-foreground">
-            <strong>Trilha POP-020:</strong> REG-022 → REG-034 → REG-016 → REG-035. Cada registro só é liberado após o anterior estar concluído; o{' '}
-            <span className="font-mono font-semibold text-foreground">REG-035 / REG-009</span>{' '}
-            só aparece quando a{' '}
-            <span className="font-semibold text-emerald-700 dark:text-emerald-300">Etiqueta VERDE</span>{' '}
-            é acionada no REG-016.
+            Sequência obrigatória POP-020:{' '}
+            <span className="font-mono font-medium text-foreground">
+              REG-022 → REG-034 → REG-016 → REG-035
+            </span>{' '}
+            (REG-035/REG-009 liberam após a Etiqueta VERDE).
           </p>
         )}
       </div>
@@ -495,28 +496,51 @@ export function FormulariosClient() {
                   </div>
 
                   {!acesso.liberado && acesso.motivo && (
-                    <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-900 dark:text-amber-200">
-                      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
-                      <span>{acesso.motivo}</span>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        showRuleNotice({
+                          title: `${def.reg ?? def.titulo} Bloqueado (POP-020)`,
+                          message: acesso.motivo!,
+                          severity: 'warning',
+                        })
+                      }
+                      className="flex w-full items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-left text-[11px] text-amber-900 transition-colors hover:bg-amber-500/12 dark:text-amber-200"
+                    >
+                      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" strokeWidth={1.6} />
+                      <span className="line-clamp-2">{acesso.motivo}</span>
+                    </button>
                   )}
 
-                  <div className="flex items-center justify-between border-t border-border pt-3">
-                    <span className="text-xs text-muted-foreground">
+                  <div className="flex items-center justify-between border-t border-border/70 pt-3">
+                    <span className="text-xs text-muted-foreground tabular-nums">
                       {total} {total === 1 ? 'registro' : 'registros'}
                     </span>
                     {acesso.liberado ? (
                       <Link href={hrefDestino}>
                         <Button size="sm">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.6} />
                           Acessar
-                          <ArrowRight className="h-3.5 w-3.5" />
+                          <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.6} />
                         </Button>
                       </Link>
                     ) : (
-                      <Button size="sm" variant="outline" disabled className="cursor-not-allowed">
-                        <Lock className="h-3.5 w-3.5" />
-                        Bloqueado
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          showRuleNotice({
+                            title: `${def.reg ?? def.titulo} Aguardando Etapa Anterior`,
+                            message:
+                              acesso.motivo ??
+                              'Conclua a etapa anterior na Trilha POP-020 (REG-022 → REG-034 → REG-016 → REG-035) antes de preencher este formulário.',
+                            severity: 'warning',
+                          })
+                        }
+                        className="border-amber-500/35 text-amber-800 hover:bg-amber-500/10 dark:text-amber-300"
+                      >
+                        <Lock className="h-3.5 w-3.5" strokeWidth={1.6} />
+                        Ver Regra
                       </Button>
                     )}
                   </div>

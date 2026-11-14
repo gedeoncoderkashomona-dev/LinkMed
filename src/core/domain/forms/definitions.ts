@@ -605,7 +605,7 @@ export function verificarBloqueioItem5Reg016(contexto: {
     return {
       bloqueado: true,
       motivo:
-        'Item 5 (REG 009 / REG 035) bloqueado: o equipamento recebeu etiqueta VERMELHA (orçamento não aprovado pelo cliente).',
+        'REG-035 bloqueado pela regra de negócio (POP-020): o equipamento recebeu Etiqueta VERMELHA (orçamento reprovado pelo cliente). O fluxo começa no REG-022 (ADM) e só libera o REG-035 quando a Assistência Técnica (AT) conclui com Etiqueta VERDE.',
     };
   }
 

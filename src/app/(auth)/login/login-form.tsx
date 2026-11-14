@@ -77,16 +77,19 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="border-border/60 bg-white shadow-lg dark:bg-card">
-      <CardHeader className="items-center pb-4 pt-8 text-center">
+    <Card className="ios-card rounded-[24px] border-black/[0.07] bg-card/95 shadow-ios backdrop-blur-xl dark:border-white/[0.09]">
+      <CardHeader className="items-center space-y-2 pb-4 pt-8 text-center">
         <img
           src="/logo-linkmed.jpg"
           alt="LINKMED — Soluções Médicas"
-          className="h-28 w-auto object-contain"
+          className="h-24 w-auto object-contain"
         />
+        <p className="text-xs font-medium tracking-tight text-muted-foreground">
+          Sistema de Gestão da Qualidade · POP-020
+        </p>
       </CardHeader>
 
-      <CardContent className="px-7 pb-8 pt-2">
+      <CardContent className="px-6 pb-8 pt-1 sm:px-8">
         {authErrorDetail && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
             <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
@@ -98,13 +101,13 @@ export function LoginForm() {
           <div className="space-y-1.5">
             <Label htmlFor="email">E-mail</Label>
             <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} />
               <Input
                 id="email"
                 type="email"
                 placeholder="seu.email@empresa.com.br"
                 autoComplete="email"
-                className="pl-9"
+                className="pl-10"
                 {...register('email')}
               />
             </div>
@@ -116,13 +119,13 @@ export function LoginForm() {
           <div className="space-y-1.5">
             <Label htmlFor="senha">Senha</Label>
             <div className="relative">
-              <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} />
               <Input
                 id="senha"
                 type="password"
                 placeholder="••••••••"
                 autoComplete="current-password"
-                className="pl-9"
+                className="pl-10"
                 {...register('senha')}
               />
             </div>

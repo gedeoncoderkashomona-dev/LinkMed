@@ -10,10 +10,11 @@ function randomUUID(): string {
 import {
   calcularEntregaNotificacao,
   diffDiasDatas,
+  formatarNomeSetorCompleto,
   type SetorOperacional,
 } from './os-schedule-helpers';
 
-export type { SetorOperacional } from './os-schedule-helpers';
+export { formatarNomeSetorCompleto, type SetorOperacional } from './os-schedule-helpers';
 import type { FormTipo } from './definitions';
 
 /**
@@ -439,7 +440,7 @@ export function verificarPreRequisitoFormularioPop020(
           visivel: true,
           liberado: false,
           motivo:
-            'Pré-requisito obrigatório (POP-020): conclua primeiro o REG-022 (Inspeção de Recebimento) para esta OS.',
+            'Pré-requisito obrigatório (POP-020): toda OS deve começar no REG-022 (Inspeção de Recebimento — Etiqueta BRANCA), preenchido pelo Setor Administrativo (ADM). Conclua o REG-022 para liberar o REG-034 (Limpeza e Higienização).',
         };
       }
       return { visivel: true, liberado: true, motivo: null };
@@ -449,7 +450,7 @@ export function verificarPreRequisitoFormularioPop020(
           visivel: true,
           liberado: false,
           motivo:
-            'Pré-requisito obrigatório (POP-020): conclua primeiro o REG-034 (Limpeza e Higienização) para liberar o REG-016.',
+            'Pré-requisito obrigatório (POP-020): toda OS começa no REG-022 (ADM) e precisa ter o REG-034 (Limpeza e Higienização) concluído pela Assistência Técnica (AT) antes de abrir o REG-016.',
         };
       }
       return { visivel: true, liberado: true, motivo: null };
@@ -459,7 +460,7 @@ export function verificarPreRequisitoFormularioPop020(
           visivel: false,
           liberado: false,
           motivo:
-            'Pré-requisito obrigatório (POP-020): o REG-035 só fica visível e disponível quando alguma OS tiver a Etiqueta VERDE acionada no REG-016.',
+            'Pré-requisito obrigatório (POP-020): o fluxo inicia no REG-022 (ADM), segue para REG-034 e REG-016 (AT) e só libera o REG-035 (Checklist Pós-Serviço) após acionar a Etiqueta VERDE no REG-016.',
         };
       }
       if (osCtx.tagColor === 'RED') {
@@ -467,7 +468,7 @@ export function verificarPreRequisitoFormularioPop020(
           visivel: false,
           liberado: false,
           motivo:
-            'Item bloqueado (POP-020): o equipamento recebeu Etiqueta VERMELHA (orçamento reprovado).',
+            'Acesso bloqueado (POP-020): o equipamento recebeu Etiqueta VERMELHA (orçamento reprovado pelo cliente) no REG-016. O REG-035 só libera para OS finalizadas com Etiqueta VERDE.',
         };
       }
       if (osCtx.tagColor === 'GREEN') {
@@ -477,7 +478,7 @@ export function verificarPreRequisitoFormularioPop020(
         visivel: false,
         liberado: false,
         motivo:
-          'Pré-requisito obrigatório (POP-020): o REG-035 só é visível e liberado após acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016.',
+          'Pré-requisito obrigatório (POP-020): o fluxo começa no REG-022 (ADM), passa pelo REG-034 (AT) e o REG-035 só fica visível e liberado após acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016.',
       };
     default:
       return { visivel: true, liberado: true, motivo: null };
@@ -567,8 +568,9 @@ function validarPermissaoSetor(
   };
   const setorAtor = mapa[ator.perfil];
   if (!setorAtor || !setoresPermitidos.includes(setorAtor)) {
+    const setoresFormatados = setoresPermitidos.map((s) => formatarNomeSetorCompleto(s)).join(' ou ');
     throw new Error(
-      `Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor ${setoresPermitidos.join(' ou ')}.`,
+      `Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor ${setoresFormatados}.`,
     );
   }
 }
@@ -1466,12 +1468,12 @@ export function atPreencherItem5Reg016(
   validarPermissaoSetor(ator, ['AT']);
   if (!isItem5Reg016Liberado(os.etiquetaAtual, os.orcamentoAprovado)) {
     throw new Error(
-      'O Item 5 do REG 016 / REG 035 está bloqueado porque a OS possui etiqueta VERMELHA (orçamento não aprovado).',
+      'O Item 5 do REG 016 / REG 035 está bloqueado porque a OS possui etiqueta VERMELHA (orçamento não aprovado pelo cliente). O fluxo segue apenas quando aprovado e finalizado com Etiqueta VERDE.',
     );
   }
   if (os.etiquetaAtual !== 'GREEN') {
     throw new Error(
-      'Pré-requisito obrigatório (POP-020): o REG 035 / Item 5 só é liberado após acionar a Etiqueta VERDE (serviço finalizado) no REG 016.',
+      'Pré-requisito obrigatório (POP-020): toda OS começa no REG-022 (ADM) e o REG 035 / Item 5 só é liberado pela Assistência Técnica (AT) após acionar a Etiqueta VERDE (serviço finalizado) no REG 016.',
     );
   }
 

@@ -18,6 +18,7 @@ import {
   Wrench,
   GraduationCap,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 
 import type { PublicUser } from '@/core/domain/entities/user';
@@ -31,7 +32,7 @@ import { BrandLogo } from './brand-logo';
 interface NavItem {
   label: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
   perfis?: Perfil[]; // se ausente, todos veem
   badgeKey?: 'ncs' | 'notifications' | 'popReads';
 }
@@ -126,21 +127,19 @@ export function AppSidebar({ user, collapsed, onToggle, mobileOpen = false, onCl
                       onClick={() => isMobile && onCloseMobile?.()}
                       title={collapsed && !isMobile ? item.label : undefined}
                       className={cn(
-                        'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150 touch-manipulation',
+                        'ios-touch group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150 touch-manipulation',
                         active
-                          ? 'bg-primary/12 font-semibold text-primary shadow-xs'
-                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                          ? 'bg-primary/[0.09] font-medium text-primary'
+                          : 'text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]',
                         collapsed && !isMobile && 'justify-center px-2 py-2.5',
-                        isMobile && 'py-2.5 text-sm',
+                        isMobile && 'min-h-[44px] py-2.5 text-sm',
                       )}
                     >
-                      {active && (!collapsed || isMobile) && (
-                        <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-primary" />
-                      )}
                       <Icon
+                        strokeWidth={active ? 1.85 : 1.5}
                         className={cn(
-                          'h-4 w-4 shrink-0 transition-colors',
-                          active ? 'text-primary' : 'text-muted-foreground/90 group-hover:text-foreground',
+                          'h-[17px] w-[17px] shrink-0 transition-colors',
+                          active ? 'text-primary' : 'text-muted-foreground/85 group-hover:text-foreground',
                         )}
                       />
                       {(!collapsed || isMobile) && <span className="truncate">{item.label}</span>}
@@ -160,12 +159,12 @@ export function AppSidebar({ user, collapsed, onToggle, mobileOpen = false, onCl
       {/* 1. SIDEBAR DESKTOP / NOTEBOOK */}
       <aside
         className={cn(
-          'sticky top-0 hidden h-screen shrink-0 border-r border-border/80 bg-card/90 backdrop-blur-md transition-[width] duration-200 md:flex md:flex-col shadow-xs select-none z-20',
-          collapsed ? 'w-[68px]' : 'w-[252px]',
+          'ios-glass sticky top-0 z-20 hidden h-screen shrink-0 select-none border-r border-black/[0.06] transition-[width] duration-200 dark:border-white/[0.08] md:flex md:flex-col',
+          collapsed ? 'w-[68px]' : 'w-[244px]',
         )}
       >
         {/* Marca LINKMED */}
-        <div className="flex h-16 items-center border-b border-border/70 px-4">
+        <div className="flex h-14 items-center border-b border-black/[0.06] px-4 dark:border-white/[0.08]">
           <BrandLogo collapsed={collapsed} size="sm" />
         </div>
 

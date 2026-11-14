@@ -8,14 +8,14 @@ import {
   Bell,
   CheckCircle2,
   FileText,
-  Lock,
   History,
+  Lock,
   PlayCircle,
   Printer,
   RotateCcw,
   Search,
-  ShieldCheck,
   Tag,
+  Undo2,
   Wrench,
   XCircle,
 } from 'lucide-react';
@@ -49,7 +49,9 @@ import {
   atResponderPerguntaGarantia,
   cancelarOs,
   confirmarNotificacaoSetor,
+  corrigirMarcacaoOuRespostaPeloDono,
   criarOsViaReg022,
+  formatarNomeSetorCompleto,
   type CodigoPassoFluxoOS,
   OPCOES_TRANSPORTE_FABRICA,
   reabrirOs,
@@ -67,6 +69,7 @@ import {
   useSaveOsFlow,
 } from '@/hooks/use-operacional';
 import { useCurrentUser } from '@/hooks/use-current-user';
+import { showRuleNotice } from '@/lib/rule-notice';
 import { cn } from '@/lib/utils';
 
 const ATOR_FALLBACK_INICIAL: AtorAcaoOS = {
@@ -87,13 +90,42 @@ function salvarFluxoLocalStorage(state: OrdemServicoFluxoState) {
   }
 }
 
-
 const SETOR_COMPETENCIA_MAP: Record<string, string> = {
   adm: 'Administrativo (ADM)',
   tecnico: 'Assistência Técnica (AT)',
   estoquista: 'Almoxarifado / Estoque',
   todos: 'Geral',
 };
+
+const ESTADO_GERAL_LABEL: Record<string, string> = {
+  em_andamento: 'Em andamento',
+  stand_by: 'Em espera (Stand-by)',
+  finalizada: 'Finalizada',
+  cancelada: 'Cancelada',
+};
+
+function formatTipoEventoHumano(tipo: string): string {
+  switch (tipo) {
+    case 'CRIACAO_OS':
+      return 'Abertura REG-022';
+    case 'MARCACAO_ETIQUETA':
+      return 'Etiqueta';
+    case 'CONFIRMACAO_NOTIFICACAO':
+      return 'Ciência do setor';
+    case 'FORMULARIO_CONCLUIDO':
+      return 'Registro concluído';
+    case 'RESPOSTA_PERGUNTA':
+      return 'Decisão';
+    case 'CORRECAO_MARCACAO':
+      return 'Correção (Autor)';
+    case 'CANCELAMENTO':
+      return 'Cancelamento';
+    case 'REABERTURA':
+      return 'Reabertura';
+    default:
+      return 'Atualização';
+  }
+}
 
 function obterSetorDoPasso(passo: CodigoPassoFluxoOS): 'adm' | 'tecnico' | 'estoquista' | 'todos' {
   switch (passo) {
@@ -134,10 +166,12 @@ export function EquipamentosClient() {
   const [dossierOs, setDossierOs] = React.useState<string | null>(null);
   const [etiquetaPrint, setEtiquetaPrint] = React.useState<DadosEtiquetaEquipamento | null>(null);
 
-  // Estado interativo da Máquina de Estados v2 (Seções 4 a 7 da Auditoria Linkmed)
   const { data: osFlowData } = useOsFlowList();
   const saveOsFlow = useSaveOsFlow();
-  const [mostrarPainelFluxoV2, setMostrarPainelFluxoV2] = React.useState(true);
+  const [mostrarPainelExecucao, setMostrarPainelExecucao] = React.useState(true);
+  const [mostrarHistorico, setMostrarHistorico] = React.useState(false);
+  const [mostrarCorrecao, setMostrarCorrecao] = React.useState(false);
+  const [motivoCorrecao, setMotivoCorrecao] = React.useState('');
   const ordensFluxoServidor = React.useMemo(
     () => osFlowData?.ordens ?? [],
     [osFlowData?.ordens],
@@ -158,9 +192,7 @@ export function EquipamentosClient() {
   const [justificativaNaoEnviado, setJustificativaNaoEnviado] = React.useState(
     'Cliente optou por reparo em bancada local',
   );
-  const [motivoCancelamento, setMotivoCancelamento] = React.useState(
-    'Solicitação temporária do cliente para revisão de contrato',
-  );
+  const [motivoCancelamento, setMotivoCancelamento] = React.useState('');
   const [fluxoV2, setFluxoV2] = React.useState<OrdemServicoFluxoState | null>(null);
 
   const setorDoPasso = fluxoV2 ? obterSetorDoPasso(fluxoV2.passoAtual) : 'todos';
@@ -195,7 +227,27 @@ export function EquipamentosClient() {
     [ordensFluxoServidor, data?.records],
   );
 
-  // Sincroniza a OS ativa exclusivamente com os registros persistidos no servidor (evita OS fantasma no navegador)
+  const ultimoEventoCorrigivel = React.useMemo(() => {
+    if (!fluxoV2 || !user || fluxoV2.estadoGeral === 'cancelada') return null;
+    for (let i = fluxoV2.historico.length - 1; i >= 0; i -= 1) {
+      const ev = fluxoV2.historico[i];
+      if (!ev) continue;
+      if (
+        ev.snapshotAnterior &&
+        ev.usuarioId === user.id &&
+        ev.tipo !== 'CRIACAO_OS' &&
+        ev.tipo !== 'CORRECAO_MARCACAO' &&
+        ev.tipo !== 'CANCELAMENTO' &&
+        ev.tipo !== 'REABERTURA'
+      ) {
+        return ev;
+      }
+      // Só permite corrigir imediatamente o último ato operacional antes de outro usuário avançar
+      if (ev.usuarioId !== user.id) break;
+    }
+    return null;
+  }, [fluxoV2, user]);
+
   React.useEffect(() => {
     if (!osFlowData?.ordens) return;
     const lista = osFlowData.ordens;
@@ -214,7 +266,7 @@ export function EquipamentosClient() {
             : atual,
         );
         salvarFluxoLocalStorage(encontradaServidor);
-        setMostrarPainelFluxoV2(true);
+        setMostrarPainelExecucao(true);
         return;
       }
     }
@@ -246,7 +298,7 @@ export function EquipamentosClient() {
       if (alvo) {
         setFluxoV2(alvo);
         salvarFluxoLocalStorage(alvo);
-        setMostrarPainelFluxoV2(true);
+        setMostrarPainelExecucao(true);
         jaAutoSelecionouRef.current = true;
       }
     }
@@ -282,7 +334,11 @@ export function EquipamentosClient() {
     try {
       next = fn(structuredClone(anterior));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Transição inválida no fluxo da OS.');
+      showRuleNotice({
+        title: 'Regra Operacional (POP-020)',
+        message: err instanceof Error ? err.message : 'Transição inválida no fluxo da OS.',
+        severity: 'warning',
+      });
       return;
     }
 
@@ -301,16 +357,18 @@ export function EquipamentosClient() {
       }
     } catch (err) {
       setFluxoV2(anterior);
-      toast.error('Acesso ou transição não concluída', {
-        description:
+      showRuleNotice({
+        title: 'Acesso ou Transição Não Concluída',
+        message:
           err instanceof Error
             ? err.message
-            : 'Você não tem permissão ou ocorreu erro ao salvar a etapa no servidor.',
+            : 'Você não tem permissão ou a etapa anterior ainda não foi concluída.',
+        severity: 'blocked',
       });
     }
   }
 
-  async function carregarOsRealNoFluxoV2(os: {
+  async function carregarOsRealNoPainel(os: {
     numeroOs: string;
     cliente: string;
     equipamento: string;
@@ -325,15 +383,19 @@ export function EquipamentosClient() {
     if (doServidor) {
       setFluxoV2(doServidor);
       salvarFluxoLocalStorage(doServidor);
-      setMostrarPainelFluxoV2(true);
-      toast.success(`Fluxo da OS ${os.numeroOs} carregado exatamente da etapa onde parou!`);
+      setMostrarPainelExecucao(true);
+      toast.success(`OS ${os.numeroOs} selecionada no painel.`);
       return;
     }
 
     if (!['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '')) {
-      toast.error('Fluxo da OS ainda não inicializado pelo setor Administrativo (ADM)', {
-        description:
-          'Solicite ao ADM a criação/confirmação inicial desta OS pelo formulário REG-022 (Inspeção de Recebimento).',
+      showRuleNotice({
+        title: 'Acesso ou Transição Não Concluída',
+        sectorLabel: 'Setor Administrativo (ADM)',
+        severity: 'blocked',
+        message:
+          'Fluxo da OS ainda não inicializado. Toda OS nova só pode ser criada no estado inicial (REG-022 / Inspeção de Recebimento) pelo Setor Administrativo (ADM).',
+        hint: 'Solicite ao Setor Administrativo (ADM) a criação/confirmação inicial desta OS no formulário REG-022 antes de prosseguir.',
       });
       return;
     }
@@ -354,824 +416,958 @@ export function EquipamentosClient() {
       await saveOsFlow.mutateAsync(nova);
       salvarFluxoLocalStorage(nova);
       setFluxoV2(nova);
-      setMostrarPainelFluxoV2(true);
-      toast.info(`Fluxo oficial inicializado pelo ADM para a OS ${os.numeroOs}.`);
+      setMostrarPainelExecucao(true);
+      toast.info(`Fluxo inicializado para a OS ${os.numeroOs}.`);
     } catch (err) {
-      toast.error('Não foi possível inicializar a OS no servidor', {
-        description:
+      showRuleNotice({
+        title: 'Não Foi Possível Inicializar a OS',
+        sectorLabel: 'Setor Administrativo (ADM)',
+        severity: 'blocked',
+        message:
           err instanceof Error
             ? err.message
-            : 'Verifique se o registro inicial REG-022 está completo.',
+            : 'Toda OS nova precisa começar pelo formulário REG-022 (Inspeção de Recebimento).',
       });
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Cabeçalho limpo */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
             Equipamentos & Ordens de Serviço
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Rastreabilidade de equipamentos por etiqueta de status (REG-016 / POP-020), fluxo intersetorial ADM · AT · Almoxarifado e emissão de etiqueta de identificação.
+          <p className="text-xs text-muted-foreground sm:text-sm">
+            Trilha POP-020: REG-022 (ADM) → REG-034 (AT) → REG-016 (Central AT) → REG-035 (Pós-Serviço).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+            <Link href="/formularios/inspecao-recebimento">
+              <Button type="button" size="sm" className="gap-1.5">
+                <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
+                Nova OS (REG-022)
+              </Button>
+            </Link>
+          )}
           <Button
             type="button"
-            variant={mostrarPainelFluxoV2 ? 'default' : 'outline'}
+            variant="outline"
             size="sm"
-            onClick={() => setMostrarPainelFluxoV2((v) => !v)}
+            onClick={() => setMostrarPainelExecucao((v) => !v)}
             className="gap-1.5"
           >
-            <PlayCircle className="h-4 w-4" />
-            {mostrarPainelFluxoV2
-              ? 'Ocultar Painel do Fluxo Oficial v2'
-              : 'Painel Interativo do Fluxo da OS (v2)'}
+            <PlayCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
+            {mostrarPainelExecucao ? 'Ocultar Painel Ativo' : 'Painel da OS Ativa'}
           </Button>
-          <Badge variant="secondary" className="gap-1.5 px-3 py-1 text-xs">
-            <Wrench className="h-3.5 w-3.5 text-primary" />
-            Fila de Bancada / Ordens de Serviço ({ordensServico.length})
-          </Badge>
         </div>
       </div>
 
-      {/* Fila de Continuidade Direta por Setor Logado (Notificações Recebidas de Outros Departamentos) */}
+      {/* Aguardando ação do setor (iOS grouped list) */}
       {ordensPendentesMeuSetor.length > 0 && (
-        <Card className="border-emerald-500/40 bg-emerald-500/5 shadow-xs">
-          <CardContent className="space-y-3 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Bell className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <div>
-                  <p className="text-xs font-bold text-foreground">
-                    Continuidade de Processo para o Seu Setor ({ordensPendentesMeuSetor.length} OS aguardando sua ação)
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Clique em uma OS abaixo para continuar exatamente na etapa onde o setor anterior parou, sem precisar redigitar nenhum dado.
-                  </p>
-                </div>
+        <div className="ios-card overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.06] bg-primary/[0.04] px-4 py-3 dark:border-white/[0.08]">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                <Bell className="h-4 w-4" strokeWidth={1.5} />
               </div>
-              <Link href="/notificacoes">
-                <Button variant="outline" size="sm" className="h-7 text-xs">
-                  Ver Central de Notificações
-                </Button>
-              </Link>
+              <div>
+                <p className="text-[13px] font-semibold text-foreground">
+                  Pendências do Seu Setor ({ordensPendentesMeuSetor.length})
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Selecione uma OS para retomar exatamente de onde o setor anterior parou.
+                </p>
+              </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {ordensPendentesMeuSetor.map((o) => {
-                const isAtiva = fluxoV2?.numeroOs === o.numeroOs;
-                const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
-                return (
-                  <div
-                    key={o.numeroOs}
-                    className={cn(
-                      'flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-xs transition-all',
-                      isAtiva
-                        ? 'border-primary bg-primary/10 shadow-2xs'
-                        : 'border-border bg-card hover:border-primary/40',
-                    )}
-                  >
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant="default" className="font-mono text-[10px]">
-                          {o.numeroOs}
-                        </Badge>
-                        <span className="font-semibold text-foreground truncate">
-                          {o.identificacao.equipamento} ({o.identificacao.marca})
+            <Link href="/notificacoes">
+              <Button variant="ghost" size="sm" className="h-8 text-xs text-primary">
+                Central de Avisos
+              </Button>
+            </Link>
+          </div>
+          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+            {ordensPendentesMeuSetor.map((o) => {
+              const isAtiva = fluxoV2?.numeroOs === o.numeroOs;
+              const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
+              return (
+                <div
+                  key={o.numeroOs}
+                  className={cn(
+                    'flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs transition-colors',
+                    isAtiva ? 'bg-primary/[0.04]' : 'hover:bg-muted/30',
+                  )}
+                >
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-semibold text-primary">
+                        OS {o.numeroOs}
+                      </span>
+                      <span className="truncate font-medium text-foreground">
+                        {o.identificacao.equipamento} · {o.identificacao.marca}
+                      </span>
+                      {o.etiquetaAtual && (
+                        <span
+                          className={cn(
+                            'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                            TAG_SPECS[o.etiquetaAtual].badgeClass,
+                          )}
+                        >
+                          {TAG_SPECS[o.etiquetaAtual].nomeCor}
                         </span>
-                        {o.etiquetaAtual && (
-                          <span
-                            className={cn(
-                              'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
-                              TAG_SPECS[o.etiquetaAtual].badgeClass,
-                            )}
-                          >
-                            {TAG_SPECS[o.etiquetaAtual].nomeCor}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {ultimaNotif?.mensagem || o.mensagemTelaAtual || `Etapa atual: ${o.passoAtual}`}
-                      </p>
+                      )}
                     </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={isAtiva ? 'default' : 'secondary'}
-                      onClick={() => {
-                        setFluxoV2(o);
-                        setMostrarPainelFluxoV2(true);
-                        salvarFluxoLocalStorage(o);
-                        toast.success(`Continuando OS ${o.numeroOs} exatamente na etapa ${o.passoAtual}!`);
-                      }}
-                      className="h-7 shrink-0 text-xs font-semibold"
-                    >
-                      {isAtiva ? 'Em Execução Abaixo' : 'Assumir e Continuar'}
-                    </Button>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {ultimaNotif?.mensagem || o.mensagemTelaAtual || 'Aguardando execução'}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={isAtiva ? 'default' : 'secondary'}
+                    onClick={() => {
+                      setFluxoV2(o);
+                      setMostrarPainelExecucao(true);
+                      salvarFluxoLocalStorage(o);
+                    }}
+                    className="h-8 shrink-0 text-xs"
+                  >
+                    {isAtiva ? 'Selecionada' : 'Assumir OS'}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
-      {/* Painel Interativo da Máquina de Estados Oficial v2 (Auditoria Linkmed Seções 4 a 7) */}
-      {mostrarPainelFluxoV2 && (
-        <Card className="border-primary/30 bg-primary/5">
+      {/* Painel Unificado da OS Selecionada */}
+      {mostrarPainelExecucao && (
+        <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
-                  Motor do Fluxo Oficial da OS (v2 — ADM · Assistência Técnica · Almoxarifado)
+                <CardTitle className="text-[15px] font-semibold">
+                  {fluxoV2
+                    ? `OS ${fluxoV2.numeroOs} — ${fluxoV2.identificacao.equipamento}`
+                    : 'Execução da Ordem de Serviço'}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Execute passo a passo as ramificações 1 (Garantia), 2 (Envio à Fábrica) e 3 (Reparo Direto), Bloco O (Orçamento), Bloco P (Peças), Item 5 por marca e Cancelamento/Reabertura com histórico imutável.
+                  {fluxoV2
+                    ? `${fluxoV2.identificacao.cliente} · Marca ${fluxoV2.identificacao.marca}${
+                        fluxoV2.identificacao.numeroSerie
+                          ? ` · S/N ${fluxoV2.identificacao.numeroSerie}`
+                          : ''
+                      }`
+                    : 'Selecione uma OS na fila abaixo ou inicie uma nova no REG-022.'}
                 </p>
               </div>
-              {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
-                <Link href="/formularios/inspecao-recebimento">
-                  <Button type="button" size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
-                    <FileText className="h-3.5 w-3.5" />
-                    Abrir Nova OS no REG-022 (ADM)
-                  </Button>
-                </Link>
+              {fluxoV2?.etiquetaAtual && (
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
+                    TAG_SPECS[fluxoV2.etiquetaAtual].badgeClass,
+                  )}
+                >
+                  <Tag className="h-3 w-3" strokeWidth={1.5} />
+                  {TAG_SPECS[fluxoV2.etiquetaAtual].nomeCor} — {TAG_SPECS[fluxoV2.etiquetaAtual].labelStatus}
+                </span>
               )}
             </div>
           </CardHeader>
+
           {!fluxoV2 ? (
-            <CardContent className="space-y-3">
-              <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-xs text-muted-foreground space-y-2">
-                <p className="font-semibold text-foreground">
-                  Nenhuma Ordem de Serviço ativa selecionada no painel.
-                </p>
-                <p>
-                  {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '')
-                    ? 'Cadastre uma nova OS pelo REG-022 (Inspeção de Recebimento) ou clique em "Gerenciar Fluxo v2" em uma OS da fila abaixo.'
-                    : 'Aguarde o setor Administrativo (ADM) registrar a Inspeção de Recebimento (REG-022) ou selecione uma OS abaixo na fila.'}
-                </p>
+            <CardContent>
+              <div className="rounded-xl border border-dashed border-black/15 bg-muted/20 p-6 text-center text-xs text-muted-foreground dark:border-white/15">
+                {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '')
+                  ? 'Cadastre uma nova OS pelo REG-022 ou selecione uma OS na fila abaixo.'
+                  : 'Aguarde o Setor Administrativo (ADM) iniciar a OS pelo REG-022 ou selecione uma OS na fila.'}
               </div>
             </CardContent>
           ) : (
-          <CardContent className="space-y-4">
-            {/* Barra de Status da OS no Motor v2 */}
-            <div className="grid gap-3 rounded-xl border border-border bg-card p-3.5 sm:grid-cols-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
-                  OS / Marca
-                </p>
-                <p className="font-mono text-sm font-bold">
-                  {fluxoV2.numeroOs} · {fluxoV2.identificacao.marca}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Item 5: {fluxoV2.item5FormularioTipo} (
-                  {fluxoV2.item5Liberado ? 'Liberado' : 'Bloqueado por Etiqueta Vermelha'})
-                </p>
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
-                  Etiqueta Atual (REG 016)
-                </p>
-                {fluxoV2.etiquetaAtual ? (
-                  <span
-                    className={cn(
-                      'mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold',
-                      TAG_SPECS[fluxoV2.etiquetaAtual].badgeClass,
-                    )}
-                  >
-                    <Tag className="h-3 w-3" />
-                    {TAG_SPECS[fluxoV2.etiquetaAtual].nomeCor} —{' '}
-                    {TAG_SPECS[fluxoV2.etiquetaAtual].labelStatus}
-                  </span>
-                ) : (
-                  <Badge variant="outline" className="mt-1">
-                    Sem etiqueta (OS recém-criada no REG 022)
-                  </Badge>
+            <CardContent className="space-y-4">
+              {/* Stepper visual das 4 etapas POP-020 */}
+              <div className="grid gap-2 sm:grid-cols-4">
+                {[
+                  {
+                    titulo: '1. REG-022 (ADM)',
+                    sub: 'Recebimento',
+                    done: fluxoV2.reg022Preenchido,
+                    unlocked: true,
+                    sectorLabel: 'Setor Administrativo (ADM)',
+                    lockMsg: '',
+                    href: `/formularios/inspecao-recebimento?os=${encodeURIComponent(fluxoV2.numeroOs)}`,
+                  },
+                  {
+                    titulo: '2. REG-034 (AT)',
+                    sub: 'Limpeza',
+                    done: fluxoV2.reg034Preenchido,
+                    unlocked: fluxoV2.reg022Preenchido,
+                    sectorLabel: 'Assistência Técnica (AT)',
+                    lockMsg:
+                      'Pré-requisito obrigatório (POP-020): conclua primeiro o REG-022 (Inspeção de Recebimento — ADM) para liberar o REG-034.',
+                    href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(fluxoV2.numeroOs)}`,
+                  },
+                  {
+                    titulo: '3. REG-016 (AT)',
+                    sub: 'Central Técnica',
+                    done: fluxoV2.etiquetaAtual === 'GREEN' || fluxoV2.etiquetaAtual === 'RED',
+                    unlocked: fluxoV2.reg022Preenchido && fluxoV2.reg034Preenchido,
+                    sectorLabel: 'Assistência Técnica (AT)',
+                    lockMsg:
+                      'Pré-requisito obrigatório (POP-020): conclua o REG-022 (ADM) e o REG-034 (Limpeza e Higienização — AT) antes de acessar o REG-016.',
+                    href: `/formularios/etapas-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`,
+                  },
+                  {
+                    titulo: `4. REG-035 (${fluxoV2.item5FormularioTipo ?? 'Pós-Serviço'})`,
+                    sub: 'Finalização',
+                    done: fluxoV2.item5Preenchido,
+                    unlocked:
+                      fluxoV2.etiquetaAtual === 'GREEN' && Boolean(fluxoV2.item5Liberado),
+                    sectorLabel: 'Assistência Técnica (AT)',
+                    lockMsg:
+                      fluxoV2.etiquetaAtual === 'RED'
+                        ? 'REG-035 bloqueado porque esta OS recebeu Etiqueta VERMELHA (orçamento reprovado pelo cliente).'
+                        : 'Pré-requisito obrigatório (POP-020): o REG-035 só fica liberado quando a Assistência Técnica (AT) acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016.',
+                    href: `/formularios/checklist-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`,
+                  },
+                ].map((st) =>
+                  st.unlocked || st.done ? (
+                    <Link
+                      key={st.titulo}
+                      href={st.href}
+                      className={cn(
+                        'ios-touch flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-xs transition-colors',
+                        st.done
+                          ? 'border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-700 dark:text-emerald-300'
+                          : 'border-primary/30 bg-primary/[0.04] text-foreground hover:bg-primary/[0.08]',
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{st.titulo}</p>
+                        <p className="text-[11px] opacity-80">{st.sub}</p>
+                      </div>
+                      {st.done ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                      ) : (
+                        <ArrowRight className="h-4 w-4 shrink-0 text-primary" strokeWidth={1.5} />
+                      )}
+                    </Link>
+                  ) : (
+                    <button
+                      key={st.titulo}
+                      type="button"
+                      onClick={() =>
+                        showRuleNotice({
+                          title: 'Etapa Bloqueada (POP-020)',
+                          message: st.lockMsg,
+                          sectorLabel: st.sectorLabel,
+                          severity: 'warning',
+                        })
+                      }
+                      className="ios-touch flex items-center justify-between gap-2 rounded-xl border border-black/[0.06] bg-muted/35 px-3 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60 dark:border-white/[0.07]"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{st.titulo}</p>
+                        <p className="text-[11px] opacity-80">Aguardando etapa anterior</p>
+                      </div>
+                      <Lock className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+                    </button>
+                  ),
                 )}
               </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
-                  Estado Geral / Setor Pendente
-                </p>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <Badge variant="secondary" className="uppercase">
-                    {fluxoV2.estadoGeral}
-                  </Badge>
-                  <Badge variant="outline">Setor: {fluxoV2.setorPendente}</Badge>
+
+              {/* Resumo limpo da OS */}
+              <div className="grid gap-3 rounded-xl border border-black/[0.06] bg-muted/25 p-3.5 text-xs sm:grid-cols-3 dark:border-white/[0.07]">
+                <div>
+                  <span className="text-[11px] font-medium text-muted-foreground">Situação</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <Badge variant="secondary">
+                      {ESTADO_GERAL_LABEL[fluxoV2.estadoGeral] ?? fluxoV2.estadoGeral}
+                    </Badge>
+                    <Badge variant="outline">
+                      Vez: {formatarNomeSetorCompleto(fluxoV2.setorPendente)}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-muted-foreground">Checklist por Marca</span>
+                  <p className="mt-1 font-medium text-foreground">
+                    {fluxoV2.item5FormularioTipo} · Marca {fluxoV2.identificacao.marca} (
+                    {fluxoV2.item5Liberado ? 'Liberado' : 'Aguardando Etiqueta Verde'})
+                  </p>
+                </div>
+                <div className="flex flex-col justify-between">
+                  <span className="text-[11px] font-medium text-muted-foreground">Etiqueta Física</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={fluxoV2.etiquetaIdentificacaoLiberada ? 'default' : 'outline'}
+                    disabled={!fluxoV2.etiquetaIdentificacaoLiberada}
+                    onClick={() =>
+                      setEtiquetaPrint({
+                        numeroOs: fluxoV2.numeroOs,
+                        cliente: fluxoV2.identificacao.cliente,
+                        equipamento: fluxoV2.identificacao.equipamento,
+                        marca: fluxoV2.identificacao.marca,
+                        modelo: fluxoV2.identificacao.modelo,
+                        numeroSerie: fluxoV2.identificacao.numeroSerie,
+                        statusEtiqueta: fluxoV2.etiquetaAtual
+                          ? `${TAG_SPECS[fluxoV2.etiquetaAtual].nomeCor} — ${TAG_SPECS[fluxoV2.etiquetaAtual].labelStatus}`
+                          : 'CINZA — Análise Completa',
+                      })
+                    }
+                    className="mt-1 h-8 gap-1.5 text-xs"
+                  >
+                    <Printer className="h-3.5 w-3.5" strokeWidth={1.5} />
+                    {fluxoV2.etiquetaIdentificacaoLiberada
+                      ? 'Imprimir Etiqueta'
+                      : 'Liberado após Análise'}
+                  </Button>
                 </div>
               </div>
-              <div className="flex flex-col justify-between">
-                <p className="text-[11px] font-semibold uppercase text-muted-foreground">
-                  Etiqueta Física (Seção 5.4)
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={fluxoV2.etiquetaIdentificacaoLiberada ? 'default' : 'outline'}
-                  disabled={!fluxoV2.etiquetaIdentificacaoLiberada}
-                  onClick={() =>
-                    setEtiquetaPrint({
-                      numeroOs: fluxoV2.numeroOs,
-                      cliente: fluxoV2.identificacao.cliente,
-                      equipamento: fluxoV2.identificacao.equipamento,
-                      marca: fluxoV2.identificacao.marca,
-                      modelo: fluxoV2.identificacao.modelo,
-                      numeroSerie: fluxoV2.identificacao.numeroSerie,
-                      statusEtiqueta: fluxoV2.etiquetaAtual
-                        ? `${TAG_SPECS[fluxoV2.etiquetaAtual].nomeCor} — ${TAG_SPECS[fluxoV2.etiquetaAtual].labelStatus}`
-                        : 'CINZA — Análise Completa',
-                    })
-                  }
-                  className="mt-1 h-8 gap-1.5 text-xs"
-                >
-                  <Printer className="h-3.5 w-3.5" />
-                  {fluxoV2.etiquetaIdentificacaoLiberada
-                    ? 'Imprimir Etiqueta (Item 1 REG 022)'
-                    : 'Aguardando Análise (CINZA)'}
-                </Button>
-              </div>
-            </div>
 
-            {fluxoV2.mensagemTelaAtual && (
-              <div className="rounded-lg border border-primary/30 bg-background px-3.5 py-2.5 text-xs">
-                <strong>Orientação / Pergunta em Tela:</strong> {fluxoV2.mensagemTelaAtual}
-              </div>
-            )}
+              {fluxoV2.mensagemTelaAtual && (
+                <div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-3.5 py-2.5 text-xs text-foreground">
+                  <span className="font-medium text-primary">Situação atual: </span>
+                  {fluxoV2.mensagemTelaAtual}
+                </div>
+              )}
 
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3.5 py-2 text-xs">
-              <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-200">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                <span>
-                  {fluxoV2.reg034Preenchido
-                    ? 'REG-016 desbloqueado e sincronizado (Etiqueta VIOLETA marcada após REG-034; Etiqueta CINZA aguarda conclusão da análise).'
-                    : 'POP-020: Conclua antes o REG-034 (Higienização) para liberar o acesso ao REG-016.'}
-                </span>
-              </div>
-              {fluxoV2.reg034Preenchido ? (
-                <Link
-                  href={`/formularios/etapas-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}
-                >
-                  <Button type="button" size="sm" variant="outline" className="h-7 gap-1.5 text-xs">
-                    <FileText className="h-3.5 w-3.5" />
-                    Abrir REG-016 Preenchido
+              {/* Ações setorizadas */}
+              {!podeExecutarPasso && fluxoV2.estadoGeral !== 'finalizada' && fluxoV2.estadoGeral !== 'cancelada' ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" strokeWidth={1.5} />
+                    <span>
+                      Etapa atual atribuída a <strong>{SETOR_COMPETENCIA_MAP[setorDoPasso]}</strong>.
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() =>
+                      showRuleNotice({
+                        title: 'Etapa de Outro Setor',
+                        sectorLabel: SETOR_COMPETENCIA_MAP[setorDoPasso],
+                        severity: 'blocked',
+                        message: `Você não tem permissão para realizar esta etapa agora. Esta ação é de responsabilidade do setor ${SETOR_COMPETENCIA_MAP[setorDoPasso]}.`,
+                      })
+                    }
+                  >
+                    Por quê?
                   </Button>
-                </Link>
+                </div>
               ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled
-                  className="h-7 gap-1.5 text-xs opacity-60"
-                  title="Conclua o REG-034 (Limpeza e Higienização) para liberar o REG-016"
-                >
-                  <Lock className="h-3.5 w-3.5" />
-                  REG-016 Bloqueado (Conclua REG-034)
-                </Button>
-              )}
-            </div>
-
-            {/* Botões de Ação setorizados conforme Auditoria e Ata Linkmed */}
-            {!podeExecutarPasso && fluxoV2.estadoGeral !== 'finalizada' && fluxoV2.estadoGeral !== 'cancelada' ? (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-900 dark:text-amber-200">
-                <Lock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                <span>
-                  Você não tem permissão para realizar esta etapa. Esta ação é de responsabilidade do setor <strong>{SETOR_COMPETENCIA_MAP[setorDoPasso]}</strong>.
-                </span>
-              </div>
-            ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              {fluxoV2.passoAtual === 'A1_CRIADA_NO_REG022' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => admMarcarEtiquetaBrancaNoReg016(s, atorLogado),
-                      'Etiqueta BRANCA marcada pelo ADM no REG 016. Notificação enviada à AT!',
-                    )
-                  }
-                >
-                  [ADM] A2: Marcar Etiqueta BRANCA no REG 016
-                </Button>
-              )}
-
-              {fluxoV2.passoAtual === 'A2_BRANCA_NOTIFICA_AT' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => confirmarNotificacaoSetor(s, atorLogado),
-                      'AT confirmou recebimento da OS!',
-                    )
-                  }
-                >
-                  [AT] A3: Confirmar Notificação e Iniciar Limpeza
-                </Button>
-              )}
-
-              {fluxoV2.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034' && (
-                <>
-                  <Link href={`/formularios/limpeza-equipamento?os=${encodeURIComponent(fluxoV2.numeroOs)}`}>
-                    <Button size="sm" variant="outline" className="gap-1.5">
-                      Abrir Formulário REG-034 (100% Pré-preenchido)
-                    </Button>
-                  </Link>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) => atRegistrarReg034(s, atorLogado),
-                        'REG 034 (Limpeza com Álcool 70%) registrado pela AT!',
-                      )
-                    }
-                  >
-                    [AT] A4: Registrar Limpeza no REG 034
-                  </Button>
-                </>
-              )}
-
-              {fluxoV2.passoAtual === 'A4_REG034_PREENCHIDO' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => atMarcarEtiquetaVioleta(s, atorLogado),
-                      'Etiqueta VIOLETA (Higienizado) aplicada pela AT!',
-                    )
-                  }
-                >
-                  [AT] A5: Marcar Etiqueta VIOLETA (Higienizado)
-                </Button>
-              )}
-
-              {fluxoV2.passoAtual === 'A5_VIOLETA_HIGIENIZADO' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => atMarcarEtiquetaCinzaAnaliseCompleta(s, atorLogado),
-                      'Etiqueta CINZA marcada! Impressão da etiqueta física liberada.',
-                    )
-                  }
-                >
-                  [AT] A6: Marcar Etiqueta CINZA (Análise Completa)
-                </Button>
-              )}
-
-              {fluxoV2.passoAtual === 'A6_CINZA_ANALISE_CONCLUIDA' && (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) => atResponderPerguntaGarantia(s, true, atorLogado),
-                        'Ramificação 1 (Garantia): Etiqueta LARANJA automática + Almoxarifado notificado!',
-                      )
-                    }
-                  >
-                    [AT] Trata-se de Garantia? SIM (Etiqueta LARANJA)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) => atResponderPerguntaGarantia(s, false, atorLogado),
-                        'Garantia = NÃO. Próxima pergunta: Envio à fábrica?',
-                      )
-                    }
-                  >
-                    [AT] Trata-se de Garantia? NÃO
-                  </Button>
-                </>
-              )}
-
-              {fluxoV2.passoAtual === 'B2_PERGUNTA_ENVIO_FABRICA' && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <SelectNative
-                    value={transporteSelecionado}
-                    onChange={(e) =>
-                      setTransporteSelecionado(e.target.value as TipoTransporteFabrica)
-                    }
-                    className="h-9 w-64 text-xs"
-                  >
-                    {OPCOES_TRANSPORTE_FABRICA.map((op) => (
-                      <option key={op.value} value={op.value}>
-                        {op.label}
-                      </option>
-                    ))}
-                  </SelectNative>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) =>
-                          atResponderPerguntaEnvioFabrica(
-                            s,
-                            { trataSeEnvioFabrica: true, tipoTransporte: transporteSelecionado },
-                            atorLogado,
-                          ),
-                        'Ramificação 2: OS em Stand-by aguardando envio à fábrica.',
-                      )
-                    }
-                  >
-                    [AT] Envio à Fábrica? SIM
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) =>
-                          atResponderPerguntaEnvioFabrica(
-                            s,
-                            { trataSeEnvioFabrica: false },
-                            atorLogado,
-                          ),
-                        'Ramificação 3 (Reparo Direto): ADM notificado para orçamento!',
-                      )
-                    }
-                  >
-                    [AT] Envio à Fábrica? NÃO (Reparo Direto → Orçamento)
-                  </Button>
-                </div>
-              )}
-
-              {fluxoV2.passoAtual === 'B4_STAND_BY_AGUARDANDO_ENVIO_FABRICA' && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) =>
-                          atResponderEquipamentoEnviadoFabrica(
-                            s,
-                            { foiEnviado: true },
-                            atorLogado,
-                          ),
-                        'Equipamento enviado! Etiqueta MARROM aplicada + ADM notificado para orçamento.',
-                      )
-                    }
-                  >
-                    [AT] Equipamento foi enviado? SIM (Etiqueta MARROM)
-                  </Button>
-                  <Input
-                    value={justificativaNaoEnviado}
-                    onChange={(e) => setJustificativaNaoEnviado(e.target.value)}
-                    placeholder="Justificativa obrigatória se NÃO enviado..."
-                    className="h-9 w-64 text-xs"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) =>
-                          atResponderEquipamentoEnviadoFabrica(
-                            s,
-                            {
-                              foiEnviado: false,
-                              justificativaNaoEnviado,
-                              etiquetaEscolhidaSeNaoEnviado: 'GREEN',
-                            },
-                            atorLogado,
-                          ),
-                        'Não enviado (justificado) → Etiqueta VERDE (Serviço Finalizado).',
-                      )
-                    }
-                  >
-                    [AT] NÃO Enviado → Etiqueta VERDE
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) =>
-                          atResponderEquipamentoEnviadoFabrica(
-                            s,
-                            {
-                              foiEnviado: false,
-                              justificativaNaoEnviado,
-                              etiquetaEscolhidaSeNaoEnviado: 'RED',
-                            },
-                            atorLogado,
-                          ),
-                        'Etiqueta VERMELHA aplicada (Item 5 bloqueado e OS finalizada).',
-                      )
-                    }
-                  >
-                    [AT] NÃO Enviado → Etiqueta VERMELHA
-                  </Button>
-                </div>
-              )}
-
-              {fluxoV2.passoAtual === 'C_AGUARDANDO_ORCAMENTO_ADM' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => {
-                        const c = confirmarNotificacaoSetor(s, atorLogado);
-                        return admMarcarEtiquetaAmarelaOrcamento(c, atorLogado);
-                      },
-                      'ADM confirmou e marcou Etiqueta AMARELA (Aguardando aprovação do orçamento).',
-                    )
-                  }
-                >
-                  [ADM] C1: Confirmar e Marcar Etiqueta AMARELA (Orçamento Enviado)
-                </Button>
-              )}
-
-              {fluxoV2.passoAtual === 'C1_AMARELA_AGUARDANDO_RESPOSTA_CLIENTE' && (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) => admResponderOrcamentoAprovado(s, true, atorLogado),
-                        'Orçamento APROVADO! Etiqueta AZUL automática + Almoxarifado notificado.',
-                      )
-                    }
-                  >
-                    [ADM] C2: Orçamento Aprovado? SIM (Etiqueta AZUL)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) => admResponderOrcamentoAprovado(s, false, atorLogado),
-                        'Orçamento REPROVADO pelo cliente. AT notificada para confirmar devolução.',
-                      )
-                    }
-                  >
-                    [ADM] C3: Orçamento Aprovado? NÃO
-                  </Button>
-                </>
-              )}
-
-              {fluxoV2.passoAtual === 'C3_AMARELA_AGUARDANDO_CONFIRMACAO_REPROVACAO_AT' && (
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => confirmarNotificacaoSetor(s, atorLogado),
-                      'AT confirmou reprovação: Etiqueta VERMELHA automática, Item 5 bloqueado e OS finalizada!',
-                    )
-                  }
-                >
-                  [AT] C4: Confirmar Ciência da Reprovação (Aplica Etiqueta VERMELHA)
-                </Button>
-              )}
-
-              {(fluxoV2.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX' ||
-                fluxoV2.passoAtual === 'D1_ALMOX_DECIDINDO_PECAS') && (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) => {
-                          const c =
-                            s.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX'
-                              ? confirmarNotificacaoSetor(s, atorLogado)
-                              : s;
-                          return almoxarifadoDecidirPecas(c, 'pecas_disponiveis', atorLogado);
-                        },
-                        'Almoxarifado separou as peças! AT notificada para execução.',
-                      )
-                    }
-                  >
-                    [Almoxarifado] D4: Peças Disponíveis
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      executarTransicao(
-                        (s) => {
-                          const c =
-                            s.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX'
-                              ? confirmarNotificacaoSetor(s, atorLogado)
-                              : s;
-                          return almoxarifadoDecidirPecas(c, 'aguardando_pecas', atorLogado);
-                        },
-                        'Etiqueta PRETA aplicada automaticamente (OS em stand-by aguardando peças).',
-                      )
-                    }
-                  >
-                    [Almoxarifado] D2: Aguardando Peças (Etiqueta PRETA / Stand-by)
-                  </Button>
-                </>
-              )}
-
-              {fluxoV2.passoAtual === 'D2_PRETA_STAND_BY_AGUARDANDO_PECAS' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => almoxarifadoRetomarOsDeAguardandoPecas(s, atorLogado),
-                      'Peças chegaram! Etiqueta anterior (LARANJA/AZUL) restaurada e AT notificada.',
-                    )
-                  }
-                >
-                  [Almoxarifado] D3: Peças Chegaram (Restaurar Etiqueta e Notificar AT)
-                </Button>
-              )}
-
-              {fluxoV2.passoAtual === 'D4_PECAS_DISPONIVEIS_AGUARDANDO_CONFIRMACAO_AT' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => confirmarNotificacaoSetor(s, atorLogado),
-                      'AT confirmou recebimento das peças e liberou o Item 5 do REG 016!',
-                    )
-                  }
-                >
-                  [AT] D5: Confirmar Peças e Liberar Item 5 ({fluxoV2.item5FormularioTipo})
-                </Button>
-              )}
-
-              {fluxoV2.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' && (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) => atFinalizarServicoComEtiquetaVerde(s, atorLogado),
-                      'Etiqueta VERDE aplicada! REG-035 / Item 5 liberado para finalização.',
-                    )
-                  }
-                >
-                  [AT] D6: Marcar Etiqueta VERDE (Serviço Finalizado)
-                </Button>
-              )}
-
-              {fluxoV2.etiquetaAtual === 'GREEN' &&
-                fluxoV2.item5Liberado &&
-                !fluxoV2.item5Preenchido &&
-                ['tecnico', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
-                  <>
-                    <Link
-                      href={`/formularios/checklist-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}
-                    >
-                      <Button size="sm" variant="default" className="gap-1.5">
-                        <FileText className="h-3.5 w-3.5" />
-                        Abrir REG-035 / {fluxoV2.item5FormularioTipo} (Marca {fluxoV2.identificacao.marca})
-                      </Button>
-                    </Link>
+                  {fluxoV2.passoAtual === 'A1_CRIADA_NO_REG022' && (
                     <Button
                       size="sm"
-                      variant="outline"
                       onClick={() =>
                         executarTransicao(
-                          (s) =>
-                            atPreencherItem5Reg016(
-                              s,
-                              s.identificacao.marca,
-                              atorLogado,
-                            ),
-                          `REG-035 / Item 5 (${fluxoV2.item5FormularioTipo}) concluído para a marca ${fluxoV2.identificacao.marca}!`,
+                          (s) => admMarcarEtiquetaBrancaNoReg016(s, atorLogado),
+                          'Etiqueta BRANCA registrada no REG-016. Assistência Técnica notificada!',
                         )
                       }
                     >
-                      [AT] Concluir {fluxoV2.item5FormularioTipo} (Pós-Serviço)
+                      Marcar Etiqueta BRANCA no REG-016
                     </Button>
-                  </>
-                )}
-            </div>
-            )}
+                  )}
 
-            {/* Controles de Cancelamento e Reabertura (Seção 7.3) */}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              {fluxoV2.estadoGeral !== 'cancelada' && fluxoV2.estadoGeral !== 'finalizada' && (user?.perfil === 'adm' || user?.perfil === 'diretor' || user?.perfil === 'gestor') && (
-                <div className="ml-auto flex items-center gap-1.5">
+                  {fluxoV2.passoAtual === 'A2_BRANCA_NOTIFICA_AT' && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => confirmarNotificacaoSetor(s, atorLogado),
+                          'Assistência Técnica confirmou recebimento. REG-034 liberado!',
+                        )
+                      }
+                    >
+                      Confirmar Ciência e Abrir REG-034
+                    </Button>
+                  )}
+
+                  {fluxoV2.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034' && (
+                    <>
+                      <Link href={`/formularios/limpeza-equipamento?os=${encodeURIComponent(fluxoV2.numeroOs)}`}>
+                        <Button size="sm" variant="outline" className="gap-1.5">
+                          <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
+                          Preencher Formulário REG-034
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) => atRegistrarReg034(s, atorLogado),
+                            'Higienização (REG-034) concluída!',
+                          )
+                        }
+                      >
+                        Confirmar Higienização Concluída
+                      </Button>
+                    </>
+                  )}
+
+                  {fluxoV2.passoAtual === 'A4_REG034_PREENCHIDO' && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => atMarcarEtiquetaVioleta(s, atorLogado),
+                          'Etiqueta VIOLETA (Higienizado) aplicada no REG-016!',
+                        )
+                      }
+                    >
+                      Aplicar Etiqueta VIOLETA (Higienizado)
+                    </Button>
+                  )}
+
+                  {fluxoV2.passoAtual === 'A5_VIOLETA_HIGIENIZADO' && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => atMarcarEtiquetaCinzaAnaliseCompleta(s, atorLogado),
+                          'Etiqueta CINZA aplicada! Etiqueta física liberada para impressão.',
+                        )
+                      }
+                    >
+                      Concluir Análise (Etiqueta CINZA)
+                    </Button>
+                  )}
+
+                  {fluxoV2.passoAtual === 'A6_CINZA_ANALISE_CONCLUIDA' && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) => atResponderPerguntaGarantia(s, true, atorLogado),
+                            'Garantia confirmada (Etiqueta LARANJA). Almoxarifado notificado!',
+                          )
+                        }
+                      >
+                        Trata-se de Garantia? SIM (Etiqueta LARANJA)
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) => atResponderPerguntaGarantia(s, false, atorLogado),
+                            'Registrado como não-garantia. Próxima pergunta: envio ao fabricante.',
+                          )
+                        }
+                      >
+                        Não é Garantia
+                      </Button>
+                    </>
+                  )}
+
+                  {fluxoV2.passoAtual === 'B2_PERGUNTA_ENVIO_FABRICA' && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SelectNative
+                        value={transporteSelecionado}
+                        onChange={(e) =>
+                          setTransporteSelecionado(e.target.value as TipoTransporteFabrica)
+                        }
+                        className="h-9 w-64 text-xs"
+                      >
+                        {OPCOES_TRANSPORTE_FABRICA.map((op) => (
+                          <option key={op.value} value={op.value}>
+                            {op.label}
+                          </option>
+                        ))}
+                      </SelectNative>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) =>
+                              atResponderPerguntaEnvioFabrica(
+                                s,
+                                { trataSeEnvioFabrica: true, tipoTransporte: transporteSelecionado },
+                                atorLogado,
+                              ),
+                            'Equipamento marcado em espera para envio à fábrica.',
+                          )
+                        }
+                      >
+                        Enviar à Fábrica
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) =>
+                              atResponderPerguntaEnvioFabrica(
+                                s,
+                                { trataSeEnvioFabrica: false },
+                                atorLogado,
+                              ),
+                            'Reparo direto selecionado. ADM notificado para orçamento!',
+                          )
+                        }
+                      >
+                        Reparo Direto (Sem Fábrica)
+                      </Button>
+                    </div>
+                  )}
+
+                  {fluxoV2.passoAtual === 'B4_STAND_BY_AGUARDANDO_ENVIO_FABRICA' && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) =>
+                              atResponderEquipamentoEnviadoFabrica(
+                                s,
+                                { foiEnviado: true },
+                                atorLogado,
+                              ),
+                            'Envio confirmado! Etiqueta MARROM aplicada e ADM notificado.',
+                          )
+                        }
+                      >
+                        Enviado à Fábrica (Etiqueta MARROM)
+                      </Button>
+                      <Input
+                        value={justificativaNaoEnviado}
+                        onChange={(e) => setJustificativaNaoEnviado(e.target.value)}
+                        placeholder="Justificativa se não enviado..."
+                        className="h-9 w-60 text-xs"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) =>
+                              atResponderEquipamentoEnviadoFabrica(
+                                s,
+                                {
+                                  foiEnviado: false,
+                                  justificativaNaoEnviado,
+                                  etiquetaEscolhidaSeNaoEnviado: 'GREEN',
+                                },
+                                atorLogado,
+                              ),
+                            'Justificativa salva → Serviço Finalizado (Etiqueta VERDE).',
+                          )
+                        }
+                      >
+                        Não Enviado → VERDE
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) =>
+                              atResponderEquipamentoEnviadoFabrica(
+                                s,
+                                {
+                                  foiEnviado: false,
+                                  justificativaNaoEnviado,
+                                  etiquetaEscolhidaSeNaoEnviado: 'RED',
+                                },
+                                atorLogado,
+                              ),
+                            'Orçamento reprovado (Etiqueta VERMELHA). REG-035 bloqueado.',
+                          )
+                        }
+                      >
+                        Não Enviado → VERMELHA
+                      </Button>
+                    </div>
+                  )}
+
+                  {fluxoV2.passoAtual === 'C_AGUARDANDO_ORCAMENTO_ADM' && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => {
+                            const c = confirmarNotificacaoSetor(s, atorLogado);
+                            return admMarcarEtiquetaAmarelaOrcamento(c, atorLogado);
+                          },
+                          'Etiqueta AMARELA registrada. Aguardando resposta do cliente.',
+                        )
+                      }
+                    >
+                      Enviar Orçamento (Etiqueta AMARELA)
+                    </Button>
+                  )}
+
+                  {fluxoV2.passoAtual === 'C1_AMARELA_AGUARDANDO_RESPOSTA_CLIENTE' && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) => admResponderOrcamentoAprovado(s, true, atorLogado),
+                            'Orçamento aprovado! Etiqueta AZUL aplicada e Almoxarifado notificado.',
+                          )
+                        }
+                      >
+                        Orçamento Aprovado (Etiqueta AZUL)
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) => admResponderOrcamentoAprovado(s, false, atorLogado),
+                            'Orçamento reprovado pelo cliente. AT notificada.',
+                          )
+                        }
+                      >
+                        Orçamento Reprovado
+                      </Button>
+                    </>
+                  )}
+
+                  {fluxoV2.passoAtual === 'C3_AMARELA_AGUARDANDO_CONFIRMACAO_REPROVACAO_AT' && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => confirmarNotificacaoSetor(s, atorLogado),
+                          'Reprovação confirmada (Etiqueta VERMELHA).',
+                        )
+                      }
+                    >
+                      Confirmar Reprovação (Etiqueta VERMELHA)
+                    </Button>
+                  )}
+
+                  {(fluxoV2.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX' ||
+                    fluxoV2.passoAtual === 'D1_ALMOX_DECIDINDO_PECAS') && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) => {
+                              const c =
+                                s.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX'
+                                  ? confirmarNotificacaoSetor(s, atorLogado)
+                                  : s;
+                              return almoxarifadoDecidirPecas(c, 'pecas_disponiveis', atorLogado);
+                            },
+                            'Peças disponíveis separadas! Assistência Técnica notificada.',
+                          )
+                        }
+                      >
+                        Peças Disponíveis
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          executarTransicao(
+                            (s) => {
+                              const c =
+                                s.passoAtual === 'D_AGUARDANDO_CONFIRMACAO_ALMOX'
+                                  ? confirmarNotificacaoSetor(s, atorLogado)
+                                  : s;
+                              return almoxarifadoDecidirPecas(c, 'aguardando_pecas', atorLogado);
+                            },
+                            'Etiqueta PRETA aplicada (OS aguardando peças).',
+                          )
+                        }
+                      >
+                        Falta Peça (Etiqueta PRETA)
+                      </Button>
+                    </>
+                  )}
+
+                  {fluxoV2.passoAtual === 'D2_PRETA_STAND_BY_AGUARDANDO_PECAS' && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => almoxarifadoRetomarOsDeAguardandoPecas(s, atorLogado),
+                          'Peças disponíveis! Etiqueta anterior restaurada e AT notificada.',
+                        )
+                      }
+                    >
+                      Peças Chegaram (Retomar Serviço)
+                    </Button>
+                  )}
+
+                  {fluxoV2.passoAtual === 'D4_PECAS_DISPONIVEIS_AGUARDANDO_CONFIRMACAO_AT' && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => confirmarNotificacaoSetor(s, atorLogado),
+                          'Peças confirmadas pela AT! Serviço pronto para execução e finalização.',
+                        )
+                      }
+                    >
+                      Confirmar Recebimento das Peças
+                    </Button>
+                  )}
+
+                  {fluxoV2.passoAtual === 'D5_AT_PRONTO_PARA_FINALIZAR' && (
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) => atFinalizarServicoComEtiquetaVerde(s, atorLogado),
+                          'Etiqueta VERDE aplicada! REG-035 pós-serviço liberado.',
+                        )
+                      }
+                    >
+                      Finalizar Serviço (Etiqueta VERDE)
+                    </Button>
+                  )}
+
+                  {fluxoV2.etiquetaAtual === 'GREEN' &&
+                    fluxoV2.item5Liberado &&
+                    !fluxoV2.item5Preenchido &&
+                    ['tecnico', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+                      <>
+                        <Link
+                          href={`/formularios/checklist-manutencao?os=${encodeURIComponent(fluxoV2.numeroOs)}`}
+                        >
+                          <Button size="sm" variant="default" className="gap-1.5">
+                            <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
+                            Abrir REG-035 ({fluxoV2.item5FormularioTipo})
+                          </Button>
+                        </Link>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            executarTransicao(
+                              (s) =>
+                                atPreencherItem5Reg016(
+                                  s,
+                                  s.identificacao.marca,
+                                  atorLogado,
+                                ),
+                              `REG-035 (${fluxoV2.item5FormularioTipo}) concluído para ${fluxoV2.identificacao.marca}!`,
+                            )
+                          }
+                        >
+                          Concluir Pós-Serviço
+                        </Button>
+                      </>
+                    )}
+                </div>
+              )}
+
+              {/* Controles secundários: Correção do Autor (E3), Cancelamento (ADM/AT), Reabertura e Histórico */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] pt-3 dark:border-white/[0.08]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setMostrarHistorico((v) => !v)}
+                    className="h-8 gap-1.5 text-xs text-muted-foreground"
+                  >
+                    <History className="h-3.5 w-3.5" strokeWidth={1.5} />
+                    Histórico ({fluxoV2.historico.length})
+                  </Button>
+
+                  {ultimoEventoCorrigivel && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setMostrarCorrecao((v) => !v)}
+                      className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      Corrigir minha última resposta
+                    </Button>
+                  )}
+
+                  {fluxoV2.estadoGeral === 'cancelada' && user?.perfil !== 'estoquista' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      onClick={() =>
+                        executarTransicao(
+                          (s) =>
+                            reabrirOs(
+                              s,
+                              'Reabertura operacional autorizada para continuidade',
+                              atorLogado,
+                            ),
+                          'OS reaberta exatamente na etapa anterior ao cancelamento!',
+                        )
+                      }
+                      className="h-8 gap-1.5 text-xs"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      Reabrir OS
+                    </Button>
+                  )}
+                </div>
+
+                {fluxoV2.estadoGeral !== 'cancelada' &&
+                  fluxoV2.estadoGeral !== 'finalizada' &&
+                  ['adm', 'tecnico', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Input
+                        value={motivoCancelamento}
+                        onChange={(e) => setMotivoCancelamento(e.target.value)}
+                        placeholder="Motivo para cancelar OS..."
+                        className="h-8 w-48 text-xs sm:w-56"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (!motivoCancelamento.trim()) {
+                            showRuleNotice({
+                              title: 'Justificativa Obrigatória',
+                              message:
+                                'Informe o motivo do cancelamento antes de cancelar esta Ordem de Serviço.',
+                              severity: 'warning',
+                            });
+                            return;
+                          }
+                          executarTransicao(
+                            (s) => cancelarOs(s, motivoCancelamento, atorLogado),
+                            'OS cancelada com justificativa registrada.',
+                          );
+                          setMotivoCancelamento('');
+                        }}
+                        className="h-8 gap-1 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <XCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
+                        Cancelar OS
+                      </Button>
+                    </div>
+                  )}
+              </div>
+
+              {/* Box inline da Correção do Autor (E3) */}
+              {mostrarCorrecao && ultimoEventoCorrigivel && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-3 text-xs">
+                  <span className="text-muted-foreground">
+                    Desfazer última ação ({formatTipoEventoHumano(ultimoEventoCorrigivel.tipo)}):
+                  </span>
                   <Input
-                    value={motivoCancelamento}
-                    onChange={(e) => setMotivoCancelamento(e.target.value)}
-                    placeholder="Justificativa p/ cancelar OS..."
-                    className="h-8 w-52 text-xs"
+                    value={motivoCorrecao}
+                    onChange={(e) => setMotivoCorrecao(e.target.value)}
+                    placeholder="Explique o motivo da correção..."
+                    className="h-8 min-w-[200px] flex-1 text-xs"
                   />
                   <Button
                     type="button"
                     size="sm"
-                    variant="outline"
-                    onClick={() =>
+                    onClick={() => {
                       executarTransicao(
-                        (s) => cancelarOs(s, motivoCancelamento, atorLogado),
-                        'OS cancelada com justificativa registrada no histórico.',
-                      )
-                    }
-                    className="h-8 gap-1 text-xs text-rose-600"
+                        (s) =>
+                          corrigirMarcacaoOuRespostaPeloDono(
+                            s,
+                            {
+                              eventoId: ultimoEventoCorrigivel.id,
+                              observacaoCorrecao:
+                                motivoCorrecao.trim() ||
+                                'Correção solicitada pelo autor da marcação',
+                              executarNovaAcao: () => {},
+                            },
+                            atorLogado,
+                          ),
+                        'Etapa restaurada! Selecione novamente a opção correta.',
+                      );
+                      setMostrarCorrecao(false);
+                      setMotivoCorrecao('');
+                    }}
+                    className="h-8 text-xs"
                   >
-                    <XCircle className="h-3.5 w-3.5" />
-                    Cancelar OS
+                    Confirmar Correção
                   </Button>
                 </div>
               )}
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {fluxoV2.estadoGeral === 'cancelada' && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="default"
-                  onClick={() =>
-                    executarTransicao(
-                      (s) =>
-                        reabrirOs(
-                          s,
-                          'Cliente autorizou prosseguimento da manutenção',
-                          atorLogado,
-                        ),
-                      'OS reaberta exatamente na etapa em que estava antes do cancelamento!',
-                    )
-                  }
-                  className="gap-1.5"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  Reabrir OS (Restaurar Etapa Anterior)
-                </Button>
-              )}
-            </div>
-
-            {/* Histórico Imutável da OS (Seção 4.3 / 7.2) */}
-            <div className="rounded-lg border border-border bg-card p-3">
-              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
-                <History className="h-3.5 w-3.5 text-primary" />
-                Histórico Imutável de Eventos da OS ({fluxoV2.historico.length})
-              </p>
-              <div className="max-h-36 space-y-1.5 overflow-y-auto pr-1 text-[11px]">
-                {fluxoV2.historico.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 bg-muted/20 px-2.5 py-1"
-                  >
-                    <span>
-                      <strong>[{ev.codigoPasso}]</strong> {ev.tipo}:{' '}
-                      <span className="font-medium text-primary">{ev.valorNovo}</span>
-                      {ev.observacao ? ` — ${ev.observacao}` : ''}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {ev.usuarioNome} ({ev.usuarioPerfil})
-                    </span>
+              {/* Histórico colapsável e legível */}
+              {mostrarHistorico && (
+                <div className="ios-grouped divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                  <div className="max-h-52 space-y-0 overflow-y-auto text-[11px]">
+                    {fluxoV2.historico.map((ev) => (
+                      <div
+                        key={ev.id}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2"
+                      >
+                        <span className="text-foreground">
+                          <span className="font-medium text-primary">
+                            {formatTipoEventoHumano(ev.tipo)}:
+                          </span>{' '}
+                          {ev.observacao || ev.valorNovo}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {ev.usuarioNome}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
+                </div>
+              )}
+            </CardContent>
           )}
         </Card>
       )}
 
-      <div className="space-y-4">
-        {/* Filtros de OS e Etiquetas */}
-        <Card>
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-[1fr_260px]">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por Nº da OS, cliente, equipamento, marca ou nº de série..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <SelectNative
-              value={filtroCor}
-              onChange={(e) => setFiltroCor(e.target.value as TagColor | '')}
-            >
-              <option value="">Todas as etiquetas (REG-016)</option>
-              {TAG_SPECS_LIST.map((t) => (
-                <option key={t.color} value={t.color}>
-                  Etiqueta {t.nomeCor} — {t.labelStatus}
-                </option>
-              ))}
-            </SelectNative>
-          </CardContent>
-        </Card>
+      {/* Filtros + Fila de OS */}
+      <div className="space-y-3.5">
+        <div className="ios-card grid gap-3 p-3.5 sm:grid-cols-[1fr_260px]">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={1.5}
+            />
+            <Input
+              placeholder="Buscar por OS, cliente, equipamento, marca ou nº de série..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <SelectNative
+            value={filtroCor}
+            onChange={(e) => setFiltroCor(e.target.value as TagColor | '')}
+          >
+            <option value="">Todas as etiquetas ({ordensServico.length})</option>
+            {TAG_SPECS_LIST.map((t) => (
+              <option key={t.color} value={t.color}>
+                Etiqueta {t.nomeCor} — {t.labelStatus}
+              </option>
+            ))}
+          </SelectNative>
+        </div>
 
         {isLoading ? (
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-32 w-full rounded-xl" />
+              <Skeleton key={i} className="h-28 w-full rounded-2xl" />
             ))}
           </div>
         ) : osFiltradas.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center gap-2 p-12 text-center">
-              <Wrench className="h-8 w-8 text-muted-foreground/40" />
-              <p className="text-sm font-medium">
-                Nenhuma Ordem de Serviço ou equipamento encontrado.
-              </p>
+              <Wrench className="h-8 w-8 text-muted-foreground/40" strokeWidth={1.5} />
+              <p className="text-sm font-medium">Nenhuma Ordem de Serviço encontrada.</p>
               <p className="text-xs text-muted-foreground">
-                Inicie pelo formulário de Inspeção de Recebimento (REG-022) pelo setor Administrativo (ADM).
+                Toda OS começa pelo formulário REG-022 preenchido pelo Setor Administrativo (ADM).
               </p>
             </CardContent>
           </Card>
@@ -1190,33 +1386,40 @@ export function EquipamentosClient() {
 
               const etapas = [
                 {
-                  label: '1. Recebimento ADM (REG-022)',
+                  label: '1. REG-022 (Recebimento ADM)',
                   done: reg022Done,
                   unlocked: true,
+                  sectorLabel: 'Setor Administrativo (ADM)',
                   lockMsg: '',
                   href: `/formularios/inspecao-recebimento?os=${encodeURIComponent(os.chave)}`,
                 },
                 {
-                  label: '2. Higienização AT (REG-034)',
+                  label: '2. REG-034 (Higienização AT)',
                   done: reg034Done,
                   unlocked: reg022Done,
-                  lockMsg: 'Conclua o REG-022 (Recebimento ADM) para liberar o REG-034.',
+                  sectorLabel: 'Assistência Técnica (AT)',
+                  lockMsg:
+                    'Conclua o REG-022 (Inspeção de Recebimento — ADM) para liberar o REG-034.',
                   href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(os.chave)}`,
                 },
                 {
-                  label: '3. Etapas / Etiquetas (REG-016)',
+                  label: '3. REG-016 (Central AT)',
                   done: reg016Done,
                   unlocked: reg022Done && reg034Done,
-                  lockMsg: 'Conclua o REG-034 (Higienização) para liberar o REG-016.',
+                  sectorLabel: 'Assistência Técnica (AT)',
+                  lockMsg:
+                    'Conclua antes o REG-034 (Limpeza e Higienização — AT) para liberar o REG-016.',
                   href: `/formularios/etapas-manutencao?os=${encodeURIComponent(os.chave)}`,
                 },
                 ...(mostrarReg035
                   ? [
                       {
-                        label: '4. Finalização por Marca (REG-009 / REG-035)',
+                        label: '4. REG-035 (Pós-Serviço)',
                         done: os.etapasConcluidas.reg035Manutencao,
                         unlocked: reg022Done && reg034Done && reg035LiberadoPorVerde,
-                        lockMsg: 'Disponível somente após acionar a Etiqueta VERDE no REG-016.',
+                        sectorLabel: 'Assistência Técnica (AT)',
+                        lockMsg:
+                          'O REG-035 só fica disponível após acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016.',
                         href: `/formularios/checklist-manutencao?os=${encodeURIComponent(os.chave)}`,
                       },
                     ]
@@ -1227,35 +1430,32 @@ export function EquipamentosClient() {
                 <Card key={os.chave}>
                   <CardContent className="space-y-3 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
+                      <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
                             onClick={() => setDossierOs(os.numeroOs)}
-                            className="cursor-pointer transition-transform active:scale-95 text-left"
-                            title="Clique para abrir o Dossiê completo com tudo o que já foi preenchido desta OS"
+                            className="ios-touch font-mono text-sm font-semibold text-primary hover:underline"
+                            title="Abrir Dossiê completo da OS"
                           >
-                            <Badge variant="default" className="font-mono hover:bg-primary/90 underline">
-                              OS: {os.numeroOs}
-                            </Badge>
+                            OS {os.numeroOs}
                           </button>
-                          <span className="text-sm font-semibold">
+                          <span className="text-sm font-medium text-foreground">
                             {os.equipamento || 'Equipamento'}
                           </span>
                           {(os.marca || os.modelo) && (
                             <span className="text-xs text-muted-foreground">
-                              ({[os.marca, os.modelo].filter(Boolean).join(' · ')})
+                              {[os.marca, os.modelo].filter(Boolean).join(' · ')}
                             </span>
                           )}
                           {os.numeroSerie && (
-                            <Badge variant="outline" className="font-mono">
-                              S/N: {os.numeroSerie}
-                            </Badge>
+                            <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                              S/N {os.numeroSerie}
+                            </span>
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          <strong>Cliente:</strong> {os.cliente || '—'} ·{' '}
-                          <strong>Última movimentação:</strong>{' '}
+                          {os.cliente || '—'} · Atualizado em{' '}
                           {os.ultimaAtualizacao.split('-').reverse().join('/')}
                         </p>
                       </div>
@@ -1265,12 +1465,11 @@ export function EquipamentosClient() {
                           type="button"
                           size="sm"
                           variant="secondary"
-                          onClick={() => carregarOsRealNoFluxoV2(os)}
-                          className="h-7 gap-1.5 text-xs font-semibold"
-                          title="Carrega esta OS no motor interativo oficial v2"
+                          onClick={() => carregarOsRealNoPainel(os)}
+                          className="h-8 gap-1.5 text-xs"
                         >
-                          <PlayCircle className="h-3.5 w-3.5 text-primary" />
-                          Gerenciar Fluxo v2
+                          <PlayCircle className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} />
+                          Selecionar OS
                         </Button>
 
                         {analiseJaConcluida && (
@@ -1290,28 +1489,28 @@ export function EquipamentosClient() {
                                 statusEtiqueta: `${tag.nomeCor} — ${tag.labelStatus}`,
                               })
                             }
-                            className="h-7 gap-1.5 text-xs"
+                            className="h-8 gap-1.5 text-xs"
                           >
-                            <Printer className="h-3.5 w-3.5 text-primary" />
-                            Imprimir Etiqueta (Item 1 REG 022)
+                            <Printer className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} />
+                            Etiqueta
                           </Button>
                         )}
+
                         <span
                           className={cn(
-                            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold',
+                            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
                             tag.badgeClass,
                           )}
                         >
-                          <Tag className="h-3.5 w-3.5" />
-                          Etiqueta {tag.nomeCor}: {tag.labelStatus}
+                          <Tag className="h-3 w-3" strokeWidth={1.5} />
+                          {tag.nomeCor}: {tag.labelStatus}
                         </span>
                       </div>
                     </div>
 
-                    {/* Trilha POP-020 com Bloqueio Sequencial Estrito (REG-022 -> REG-034 -> REG-016 -> REG-035) */}
                     <div
                       className={cn(
-                        'grid gap-2 border-t border-border pt-3',
+                        'grid gap-2 border-t border-black/[0.05] pt-3 dark:border-white/[0.06]',
                         mostrarReg035 ? 'sm:grid-cols-4' : 'sm:grid-cols-3',
                       )}
                     >
@@ -1321,28 +1520,36 @@ export function EquipamentosClient() {
                             key={etapa.label}
                             href={etapa.href}
                             className={cn(
-                              'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-[11px] font-medium transition-colors',
+                              'ios-touch flex min-h-[38px] items-center justify-between gap-2 rounded-xl border px-3 py-2 text-[11px] font-medium transition-colors',
                               etapa.done
-                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                : 'border-primary/40 bg-primary/5 text-foreground hover:bg-accent',
+                                ? 'border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-700 dark:text-emerald-300'
+                                : 'border-primary/30 bg-primary/[0.04] text-foreground hover:bg-primary/[0.08]',
                             )}
                           >
                             <span className="truncate">{etapa.label}</span>
                             {etapa.done ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
                             ) : (
-                              <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                              <ArrowRight className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={1.5} />
                             )}
                           </Link>
                         ) : (
-                          <div
+                          <button
                             key={etapa.label}
-                            title={etapa.lockMsg}
-                            className="flex cursor-not-allowed items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 text-[11px] font-medium text-muted-foreground opacity-65"
+                            type="button"
+                            onClick={() =>
+                              showRuleNotice({
+                                title: 'Etapa Bloqueada (POP-020)',
+                                message: etapa.lockMsg,
+                                sectorLabel: etapa.sectorLabel,
+                                severity: 'warning',
+                              })
+                            }
+                            className="ios-touch flex min-h-[38px] items-center justify-between gap-2 rounded-xl border border-black/[0.06] bg-muted/35 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/60 dark:border-white/[0.07]"
                           >
                             <span className="truncate">{etapa.label}</span>
-                            <Lock className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                          </div>
+                            <Lock className="h-3.5 w-3.5 shrink-0 opacity-75" strokeWidth={1.5} />
+                          </button>
                         ),
                       )}
                     </div>
@@ -1354,14 +1561,12 @@ export function EquipamentosClient() {
         )}
       </div>
 
-      {/* Dossiê completo ao clicar na OS */}
       <OsDossierDialog
         osChaveOuNumero={dossierOs}
         open={Boolean(dossierOs)}
         onOpenChange={(open) => !open && setDossierOs(null)}
       />
 
-      {/* Impressão da Etiqueta Física de Identificação (Seção 5.4) */}
       <EquipmentLabelPrintDialog
         open={Boolean(etiquetaPrint)}
         onOpenChange={(open) => !open && setEtiquetaPrint(null)}

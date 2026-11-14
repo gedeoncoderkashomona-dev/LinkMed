@@ -200,7 +200,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
       const reg022Ok = Boolean(osFluxoInicial?.reg022Preenchido || reg022Existente);
       if (!reg022Ok) {
         throw new ValidationError(
-          'Pré-requisito obrigatório (POP-020): conclua primeiro o REG-022 (Inspeção de Recebimento) para esta OS.',
+          'Pré-requisito obrigatório (POP-020): toda OS deve começar no REG-022 (Inspeção de Recebimento), preenchido pelo Setor Administrativo (ADM). Conclua o REG-022 para esta OS antes de avançar para a higienização.',
           {
             numero_os:
               'Esta OS ainda não passou pelo REG-022 (Inspeção de Recebimento do ADM).',
@@ -211,7 +211,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
       const reg034Ok = Boolean(osFluxoInicial?.reg034Preenchido || reg034Existente);
       if (!reg034Ok) {
         throw new ValidationError(
-          'Pré-requisito obrigatório (POP-020): conclua primeiro o REG-034 (Limpeza e Higienização) para liberar o REG-016.',
+          'Pré-requisito obrigatório (POP-020): o Setor Administrativo (ADM) inicia a OS no REG-022 e a Assistência Técnica (AT) deve concluir antes o REG-034 (Limpeza e Higienização) para liberar o REG-016.',
           {
             numero_os:
               'Preencha primeiro o REG-034 (Higienização com Álcool 70%) antes de abrir ou enviar o REG-016.',
@@ -233,7 +233,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
         String(reg016Existente?.dados?.etiqueta_atual ?? '').toUpperCase() === 'GREEN';
       if (!etiquetaVerdeAtiva) {
         const msg =
-          'Pré-requisito obrigatório (POP-020): o REG-035 só fica disponível após acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016.';
+          'Pré-requisito obrigatório (POP-020): o REG-035 só é liberado após a Assistência Técnica (AT) acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016 (após REG-022 e REG-034 concluídos).';
         throw new ValidationError(msg, { numero_os: msg });
       }
     }

@@ -67,24 +67,24 @@ export function PopsClient() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Documentos (POPs)</h1>
-          <p className="text-sm text-muted-foreground">
-            Procedimentos Operacionais Padrão com governança de elaboração, revisão, aprovação, assinatura eletrônica LGPD e visualização direta em tela.
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Documentos (POPs)</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Procedimentos Operacionais Padrão com assinatura eletrônica e leitura direta.
           </p>
         </div>
         {canUpload && (
           <Button onClick={() => setUploadOpen(true)}>
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4" strokeWidth={1.6} />
             Subir POP
           </Button>
         )}
       </div>
 
-      {/* Catálogo Oficial de Documentos (POPs) — Seção 1 da Auditoria Linkmed */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs space-y-2">
-        <div className="flex items-center gap-2 font-semibold text-primary">
-          <FileCheck2 className="h-4 w-4" />
-          <span>Catálogo Oficial de POPs do Módulo Documentos (Auditoria Linkmed — Seção 1):</span>
+      {/* Acesso rápido aos POPs oficiais */}
+      <div className="rounded-2xl border border-border/70 bg-card/85 p-3.5 text-xs space-y-2.5 shadow-2xs">
+        <div className="flex items-center gap-2 font-medium text-foreground">
+          <FileCheck2 className="h-4 w-4 text-primary" strokeWidth={1.6} />
+          <span>Acesso rápido por código POP</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {DOCUMENTOS_OFICIAIS_POR_MODULO.documentosPops.map((item) => (
@@ -96,10 +96,10 @@ export function PopsClient() {
                 const popEncontrado = data?.pops.find((p) => p.codigo === item.codigo);
                 if (popEncontrado) setInlinePopId(popEncontrado.id);
               }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-background px-2.5 py-1 text-[11px] font-medium transition hover:border-primary hover:bg-primary/10"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3 py-1 text-[11px] font-medium transition hover:border-primary/50 hover:bg-primary/5 active:scale-[0.98]"
             >
-              <span className="font-mono font-bold text-primary">{item.codigo}</span>
-              <span className="text-muted-foreground">— {item.titulo}</span>
+              <span className="font-mono font-semibold text-primary">{item.codigo}</span>
+              <span className="text-muted-foreground">· {item.titulo}</span>
             </button>
           ))}
         </div>
@@ -271,11 +271,11 @@ export function PopsClient() {
         </div>
       )}
 
-      {/* Visualização do Conteúdo na Parte Inferior da Tela (Exigência Ata Linkmed) */}
+      {/* Leitor completo do POP selecionado */}
       {inlinePop && (
         <div id="leitor-pop-inferior" className="pt-2">
-          <Card className="border-2 border-primary/40 shadow-lg">
-            <div className="flex flex-wrap items-center justify-between border-b border-border bg-primary/5 p-4">
+          <Card className="border-primary/30 shadow-ios">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-muted/30 p-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-bold text-primary">

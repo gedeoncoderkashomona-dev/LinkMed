@@ -15,6 +15,7 @@ import { AppFooter } from './app-footer';
 import { AppHeader } from './app-header';
 import { AppSidebar } from './app-sidebar';
 import { IdleGuard } from './idle-guard';
+import { MobileTabBar } from './mobile-tab-bar';
 
 interface Props {
   user: PublicUser;
@@ -76,16 +77,16 @@ export function AppShell({ user, children }: Props) {
 
   if (!statusHorario.permitido && !bypassAtivo) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 p-4">
-        <Card className="w-full max-w-lg border-amber-500/40 shadow-lg">
-          <CardHeader className="space-y-2 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-              <Clock className="h-6 w-6" />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <Card className="ios-card w-full max-w-lg rounded-[24px] border-amber-500/30 shadow-ios">
+          <CardHeader className="space-y-2.5 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/12 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-400">
+              <Clock className="h-6 w-6" strokeWidth={1.5} />
             </div>
             <Badge variant="warning" className="mx-auto w-fit">
-              Restrição de Horário de Acesso (Seção 5.1)
+              Horário de Expediente · Seg–Sex 07:30h às 19:30h
             </Badge>
-            <CardTitle className="text-xl">
+            <CardTitle className="text-xl font-semibold tracking-tight">
               Plataforma Fora do Horário de Expediente
             </CardTitle>
           </CardHeader>
@@ -171,11 +172,12 @@ export function AppShell({ user, children }: Props) {
           </div>
         )}
         <AppHeader user={user} onOpenMobile={() => setMobileOpen(true)} />
-        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <main className="flex-1 px-3.5 pb-24 pt-4 sm:px-6 sm:py-6 lg:px-8 md:pb-8">
           <div className="mx-auto w-full max-w-7xl animate-fade-in">{children}</div>
         </main>
         <AppFooter />
       </div>
+      <MobileTabBar user={user} onOpenMenu={() => setMobileOpen(true)} />
       <IdleGuard />
     </div>
   );

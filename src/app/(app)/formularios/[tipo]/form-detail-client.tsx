@@ -20,7 +20,6 @@ import {
   PlusCircle,
   Printer,
   ShieldAlert,
-  Sparkles,
   Tag,
   Upload,
   UserCheck,
@@ -103,6 +102,7 @@ import {
   useOsFlowList,
   useSaveOsFlow,
 } from '@/hooks/use-operacional';
+import { isRuleErrorMessage, showRuleNotice } from '@/lib/rule-notice';
 import { cn } from '@/lib/utils';
 
 const FORMS_COM_OS = new Set([
@@ -570,26 +570,37 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   function atualizarCampo(name: string, value: unknown) {
     const campoDef = def ? getCampos(def, subtipo).find((c) => c.name === name) : undefined;
     if (campoDef?.governanceOnly && !podeEditarGovernanca) {
-      toast.error('Acesso restrito', {
-        description:
-          'Apenas a Qualidade e o Diretor podem alterar quem elaborou, revisou e aprovou os documentos.',
+      showRuleNotice({
+        title: 'Acesso Restrito à Governança',
+        sectorLabel: 'Qualidade / Diretoria',
+        message:
+          'Apenas os perfis Qualidade e Diretor podem alterar quem elaborou, revisou e aprovou os documentos oficiais.',
+        hint: 'Solicite à Qualidade ou Diretoria a atualização dos responsáveis pelo documento.',
+        severity: 'blocked',
       });
       return;
     }
 
     if (name === 'marca' && marcaTravadaPeloAdm) {
-      toast.error('Campo bloqueado para Assistência Técnica (AT)', {
-        description:
-          'A marca do equipamento é definida pelo setor Administrativo (ADM) no REG-022 e não pode ser alterada pela AT.',
+      showRuleNotice({
+        title: 'Campo Definido pelo Setor Administrativo',
+        sectorLabel: 'ADM (Setor Administrativo)',
+        message:
+          'A marca do equipamento já é definida pelo Setor Administrativo (ADM) no REG-022 e não pode ser alterada pela Assistência Técnica (AT).',
+        hint: 'Caso a marca registrada esteja incorreta, solicite ao ADM a correção na Inspeção de Recebimento (REG-022).',
+        severity: 'blocked',
       });
       return;
     }
 
     if (def?.tipo === 'etapas-manutencao' && name.startsWith('item5_') && bloqueioItem5.bloqueado) {
-      toast.error('Item 5 Bloqueado (Etiqueta VERMELHA)', {
-        description:
+      showRuleNotice({
+        title: 'Item 5 Bloqueado (Etiqueta VERMELHA)',
+        sectorLabel: 'ADM (Setor Administrativo) / AT',
+        message:
           bloqueioItem5.motivo ??
-          'Não é permitido preencher o Item 5 quando o orçamento foi reprovado.',
+          'Não é permitido preencher o Item 5 quando o orçamento foi reprovado pelo cliente.',
+        severity: 'blocked',
       });
       return;
     }
@@ -685,10 +696,12 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     if (!prereqPop020.liberado) {
       const msgPrereq =
         prereqPop020.motivo ??
-        'Pré-requisito obrigatório da Trilha POP-020 não concluído para este formulário.';
+        'A Trilha POP-020 começa no REG-022 (ADM), segue para o REG-034 (AT), depois REG-016 e por último REG-035 após a Etiqueta VERDE.';
       setErroGeral(msgPrereq);
-      toast.error('Etapa anterior obrigatória (POP-020)', {
-        description: msgPrereq,
+      showRuleNotice({
+        title: 'Etapa Anterior Obrigatória (POP-020)',
+        message: msgPrereq,
+        severity: 'warning',
       });
       return;
     }
@@ -697,8 +710,12 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       const msgDup = `Já existe uma OS com este número (${osDuplicadaNoReg022.numeroOs}). Não são permitidas OS duplicadas.`;
       setErroGeral(msgDup);
       setErros({ numero_os: msgDup });
-      toast.error('Número de OS duplicado (Seção 7.4)', {
-        description: msgDup,
+      showRuleNotice({
+        title: 'Número de OS já Cadastrado',
+        sectorLabel: 'ADM (Setor Administrativo)',
+        message: msgDup,
+        hint: 'Localize a OS existente na fila de equipamentos ou utilize um número sequencial inédito.',
+        severity: 'warning',
       });
       return;
     }
@@ -929,18 +946,29 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
             el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
         }
-        toast.error(`Atenção: ${err.message}`, {
-          description:
+        showRuleNotice({
+          title: 'Campos ou Regra Pendentes no Registro',
+          message: err.message,
+          hint:
             qtdErros > 0
-              ? `Foram encontrados ${qtdErros} campo(s) pendente(s) ou inválido(s) em ${def.reg ?? def.tipo}.`
-              : `Módulo: ${def.tipo} (${def.reg ?? 'S/REG'}).`,
+              ? `Verifique o(s) ${qtdErros} campo(s) destacado(s) em ${def.reg ?? def.tipo} antes de salvar.`
+              : `Revise os campos obrigatórios de ${def.reg ?? def.tipo} antes de concluir.`,
+          severity: 'warning',
         });
       } else {
         const detalhe = err instanceof Error ? err.message : 'Erro desconhecido';
         setErroGeral(`Falha ao salvar o formulário (${detalhe}).`);
-        toast.error('Erro ao registrar formulário', {
-          description: `[Módulo: ${def.tipo}] ${detalhe}`,
-        });
+        if (isRuleErrorMessage(detalhe)) {
+          showRuleNotice({
+            title: 'Transição ou Acesso Não Permitido',
+            message: detalhe,
+            severity: 'blocked',
+          });
+        } else {
+          toast.error('Erro ao registrar formulário', {
+            description: `${def.reg ?? def.tipo}: ${detalhe}`,
+          });
+        }
       }
     }
   }
@@ -1371,19 +1399,21 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         </div>
       )}
 
-      {/* Widget Contexto Mestre da OS (Herança Automática de Dados do REG 022 para REG 016 / REG 034) */}
+      {/* Contexto Mestre da OS (Dados herdados do REG-022) */}
       {FORMS_COM_OS.has(def.tipo) && (
-        <Card className="border-primary/30 bg-primary/5">
+        <Card>
           <CardContent className="space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <FileText className="h-4 w-4" strokeWidth={1.6} />
+                </div>
                 <div>
                   <p className="text-xs font-semibold text-foreground">
-                    Reaproveitamento Automático de Dados do REG 022 (Seção 3.3)
+                    Vincular OS do Recebimento (REG-022)
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    Selecione uma OS cadastrada pelo ADM no REG 022 para preencher Cliente, Equipamento, Marca, Modelo e Nº de Série sem redigitação.
+                    Preenche Cliente, Equipamento, Marca, Modelo e Nº de Série automaticamente.
                   </p>
                 </div>
               </div>
@@ -1402,7 +1432,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                 >
                   <option value="">
                     {ordensElegiveisParaFormulario.length > 0
-                      ? '⚡ Selecionar OS liberada para esta etapa...'
+                      ? 'Selecionar OS liberada para esta etapa...'
                       : def.tipo === 'checklist-manutencao'
                         ? 'Nenhuma OS com Etiqueta VERDE no REG-016'
                         : def.tipo === 'etapas-manutencao'

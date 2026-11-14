@@ -49,6 +49,7 @@ import {
   useTreinamentos,
 } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
+import { isRuleErrorMessage, showRuleNotice } from '@/lib/rule-notice';
 import { cn } from '@/lib/utils';
 
 type CategoriaNotificacao = 'operacional' | 'intersetorial' | 'ncs' | 'pops' | 'treinamentos';
@@ -278,11 +279,13 @@ export default function NotificacoesPage() {
       try {
         nextOs = confirmarNotificacaoSetor(structuredClone(osAtual), atorLogado);
       } catch (err) {
-        toast.error('Acesso não permitido', {
-          description:
+        showRuleNotice({
+          title: 'Confirmação Exclusiva do Setor Destinatário',
+          message:
             err instanceof Error
               ? err.message
               : 'Você não tem permissão para confirmar a notificação deste setor.',
+          severity: 'blocked',
         });
         return;
       }
@@ -297,12 +300,19 @@ export default function NotificacoesPage() {
           );
         }
       } catch (err) {
-        toast.error('Falha ao sincronizar confirmação', {
-          description:
-            err instanceof Error
-              ? err.message
-              : 'Não foi possível confirmar esta etapa no servidor.',
-        });
+        const msg =
+          err instanceof Error
+            ? err.message
+            : 'Não foi possível confirmar esta etapa no servidor.';
+        if (isRuleErrorMessage(msg)) {
+          showRuleNotice({
+            title: 'Acesso ou Transição Não Concluída',
+            message: msg,
+            severity: 'blocked',
+          });
+        } else {
+          toast.error('Falha ao sincronizar confirmação', { description: msg });
+        }
         return;
       }
     }
@@ -497,12 +507,14 @@ export default function NotificacoesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Central de Notificações</h1>
-          <p className="text-sm text-muted-foreground">
-            Comunicação Intersetorial (ADM, Almoxarifado e AT), entregas comerciais (07:30h às 19:30h), verificação diária por setor (Seção 5.2) e calibrações (REG-015).
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+            Central de Notificações
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Avisos intersetoriais (ADM, Almoxarifado e AT), rotinas diárias e vencimentos REG-015.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -511,7 +523,7 @@ export default function NotificacoesPage() {
             size="sm"
             onClick={() => setApenasNaoLidas((v) => !v)}
           >
-            {apenasNaoLidas ? 'Mostrar todas' : `Apenas não lidas (${naoLidasCount})`}
+            {apenasNaoLidas ? 'Mostrar todas' : `Não lidas (${naoLidasCount})`}
           </Button>
           <Button
             variant="secondary"
@@ -519,59 +531,51 @@ export default function NotificacoesPage() {
             onClick={marcarTodasComoLidas}
             disabled={naoLidasCount === 0}
           >
-            <CheckCheck className="h-4 w-4" />
-            Marcar todas como lidas
+            <CheckCheck className="h-4 w-4" strokeWidth={1.6} />
+            Marcar todas
           </Button>
         </div>
       </div>
 
-      {/* Destaque para Notificações Intersetoriais da Auditoria Linkmed */}
-      <Card className="border-indigo-500/30 bg-indigo-500/5">
-        <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="flex items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300">
-              <ArrowLeftRight className="h-4 w-4" />
-              Comunicação Intersetorial Oficial — Máquina de Estados de OS (Auditoria Linkmed v2)
-            </CardTitle>
-            <Badge variant="outline" className="font-mono text-[10px]">
-              Horário Comercial: 07:30h às 19:30h (Seg–Sex)
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Notificações automáticas disparadas entre <strong>Setor Administrativo (ADM)</strong>,{' '}
-            <strong>Almoxarifado</strong> e <strong>Assistência Técnica (AT)</strong> durante cada transição da OS
-            (Recebimento Branca, Orçamento Amarela, Aprovação/Reprovação pelo ADM, Peças no Almoxarifado e Conclusão Verde).
-          </p>
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <span className="text-xs font-semibold text-foreground">Filtrar por setor destinatário:</span>
-            {(
-              [
-                { key: 'todos', label: 'Todos os Setores' },
-                { key: 'ALMOXARIFADO', label: 'Almoxarifado' },
-                { key: 'AT', label: 'Assistência Técnica (AT)' },
-                { key: 'ADM', label: 'Administrativo (ADM)' },
-              ] as const
-            ).map((st) => (
-              <Button
-                key={st.key}
-                size="sm"
-                variant={setorFiltro === st.key ? 'default' : 'outline'}
-                className="h-7 text-xs"
-                onClick={() => {
-                  setSetorFiltro(st.key);
-                  if (categoria !== 'intersetorial' && st.key !== 'todos') {
-                    setCategoria('intersetorial');
-                  }
-                }}
-              >
-                {st.label}
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Filtro rápido Intersetorial */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/85 px-4 py-3 shadow-2xs">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <ArrowLeftRight className="h-4 w-4 text-primary" strokeWidth={1.6} />
+          <span className="font-medium text-foreground">Setor destinatário</span>
+          <span className="hidden sm:inline text-muted-foreground/80">
+            · Seg–Sex 07:30h–19:30h
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              { key: 'todos', label: 'Todos' },
+              { key: 'ALMOXARIFADO', label: 'Almoxarifado' },
+              { key: 'AT', label: 'Assistência Técnica' },
+              { key: 'ADM', label: 'Administrativo' },
+            ] as const
+          ).map((st) => (
+            <button
+              key={st.key}
+              type="button"
+              onClick={() => {
+                setSetorFiltro(st.key);
+                if (categoria !== 'intersetorial' && st.key !== 'todos') {
+                  setCategoria('intersetorial');
+                }
+              }}
+              className={cn(
+                'rounded-full px-3 py-1 text-xs font-medium transition-all active:scale-[0.98]',
+                setorFiltro === st.key
+                  ? 'bg-primary text-primary-foreground shadow-2xs'
+                  : 'border border-border/70 bg-background/80 text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Painel Oficial da Seção 5.2: Atividades Obrigatórias Diárias por Setor */}
       <Card className="border-primary/25 bg-primary/5">
@@ -816,30 +820,31 @@ export default function NotificacoesPage() {
                       />
                     )}
 
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold">{item.titulo}</p>
-                        <Badge variant="outline" className="text-[10px]">
-                          {item.origemLabel}
-                        </Badge>
+                        {!lida && (
+                          <span
+                            className="inline-block h-2 w-2 shrink-0 rounded-full bg-primary"
+                            title="Não lida"
+                          />
+                        )}
+                        <p className="text-sm font-semibold text-foreground">{item.titulo}</p>
                         {item.destinatarioSetor && (
                           <Badge variant="secondary" className="font-mono text-[10px]">
-                            Destino: {item.destinatarioSetor}
-                          </Badge>
-                        )}
-                        {!lida && (
-                          <Badge variant="default" className="text-[10px]">
-                            Nova
+                            {item.destinatarioSetor}
                           </Badge>
                         )}
                         {isIntersetorial && (
                           confirmada ? (
                             <Badge variant="success" className="text-[10px]">
-                              Ciência confirmada por {item.confirmadaPorNome}
+                              Ciência: {item.confirmadaPorNome}
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-500/30">
-                              Aguardando confirmação do setor
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-amber-700 border-amber-500/35 dark:text-amber-300"
+                            >
+                              Aguardando ciência
                             </Badge>
                           )
                         )}

@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { showRuleNotice } from '@/lib/rule-notice';
 import type { FormRecord } from '@/core/domain/entities/operacional';
 import {
   FORM_DEFS,
@@ -398,22 +399,31 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
                     </span>
                   </Link>
                 ) : (
-                  <div
+                  <button
+                    type="button"
                     key={et.codigo}
-                    title={et.motivoBloqueio ?? 'Aguardando etapa anterior'}
-                    className="flex cursor-not-allowed flex-col justify-between rounded-lg border border-border/60 bg-muted/40 p-2 text-left text-muted-foreground opacity-70"
+                    onClick={() =>
+                      showRuleNotice({
+                        title: `${et.codigo} Bloqueado pela Trilha POP-020`,
+                        message:
+                          et.motivoBloqueio ??
+                          `Na trilha POP-020 (REG-022 → REG-034 → REG-016 → REG-035), conclua completamente a etapa anterior antes de abrir o ${et.codigo}.`,
+                        severity: 'warning',
+                      })
+                    }
+                    className="flex cursor-pointer flex-col justify-between rounded-xl border border-border/60 bg-muted/40 p-2.5 text-left text-muted-foreground transition-colors hover:border-amber-500/40 hover:bg-amber-500/5"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-[10px] font-bold">{et.codigo}</span>
-                      <Lock className="h-3.5 w-3.5 opacity-70" />
+                      <Lock className="h-3.5 w-3.5 text-amber-600/80 dark:text-amber-400/80" strokeWidth={1.6} />
                     </div>
                     <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-tight">
                       {et.titulo}
                     </p>
-                    <span className="mt-2 text-[10px] font-medium">
-                      Bloqueado (aguardando etapa anterior)
+                    <span className="mt-2 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                      Ver pré-requisito
                     </span>
-                  </div>
+                  </button>
                 ),
               )}
             </div>
