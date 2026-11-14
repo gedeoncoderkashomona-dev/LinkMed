@@ -129,12 +129,15 @@ export function AppSidebar({ user, collapsed, onToggle, mobileOpen = false, onCl
                       className={cn(
                         'ios-touch group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150 touch-manipulation',
                         active
-                          ? 'bg-primary/[0.09] font-medium text-primary'
-                          : 'text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]',
+                          ? 'bg-primary/12 font-semibold text-primary shadow-2xs'
+                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                         collapsed && !isMobile && 'justify-center px-2 py-2.5',
                         isMobile && 'min-h-[44px] py-2.5 text-sm',
                       )}
                     >
+                      {active && (!collapsed || isMobile) && (
+                        <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.55)]" />
+                      )}
                       <Icon
                         strokeWidth={active ? 1.85 : 1.5}
                         className={cn(
@@ -159,12 +162,12 @@ export function AppSidebar({ user, collapsed, onToggle, mobileOpen = false, onCl
       {/* 1. SIDEBAR DESKTOP / NOTEBOOK */}
       <aside
         className={cn(
-          'ios-glass sticky top-0 z-20 hidden h-screen shrink-0 select-none border-r border-black/[0.06] transition-[width] duration-200 dark:border-white/[0.08] md:flex md:flex-col',
+          'ios-glass sticky top-0 z-20 hidden h-screen shrink-0 select-none border-r border-border/80 transition-[width] duration-200 dark:border-emerald-500/15 md:flex md:flex-col',
           collapsed ? 'w-[68px]' : 'w-[244px]',
         )}
       >
         {/* Marca LINKMED */}
-        <div className="flex h-14 items-center border-b border-black/[0.06] px-4 dark:border-white/[0.08]">
+        <div className="flex h-14 items-center border-b border-border/80 px-4 dark:border-emerald-500/15">
           <BrandLogo collapsed={collapsed} size="sm" />
         </div>
 

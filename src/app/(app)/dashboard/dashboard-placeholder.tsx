@@ -120,31 +120,31 @@ export function DashboardPlaceholder() {
 
         <div className="flex flex-wrap items-center gap-2">
           {user?.perfil === 'diretor' && (
-            <div className="flex items-center gap-1 rounded-xl bg-black/[0.045] p-1 dark:bg-white/[0.06]">
+            <div className="flex items-center gap-1 rounded-xl border border-border/80 bg-card/90 p-1 shadow-2xs">
               <button
                 type="button"
                 onClick={() => setVisaoDiretor('estrategica')}
                 className={cn(
-                  'ios-touch flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all touch-manipulation',
+                  'ios-touch flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all touch-manipulation',
                   visaoDiretor === 'estrategica'
-                    ? 'bg-card text-foreground shadow-soft'
-                    : 'text-muted-foreground hover:text-foreground',
+                    ? 'bg-primary text-white shadow-2xs'
+                    : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                 )}
               >
-                <BarChart3 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <BarChart3 className="h-3.5 w-3.5" strokeWidth={1.6} />
                 <span>Estatísticas</span>
               </button>
               <button
                 type="button"
                 onClick={() => setVisaoDiretor('operacional')}
                 className={cn(
-                  'ios-touch flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all touch-manipulation',
+                  'ios-touch flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all touch-manipulation',
                   visaoDiretor === 'operacional'
-                    ? 'bg-card text-foreground shadow-soft'
-                    : 'text-muted-foreground hover:text-foreground',
+                    ? 'bg-primary text-white shadow-2xs'
+                    : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                 )}
               >
-                <LayoutDashboard className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <LayoutDashboard className="h-3.5 w-3.5" strokeWidth={1.6} />
                 <span>Bancada</span>
               </button>
             </div>
@@ -159,13 +159,13 @@ export function DashboardPlaceholder() {
         </div>
       </div>
 
-      {/* Alerta Direto de Continuidade do Processo para o Setor Logado (iOS grouped list) */}
+      {/* Alerta Direto de Continuidade do Processo para o Setor Logado */}
       {ordensPendentesMeuSetor.length > 0 && (
-        <div className="ios-card overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.06] bg-primary/[0.04] px-4 py-3 dark:border-white/[0.08]">
+        <div className="ios-card overflow-hidden border-emerald-500/25">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-gradient-to-r from-primary/12 via-primary/5 to-transparent px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/12 text-primary">
-                <Bell className="h-4 w-4" strokeWidth={1.5} />
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/25">
+                <Bell className="h-4 w-4" strokeWidth={1.6} />
               </div>
               <div>
                 <p className="text-[13px] font-semibold text-foreground">
@@ -182,7 +182,7 @@ export function DashboardPlaceholder() {
               </Button>
             </Link>
           </div>
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+          <div className="divide-y divide-border/70">
             {ordensPendentesMeuSetor.map((o) => {
               const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
               const rotaDireta =

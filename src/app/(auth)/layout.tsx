@@ -2,14 +2,15 @@ import { AppFooter } from '@/components/layout/app-footer';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative flex min-h-screen flex-col justify-between overflow-hidden bg-background">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(60%_100%_at_50%_0%,hsl(var(--primary)/0.07),transparent)]"
-      />
+    <div className="relative flex min-h-screen flex-col justify-between overflow-hidden bg-gradient-to-br from-[#F2F9F4] via-white to-[#E6F4EC] dark:from-[#07160F] dark:via-[#0A1E15] dark:to-emerald-950/50">
+      {/* Fundo decorativo hospitalar nos tons da logo LinkMed */}
+      <div className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-45">
+        <div className="absolute -left-24 -top-24 h-80 w-80 rounded-full bg-[#A4CE39]/25 blur-3xl" />
+        <div className="absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-[#539C6E]/25 blur-3xl" />
+      </div>
 
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-8 sm:px-6">
-        <div className="w-full max-w-[420px]">{children}</div>
+      <div className="relative z-10 flex flex-1 items-center justify-center p-4 sm:px-6">
+        <div className="w-full max-w-md">{children}</div>
       </div>
 
       <div className="relative z-10">

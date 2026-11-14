@@ -34,7 +34,7 @@ export function MobileTabBar({ user, onOpenMenu }: MobileTabBarProps) {
   return (
     <nav
       aria-label="Navegação rápida"
-      className="ios-glass fixed inset-x-0 bottom-0 z-40 border-t border-black/[0.06] px-2 pb-[max(env(safe-area-inset-bottom),0.35rem)] pt-1.5 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.12)] md:hidden dark:border-white/[0.08]"
+      className="ios-glass fixed inset-x-0 bottom-0 z-40 border-t border-border/80 px-2 pb-[max(env(safe-area-inset-bottom),0.35rem)] pt-1.5 shadow-[0_-8px_24px_-12px_rgba(16,185,129,0.16)] md:hidden dark:border-emerald-500/20"
     >
       <div className="mx-auto grid max-w-md grid-cols-5 items-center gap-1">
         {tabs.map((tab) => {

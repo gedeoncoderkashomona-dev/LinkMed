@@ -77,19 +77,18 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="ios-card rounded-[24px] border-black/[0.07] bg-card/95 shadow-ios backdrop-blur-xl dark:border-white/[0.09]">
-      <CardHeader className="items-center space-y-2 pb-4 pt-8 text-center">
-        <img
-          src="/logo-linkmed.jpg"
-          alt="LINKMED — Soluções Médicas"
-          className="h-24 w-auto object-contain"
-        />
-        <p className="text-xs font-medium tracking-tight text-muted-foreground">
-          Sistema de Gestão da Qualidade · POP-020
-        </p>
+    <Card className="border-border/70 bg-white/95 shadow-xl backdrop-blur-xl dark:border-emerald-500/20 dark:bg-card/95">
+      <CardHeader className="items-center pb-4 pt-8 text-center">
+        <div className="dark:rounded-2xl dark:bg-white dark:px-5 dark:py-2.5 dark:shadow-sm">
+          <img
+            src="/logo-linkmed.jpg"
+            alt="LINKMED — Soluções Médicas"
+            className="h-28 w-auto object-contain"
+          />
+        </div>
       </CardHeader>
 
-      <CardContent className="px-6 pb-8 pt-1 sm:px-8">
+      <CardContent className="px-7 pb-8 pt-2">
         {authErrorDetail && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-300">
             <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />

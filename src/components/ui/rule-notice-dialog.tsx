@@ -50,9 +50,9 @@ export function RuleNoticeHost() {
           onInteractOutside={(e) => e.preventDefault()}
           className={cn(
             'fixed left-1/2 top-1/2 z-[101] w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2',
-            'rounded-[24px] border border-black/[0.08] bg-white/95 p-6 shadow-[0_24px_60px_-15px_rgba(15,23,42,0.28)]',
+            'rounded-[24px] border border-border/80 bg-card/95 p-6 shadow-[0_24px_60px_-15px_rgba(15,23,42,0.3)]',
             'backdrop-blur-2xl outline-none data-[state=open]:animate-fade-in',
-            'dark:border-white/[0.1] dark:bg-zinc-900/95 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]',
+            'dark:border-emerald-500/25 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]',
           )}
         >
           <div className="flex flex-col items-center text-center">
@@ -66,26 +66,26 @@ export function RuleNoticeHost() {
             </div>
 
             {current.sectorLabel && (
-              <div className="mb-2.5 inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50/80 px-3 py-1 text-[11px] font-medium tracking-tight text-primary dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <div className="mb-2.5 inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium tracking-tight text-primary dark:text-emerald-300">
                 <Building2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
                 <span className="truncate">Responsável: {current.sectorLabel}</span>
               </div>
             )}
 
-            <DialogPrimitive.Title className="text-[17px] font-semibold leading-snug tracking-tight text-slate-900 dark:text-zinc-100">
+            <DialogPrimitive.Title className="text-[17px] font-semibold leading-snug tracking-tight text-foreground">
               {current.title}
             </DialogPrimitive.Title>
 
-            <DialogPrimitive.Description className="mt-2.5 text-[14px] leading-relaxed text-slate-600 dark:text-zinc-300">
+            <DialogPrimitive.Description className="mt-2.5 text-[14px] leading-relaxed text-muted-foreground">
               {current.message}
             </DialogPrimitive.Description>
 
             {current.hint && (
-              <div className="mt-4 w-full rounded-2xl border border-slate-200/80 bg-slate-50/90 px-4 py-3 text-left dark:border-zinc-800 dark:bg-zinc-800/60">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+              <div className="mt-4 w-full rounded-2xl border border-border/80 bg-muted/50 px-4 py-3 text-left">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   O que fazer para seguir
                 </p>
-                <p className="mt-1 text-[13px] leading-relaxed text-slate-700 dark:text-zinc-200">
+                <p className="mt-1 text-[13px] leading-relaxed text-foreground">
                   {current.hint}
                 </p>
               </div>

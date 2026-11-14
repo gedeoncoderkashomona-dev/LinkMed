@@ -35,21 +35,21 @@ export function AppHeader({ user, onOpenMobile }: Props) {
   }, [user.nomeCompleto]);
 
   return (
-    <header className="ios-glass sticky top-0 z-30 flex h-14 items-center gap-2.5 border-b border-black/[0.06] px-3.5 sm:gap-3 sm:px-6 lg:px-8 dark:border-white/[0.08]">
+    <header className="ios-glass sticky top-0 z-30 flex h-14 items-center gap-2.5 border-b border-border/80 px-3.5 shadow-2xs sm:gap-3 sm:px-6 lg:px-8 dark:border-emerald-500/15">
       {/* Botão menu mobile (smartphones e tablets) */}
       <Button
         variant="ghost"
         size="icon"
         onClick={onOpenMobile}
-        className="h-9 w-9 text-foreground hover:bg-black/[0.05] dark:hover:bg-white/[0.08] md:hidden touch-manipulation"
+        className="h-9 w-9 text-foreground hover:bg-accent md:hidden touch-manipulation"
         aria-label="Abrir menu de navegação"
       >
         <Menu className="h-5 w-5" strokeWidth={1.5} />
       </Button>
 
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <p className="truncate text-[13px] font-normal text-muted-foreground sm:text-sm">
-          Olá, <span className="font-medium text-foreground">{user.nomeCompleto.split(' ')[0]}</span>
+        <p className="truncate text-[13px] font-medium text-muted-foreground sm:text-sm">
+          Olá, <span className="font-semibold text-foreground">{user.nomeCompleto.split(' ')[0]}</span>
         </p>
       </div>
 
@@ -57,7 +57,7 @@ export function AppHeader({ user, onOpenMobile }: Props) {
         variant="outline"
         title={PERFIL_LABEL[user.perfil]}
         className={cn(
-          'hidden border-black/10 px-2.5 py-0.5 text-[11px] font-medium sm:inline-flex dark:border-white/10',
+          'hidden border-border/80 px-2.5 py-0.5 text-[11px] font-semibold shadow-2xs sm:inline-flex',
           PERFIL_COR[user.perfil],
         )}
       >

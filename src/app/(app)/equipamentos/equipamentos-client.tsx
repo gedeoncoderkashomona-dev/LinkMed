@@ -465,13 +465,13 @@ export function EquipamentosClient() {
         </div>
       </div>
 
-      {/* Aguardando ação do setor (iOS grouped list) */}
+      {/* Aguardando ação do setor */}
       {ordensPendentesMeuSetor.length > 0 && (
-        <div className="ios-card overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.06] bg-primary/[0.04] px-4 py-3 dark:border-white/[0.08]">
+        <div className="ios-card overflow-hidden border-emerald-500/25">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-gradient-to-r from-primary/12 via-primary/5 to-transparent px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/12 text-primary">
-                <Bell className="h-4 w-4" strokeWidth={1.5} />
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/25">
+                <Bell className="h-4 w-4" strokeWidth={1.6} />
               </div>
               <div>
                 <p className="text-[13px] font-semibold text-foreground">
@@ -488,7 +488,7 @@ export function EquipamentosClient() {
               </Button>
             </Link>
           </div>
-          <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+          <div className="divide-y divide-border/70">
             {ordensPendentesMeuSetor.map((o) => {
               const isAtiva = fluxoV2?.numeroOs === o.numeroOs;
               const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
@@ -667,7 +667,7 @@ export function EquipamentosClient() {
                           severity: 'warning',
                         })
                       }
-                      className="ios-touch flex items-center justify-between gap-2 rounded-xl border border-black/[0.06] bg-muted/35 px-3 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/60 dark:border-white/[0.07]"
+                      className="ios-touch flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/40 px-3 py-2.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/70"
                     >
                       <div className="min-w-0">
                         <p className="truncate font-medium">{st.titulo}</p>
@@ -680,7 +680,7 @@ export function EquipamentosClient() {
               </div>
 
               {/* Resumo limpo da OS */}
-              <div className="grid gap-3 rounded-xl border border-black/[0.06] bg-muted/25 p-3.5 text-xs sm:grid-cols-3 dark:border-white/[0.07]">
+              <div className="grid gap-3 rounded-xl border border-border/80 bg-muted/30 p-3.5 text-xs sm:grid-cols-3">
                 <div>
                   <span className="text-[11px] font-medium text-muted-foreground">Situação</span>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -1169,7 +1169,7 @@ export function EquipamentosClient() {
               )}
 
               {/* Controles secundários: Correção do Autor (E3), Cancelamento (ADM/AT), Reabertura e Histórico */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] pt-3 dark:border-white/[0.08]">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
@@ -1301,7 +1301,7 @@ export function EquipamentosClient() {
 
               {/* Histórico colapsável e legível */}
               {mostrarHistorico && (
-                <div className="ios-grouped divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                <div className="ios-grouped divide-y divide-border/70">
                   <div className="max-h-52 space-y-0 overflow-y-auto text-[11px]">
                     {fluxoV2.historico.map((ev) => (
                       <div
@@ -1510,7 +1510,7 @@ export function EquipamentosClient() {
 
                     <div
                       className={cn(
-                        'grid gap-2 border-t border-black/[0.05] pt-3 dark:border-white/[0.06]',
+                        'grid gap-2 border-t border-border/70 pt-3',
                         mostrarReg035 ? 'sm:grid-cols-4' : 'sm:grid-cols-3',
                       )}
                     >
@@ -1545,7 +1545,7 @@ export function EquipamentosClient() {
                                 severity: 'warning',
                               })
                             }
-                            className="ios-touch flex min-h-[38px] items-center justify-between gap-2 rounded-xl border border-black/[0.06] bg-muted/35 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/60 dark:border-white/[0.07]"
+                            className="ios-touch flex min-h-[38px] items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/40 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/70"
                           >
                             <span className="truncate">{etapa.label}</span>
                             <Lock className="h-3.5 w-3.5 shrink-0 opacity-75" strokeWidth={1.5} />
