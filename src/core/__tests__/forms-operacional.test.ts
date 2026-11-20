@@ -48,13 +48,28 @@ describe('Módulos Operacionais — Catálogo, Validação e Conformidade (Fase 
     expect(getSecoes(reg035, 'olidef').length).toBeGreaterThan(reg035.secoes.length);
   });
 
-  it('exibe tipo de transporte apenas quando enviado à fábrica no REG-016', () => {
+  it('exibe subcampos do Item 5 conforme marca selecionada no REG-016 (v4)', () => {
     const reg016 = getFormDef('etapas-manutencao')!;
-    const campoTransporte = getCampos(reg016).find((c) => c.name === 'tipo_transporte')!;
-    expect(campoTransporte).toBeDefined();
+    const campoOlidef = getCampos(reg016).find((c) => c.name === 'item5_olidef_laudo')!;
+    const campoTeb = getCampos(reg016).find((c) => c.name === 'item5_teb_laudo')!;
+    const campoCardios = getCampos(reg016).find((c) => c.name === 'item5_cardios_laudo')!;
+    expect(campoOlidef).toBeDefined();
+    expect(campoTeb).toBeDefined();
+    expect(campoCardios).toBeDefined();
 
-    expect(campoVisivel(campoTransporte, { enviado_fabrica: false })).toBe(false);
-    expect(campoVisivel(campoTransporte, { enviado_fabrica: true })).toBe(true);
+    // Sem seleção de item5_marca, nenhum subcampo específico fica obrigatório
+    expect(campoVisivel(campoOlidef, {})).toBe(false);
+    expect(campoVisivel(campoTeb, {})).toBe(false);
+    expect(campoVisivel(campoCardios, {})).toBe(false);
+
+    expect(campoVisivel(campoOlidef, { item5_marca: 'OLIDEF' })).toBe(true);
+    expect(campoVisivel(campoTeb, { item5_marca: 'TEB' })).toBe(true);
+    expect(campoVisivel(campoCardios, { item5_marca: 'Cardios' })).toBe(true);
+
+    // Garantia v4: nenhum campo de etiqueta C/NC/NA ou orçamento antigo bloqueia o REG-016
+    expect(getCampos(reg016).find((c) => c.name === 'orcamento_enviado')).toBeUndefined();
+    expect(getCampos(reg016).find((c) => c.name === 'etiqueta_cinza')).toBeUndefined();
+    expect(getCampos(reg016).find((c) => c.name === 'etiqueta_verde_sem_defeito')).toBeUndefined();
   });
 
   it('valida campos obrigatórios, sanitiza e avalia conformidade nos formulários', () => {
@@ -245,13 +260,12 @@ describe('Máquina de Estados da OS e Etiquetas Coloridas REG-016 (Fase 5)', () 
     expect(os.etapasConcluidas.reg022Recebimento).toBe(true);
     expect(os.etapasConcluidas.reg034Limpeza).toBe(true);
     expect(os.etapasConcluidas.reg016Etapas).toBe(true);
-    expect(os.tagColor).toBe('BROWN');
-    expect(os.tipoTransporte).toBe('correios');
 
     const hydrated = hydrateFormFieldsFromOs('etapas-manutencao', os);
     expect(hydrated.numero_os).toBe('OS-2026-500');
     expect(hydrated.cliente).toBe('Hospital Santa Casa');
-    expect(hydrated.etiqueta_violeta).toBe('C');
+    expect(hydrated.conferencia_pecas).toBe('C');
+    expect(hydrated.item5_marca).toBeUndefined();
   });
 
   it('bloqueia edição de responsáveis em formulários operacionais para usuários comuns (RDC 665/22)', () => {

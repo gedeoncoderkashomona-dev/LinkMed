@@ -184,15 +184,13 @@ export function DashboardPlaceholder() {
           </div>
           <div className="divide-y divide-border/70">
             {ordensPendentesMeuSetor.map((o) => {
-              const ultimaNotif = o.notificacoes?.[o.notificacoes.length - 1];
+              const ultimaNotif = o.notificacoes?.[0];
               const rotaDireta =
-                o.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034'
+                o.v4No === 'AT_REG034' || o.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034'
                   ? `/formularios/limpeza-equipamento?os=${encodeURIComponent(o.numeroOs)}`
-                  : o.etiquetaAtual === 'GREEN' && !o.item5Preenchido
-                    ? `/formularios/checklist-manutencao?os=${encodeURIComponent(o.numeroOs)}`
-                    : o.reg034Preenchido
-                      ? `/formularios/etapas-manutencao?os=${encodeURIComponent(o.numeroOs)}`
-                      : `/equipamentos?os=${encodeURIComponent(o.numeroOs)}`;
+                  : o.v4No === 'AGUARDA_REG016'
+                    ? `/formularios/etapas-manutencao?os=${encodeURIComponent(o.numeroOs)}`
+                    : `/equipamentos?os=${encodeURIComponent(o.numeroOs)}`;
               return (
                 <div
                   key={o.numeroOs}

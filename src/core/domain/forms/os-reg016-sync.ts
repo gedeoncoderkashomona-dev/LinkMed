@@ -212,9 +212,10 @@ export function buildReg016DadosFromOsFluxo(input: Reg016SyncInput): {
   const reg016Def = getFormDef('etapas-manutencao')!;
   const prev = { ...(dadosExistentes ?? {}) };
 
-  const { passoEfetivo, etiquetaEfetiva, rank } = resolverPassoEEtiquetaEfetivos(os);
-  const aprovouOuReprovou = os.orcamentoAprovado !== null;
-  const reprovado = os.orcamentoAprovado === false || etiquetaEfetiva === 'RED';
+  const { passoEfetivo, etiquetaEfetiva } = resolverPassoEEtiquetaEfetivos(os);
+  const v4Bloqueado = os.v4Estado?.item5Bloqueado ?? false;
+  const reprovado =
+    v4Bloqueado || os.orcamentoAprovado === false || etiquetaEfetiva === 'RED';
   const finalizadoVerde =
     (passoEfetivo === 'FINALIZADA' || etiquetaEfetiva === 'GREEN') && !reprovado;
 
@@ -238,96 +239,9 @@ export function buildReg016DadosFromOsFluxo(input: Reg016SyncInput): {
     numero_serie: os.identificacao.numeroSerie || prev.numero_serie || '',
   };
 
-  // 2. Recebimento e Verificação antes da manutenção
-  if (os.reg022Preenchido) {
+  // 2. Conferência inicial
+  if (os.reg022Preenchido && !prev.conferencia_pecas) {
     proximo.conferencia_pecas = 'C';
-  }
-  if (os.reg016Iniciado || rank >= PASSO_RANK.A2_BRANCA_NOTIFICA_AT || etiquetaEfetiva === 'WHITE') {
-    proximo.etiqueta_branca_adm = 'C';
-  }
-  if (
-    os.reg034Preenchido ||
-    rank >= PASSO_RANK.A5_VIOLETA_HIGIENIZADO ||
-    etiquetaEfetiva === 'VIOLET'
-  ) {
-    proximo.etiqueta_violeta = 'C';
-  } else if (!dadosExistentes?.etiqueta_violeta) {
-    delete proximo.etiqueta_violeta;
-  }
-
-  if (rank >= PASSO_RANK.A6_CINZA_ANALISE_CONCLUIDA || os.etiquetaIdentificacaoLiberada) {
-    proximo.etiqueta_cinza = 'C';
-  } else if (!dadosExistentes?.etiqueta_cinza) {
-    delete proximo.etiqueta_cinza;
-  }
-
-  if (
-    os.trataSeGarantia === true &&
-    (rank >= PASSO_RANK.D_AGUARDANDO_CONFIRMACAO_ALMOX ||
-      etiquetaEfetiva === 'ORANGE' ||
-      os.etiquetaAnteriorStandByPecas === 'ORANGE')
-  ) {
-    proximo.etiqueta_laranja = 'C';
-  } else if (os.trataSeGarantia === false) {
-    proximo.etiqueta_laranja = 'NA';
-  } else {
-    delete proximo.etiqueta_laranja;
-  }
-
-  if (prev.etiqueta_verde_sem_defeito === 'C' && finalizadoVerde) {
-    proximo.etiqueta_verde_sem_defeito = 'C';
-  } else if (finalizadoVerde || reprovado) {
-    proximo.etiqueta_verde_sem_defeito = 'NA';
-  }
-
-  // 3. Etapas do checklist (Envio à Fábrica, Orçamento e Peças)
-  proximo.enviado_fabrica = Boolean(os.trataSeEnvioFabrica);
-  if (os.trataSeEnvioFabrica && os.tipoTransporteFabrica) {
-    proximo.tipo_transporte = os.tipoTransporteFabrica;
-  } else if (!os.trataSeEnvioFabrica) {
-    delete proximo.tipo_transporte;
-  }
-
-  if (os.trataSeGarantia === true) {
-    proximo.orcamento_enviado = 'NA';
-    proximo.orcamento_aprovado = 'NA';
-    proximo.orcamento_reprovado = 'NA';
-  } else {
-    if (
-      rank >= PASSO_RANK.C1_AMARELA_AGUARDANDO_RESPOSTA_CLIENTE ||
-      aprovouOuReprovou ||
-      etiquetaEfetiva === 'YELLOW'
-    ) {
-      proximo.orcamento_enviado = 'C';
-    } else {
-      delete proximo.orcamento_enviado;
-    }
-
-    if (os.orcamentoAprovado === true) {
-      proximo.orcamento_aprovado = 'C';
-      proximo.orcamento_reprovado = 'NA';
-    } else if (os.orcamentoAprovado === false) {
-      proximo.orcamento_aprovado = 'NA';
-      proximo.orcamento_reprovado = 'C';
-    } else {
-      delete proximo.orcamento_aprovado;
-      delete proximo.orcamento_reprovado;
-    }
-  }
-
-  if (reprovado) {
-    proximo.falta_itens_estoque = 'NA';
-  } else if (os.statusPecasAlmoxarifado === 'aguardando_pecas' && etiquetaEfetiva === 'BLACK') {
-    proximo.falta_itens_estoque = 'C';
-  } else if (
-    os.statusPecasAlmoxarifado === 'pecas_disponiveis' ||
-    (os.statusPecasAlmoxarifado === 'aguardando_pecas' && etiquetaEfetiva !== 'BLACK')
-  ) {
-    proximo.falta_itens_estoque = 'NA';
-  } else if (finalizadoVerde && !prev.falta_itens_estoque) {
-    proximo.falta_itens_estoque = 'NA';
-  } else if (os.statusPecasAlmoxarifado === null && !dadosExistentes?.falta_itens_estoque) {
-    delete proximo.falta_itens_estoque;
   }
 
   // 4. Verificação após a manutenção
@@ -340,26 +254,21 @@ export function buildReg016DadosFromOsFluxo(input: Reg016SyncInput): {
     proximo.etiqueta_manutencao = prev.etiqueta_manutencao || 'C';
     proximo.lacre_antiviolacao = prev.lacre_antiviolacao || 'C';
     proximo.etiqueta_calibracao = prev.etiqueta_calibracao || (reg030Dados ? 'C' : 'NA');
-    proximo.liberado_qualidade = 'C';
-    proximo.assinatura_tecnico = extrairNomeTecnicoResponsavel(os, prev);
+    if (!prev.assinatura_tecnico) {
+      proximo.assinatura_tecnico = extrairNomeTecnicoResponsavel(os, prev);
+    }
   } else if (reprovado) {
     proximo.inspecao_final = prev.inspecao_final || 'NA';
     proximo.etiqueta_manutencao = prev.etiqueta_manutencao || 'NA';
     proximo.lacre_antiviolacao = prev.lacre_antiviolacao || 'NA';
     proximo.etiqueta_calibracao = prev.etiqueta_calibracao || 'NA';
-    proximo.liberado_qualidade = 'NA';
-    if (!prev.assinatura_tecnico) {
-      proximo.assinatura_tecnico = extrairNomeTecnicoResponsavel(os, prev);
-    }
-  } else if (prev.liberado_qualidade === 'C') {
-    // Se a OS voltou de etapa antes da finalização, não manter liberado_qualidade travado em C
-    delete proximo.liberado_qualidade;
   }
 
   // 5. Item 5 — Etapa Final por Marca (REG 009 / REG 035)
   const bloqueioItem5 = verificarBloqueioItem5Reg016({
     etiquetaAtual: etiquetaEfetiva,
-    orcamentoReprovado: reprovado ? 'C' : prev.orcamento_reprovado,
+    etiquetasEfetivas: os.v4Estado?.etiquetasEfetivas,
+    orcamentoReprovado: reprovado,
   });
 
   if (bloqueioItem5.bloqueado) {
@@ -379,7 +288,7 @@ export function buildReg016DadosFromOsFluxo(input: Reg016SyncInput): {
       Object.assign(proximo, copiados);
     } else if (
       marcaInferida &&
-      (finalizadoVerde || os.item5Preenchido || prev.item5_marca)
+      (os.item5Preenchido || prev.item5_marca)
     ) {
       proximo.item5_marca = marcaInferida;
     }
@@ -403,9 +312,10 @@ export function buildReg016DadosFromOsFluxo(input: Reg016SyncInput): {
   // Anexa metadados leves de sincronização para UI, dossiê e inferirTagDoReg016
   const dadosFinal: Record<string, unknown> = {
     ...sanitizado,
-    etiqueta_atual: os.etiquetaAtual ?? 'WHITE',
+    ...(os.etiquetaAtual ? { etiqueta_atual: os.etiquetaAtual } : {}),
     __sync_origem: 'os_fluxo',
     __sync_passo: os.passoAtual,
+    ...(os.v4No ? { __sync_v4_no: os.v4No } : {}),
     __sync_atualizado_em: new Date().toISOString(),
   };
 
@@ -458,9 +368,10 @@ export function mergeOsFluxoIntoServiceOrders(
       tipoTransporte: os.tipoTransporteFabrica ?? prev?.tipoTransporte,
       tagColor: TAG_SPECS[tagAtual] ? tagAtual : 'WHITE',
       osStatus,
+      v4No: os.v4No,
       estadoGeral: os.estadoGeral,
       setorPendente: os.setorPendente,
-      item5Liberado: os.item5Liberado,
+      item5Liberado: os.v4Estado ? !os.v4Estado.item5Bloqueado : os.item5Liberado,
       etiquetaIdentificacaoLiberada: os.etiquetaIdentificacaoLiberada,
       ultimaAtualizacao,
       etapasConcluidas: {

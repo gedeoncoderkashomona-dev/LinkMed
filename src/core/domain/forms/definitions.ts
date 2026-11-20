@@ -596,16 +596,22 @@ const TEB_ITENS: SectionDef[] = [
 export function verificarBloqueioItem5Reg016(contexto: {
   etiquetaAtual?: string | null;
   orcamentoReprovado?: unknown;
+  etiquetasEfetivas?: string[] | null;
 }): { bloqueado: boolean; motivo: string | null } {
   const tag = String(contexto.etiquetaAtual ?? '').toUpperCase();
+  const efetivasUpper = Array.isArray(contexto.etiquetasEfetivas)
+    ? contexto.etiquetasEfetivas.map((e) => String(e).toUpperCase())
+    : [];
+  const temVermelhaEfetiva =
+    efetivasUpper.includes('VERMELHA') || efetivasUpper.includes('RED');
   const reprovadoMarcado =
     contexto.orcamentoReprovado === 'C' || contexto.orcamentoReprovado === true;
 
-  if (tag === 'RED' || reprovadoMarcado) {
+  if (tag === 'RED' || tag === 'VERMELHA' || temVermelhaEfetiva || reprovadoMarcado) {
     return {
       bloqueado: true,
       motivo:
-        'REG-035 bloqueado pela regra de negócio (POP-020): o equipamento recebeu Etiqueta VERMELHA (orçamento reprovado pelo cliente). O fluxo começa no REG-022 (ADM) e só libera o REG-035 quando a Assistência Técnica (AT) conclui com Etiqueta VERDE.',
+        'Item 5 (REG-009 / REG-035) bloqueado pela regra R01/D4: as etiquetas efetivas desta OS contêm VERMELHA (orçamento não aprovado). Caso tenha sido erro de lançamento, o ADM pode estornar para reabrir a etapa.',
     };
   }
 
@@ -727,7 +733,7 @@ export const FORM_DEFS: FormDef[] = [
     pastaPop: 'POP-020',
     titulo: 'Etapas da Manutenção (Pasta POP 020)',
     descricao:
-      'Checklist oficial de etapas da manutenção (iniciado pelo ADM com etiqueta BRANCA e conduzido pela AT), integrando o Item 5 por marca (Cardios / REG 009, TEB / REG 035 e OLIDEF / REG 035).',
+      'Registro técnico da OS (itens 1 a 4 e Item 5 por marca: Cardios / REG 009, TEB / REG 035 e OLIDEF / REG 035). As etiquetas e transições entre setores são conduzidas pelo painel de fluxo no topo da OS.',
     setores: ['assistencia_tecnica', 'administrativo'],
     perfis: PERFIS_ADM_AT,
     campoData: 'data_abertura',
@@ -746,55 +752,53 @@ export const FORM_DEFS: FormDef[] = [
         ],
       },
       {
-        titulo: '2. Recebimento e Verificação antes da manutenção',
-        descricao: 'C = Conforme · NA = Não se aplica',
+        titulo: '2. Conferência Técnica Inicial e Observações de Bancada',
+        descricao: 'C = Conforme · NC = Não conforme · NA = Não se aplica',
         campos: [
-          cnc('etiqueta_branca_adm', 'ADM: Equipamento deu entrada na empresa — etiqueta BRANCA (Notifica a AT)'),
-          cnc('conferencia_pecas', 'Conferência de todas as peças listadas na OS do sistema ERP para o conserto'),
-          cnc('etiqueta_violeta', 'Após a higienização (REG 034): etiqueta VIOLETA — Equipamento higienizado'),
-          cnc('etiqueta_cinza', 'Após a análise na bancada: etiqueta CINZA — Análise completa (Libera impressão da etiqueta física)'),
-          cnc('etiqueta_laranja', 'Equipamento em garantia: etiqueta LARANJA (automática ao responder SIM)'),
-          cnc('etiqueta_verde_sem_defeito', 'Nenhum defeito identificado: etiqueta VERDE para finalizar o serviço'),
-        ],
-      },
-      {
-        titulo: '3. Etapas do checklist (Envio à Fábrica, Orçamento e Peças)',
-        campos: [
+          cnc(
+            'conferencia_pecas',
+            'Conferência de todas as peças listadas na OS do sistema ERP para o conserto',
+            { required: false },
+          ),
           {
-            name: 'enviado_fabrica',
-            label: 'Equipamento necessita ser encaminhado à fábrica — etiqueta MARROM (Enviado à fábrica)',
-            type: 'checkbox',
+            name: 'observacoes_analise',
+            label: 'Observações da análise técnica / bancada',
+            type: 'textarea',
           },
-          {
-            name: 'tipo_transporte',
-            label: 'Tipo de transporte do envio à fábrica',
-            type: 'select',
-            required: true,
-            options: TIPOS_TRANSPORTE,
-            showIf: { field: 'enviado_fabrica', equals: true },
-            hint: 'Obrigatório quando o equipamento é encaminhado à fábrica (Transportadora Linkmed, Transportadora do cliente ou Correios).',
-          },
-          cnc('orcamento_enviado', 'Orçamento enviado ao cliente pelo ADM: etiqueta AMARELA — Aguardando aprovação'),
-          cnc('orcamento_aprovado', 'Cliente aprovou o orçamento: etiqueta AZUL — Orçamento aprovado'),
-          cnc('orcamento_reprovado', 'Cliente reprovou o orçamento: etiqueta VERMELHA — Não aprovado (Bloqueia o Item 5)'),
-          cnc('falta_itens_estoque', 'Almoxarifado com falta de itens/componentes: etiqueta PRETA — Aguardando peças (Stand-by POP 009)'),
         ],
       },
       {
         titulo: '4. Verificação após a manutenção',
+        descricao: 'Itens finais da intervenção técnica na bancada',
         campos: [
-          cnc('inspecao_final', 'Inspeção final realizada, com confirmação da integridade física do equipamento'),
-          cnc('etiqueta_manutencao', 'Etiqueta de manutenção, contendo a data do conserto, fixada no dispositivo'),
-          cnc('lacre_antiviolacao', 'Lacre antiviolação fixado no dispositivo'),
-          cnc('etiqueta_calibracao', 'Etiqueta de calibração fixada no dispositivo'),
-          cnc('liberado_qualidade', 'Equipamento liberado pelo setor da Qualidade: etiqueta VERDE — Serviço finalizado'),
-          { name: 'assinatura_tecnico', label: 'Assinatura do técnico (nome / protocolo LGPD)', type: 'text', required: true },
+          cnc(
+            'inspecao_final',
+            'Inspeção final realizada, com confirmação da integridade física do equipamento',
+            { required: false },
+          ),
+          cnc(
+            'etiqueta_manutencao',
+            'Etiqueta de manutenção, contendo a data do conserto, fixada no dispositivo',
+            { required: false },
+          ),
+          cnc('lacre_antiviolacao', 'Lacre antiviolação fixado no dispositivo', {
+            required: false,
+          }),
+          cnc('etiqueta_calibracao', 'Etiqueta de calibração fixada no dispositivo', {
+            required: false,
+          }),
+          {
+            name: 'assinatura_tecnico',
+            label: 'Assinatura do técnico (nome / protocolo LGPD)',
+            type: 'text',
+            required: false,
+          },
         ],
       },
       {
         titulo: '5. Item 5 — Etapa Final da Manutenção por Marca (REG 009 / REG 035)',
         descricao:
-          'Seção 3.2: Selecione a marca do equipamento (Cardios → REG 009 | TEB → REG 035 TEB | OLIDEF → REG 035 OLIDEF). Este item fica bloqueado automaticamente caso o orçamento seja reprovado (Etiqueta VERMELHA).',
+          'Decisões D4/D8: Liberado sempre que não houver Etiqueta VERMELHA efetiva. Obrigatório antes de finalizar o serviço (Etiqueta VERDE) pela LinkMed ou quando o envio à fábrica não ocorrer.',
         campos: [
           {
             name: 'item5_marca',

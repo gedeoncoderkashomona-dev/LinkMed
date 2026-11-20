@@ -19,6 +19,13 @@ export const AUDIT_ACTIONS = [
   'nc.create',
   'nc.update_status',
   'training.create',
+  'form.update',
+  'os_v4.acao',
+  'os_v4.cancelar',
+  'os_v4.reabrir',
+  'os_v4.corrigir',
+  'os_v4.estornar',
+  'os_v4.notificacao_confirmada',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

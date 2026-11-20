@@ -1,5 +1,19 @@
 import type { FormTipo, StatusRegistro } from '@/core/domain/forms/definitions';
 
+export interface FormFieldDiff {
+  campo: string;
+  antes: unknown;
+  depois: unknown;
+}
+
+export interface FormEditHistoryEntry {
+  alteradoEm: string;
+  usuarioId: string;
+  usuarioNome: string | null;
+  motivo?: string | null;
+  alteracoes: FormFieldDiff[];
+}
+
 export interface FormRecord {
   id: string;
   tipo: FormTipo;
@@ -11,6 +25,8 @@ export interface FormRecord {
   criadoPor: string;
   criadoPorNome: string | null;
   createdAt: Date;
+  versaoSchema?: number;
+  historicoEdicoes?: FormEditHistoryEntry[];
 }
 
 export const NC_STATUS = ['aberta', 'em_andamento', 'concluida'] as const;

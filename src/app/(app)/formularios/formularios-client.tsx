@@ -89,10 +89,13 @@ export function FormulariosClient() {
   const resumoPop020Geral = React.useMemo(() => {
     const temReg022 = ordensServico.some((o) => o.etapasConcluidas.reg022Recebimento);
     const temReg034 = ordensServico.some((o) => o.etapasConcluidas.reg034Limpeza);
-    const temEtiquetaVerde = ordensServico.some(
-      (o) => o.tagColor === 'GREEN' || o.etapasConcluidas.reg035Manutencao,
+    const temOsLiberadaItem5 = ordensServico.some(
+      (o) =>
+        (o.etapasConcluidas.reg022Recebimento || o.etapasConcluidas.reg016Etapas) &&
+        o.tagColor !== 'RED' &&
+        o.item5Liberado !== false,
     );
-    return { temReg022, temReg034, temEtiquetaVerde };
+    return { temReg022, temReg034, temOsLiberadaItem5 };
   }, [ordensServico]);
 
   const avaliarAcessoFormulario = React.useCallback(
@@ -103,9 +106,10 @@ export function FormulariosClient() {
       }
 
       if (tipo === 'limpeza-equipamento') {
-        const candidata = ordensServico.find(
-          (o) => o.etapasConcluidas.reg022Recebimento && !o.etapasConcluidas.reg034Limpeza,
-        ) ?? ordensServico.find((o) => o.etapasConcluidas.reg022Recebimento);
+        const candidata =
+          ordensServico.find(
+            (o) => o.etapasConcluidas.reg022Recebimento && !o.etapasConcluidas.reg034Limpeza,
+          ) ?? ordensServico.find((o) => o.etapasConcluidas.reg022Recebimento);
         if (!resumoPop020Geral.temReg022) {
           return {
             visivel: true,
@@ -118,13 +122,15 @@ export function FormulariosClient() {
       }
 
       if (tipo === 'etapas-manutencao') {
-        const candidata = ordensServico.find((o) => o.etapasConcluidas.reg034Limpeza);
-        if (!resumoPop020Geral.temReg034) {
+        const candidata =
+          ordensServico.find((o) => o.etapasConcluidas.reg022Recebimento) ??
+          ordensServico[0];
+        if (!resumoPop020Geral.temReg022 && ordensServico.length === 0) {
           return {
             visivel: true,
             liberado: false,
             motivo:
-              'Pré-requisito obrigatório (POP-020): conclua antes o REG-034 (Higienização) de alguma OS.',
+              'Pré-requisito obrigatório (POP-020): cadastre primeiro a OS no REG-022 (ADM) para abrir o REG-016.',
             osDestinoChave: null,
           };
         }
@@ -132,13 +138,18 @@ export function FormulariosClient() {
       }
 
       if (tipo === 'checklist-manutencao') {
-        const candidataVerde = ordensServico.find((o) => o.tagColor === 'GREEN');
-        if (!candidataVerde) {
+        const candidata = ordensServico.find(
+          (o) =>
+            (o.etapasConcluidas.reg022Recebimento || o.etapasConcluidas.reg016Etapas) &&
+            o.tagColor !== 'RED' &&
+            o.item5Liberado !== false,
+        );
+        if (!candidata) {
           return {
-            visivel: false,
+            visivel: true,
             liberado: false,
             motivo:
-              'Pré-requisito obrigatório (POP-020): o REG-035 só fica visível após acionar a Etiqueta VERDE no REG-016.',
+              'Decisão D8 (v4): o Item 5 (REG-009 / REG-035) requer uma OS iniciada no REG-022 e sem Etiqueta VERMELHA no histórico efetivo.',
             osDestinoChave: null,
           };
         }
@@ -146,7 +157,7 @@ export function FormulariosClient() {
           visivel: true,
           liberado: true,
           motivo: null,
-          osDestinoChave: candidataVerde.chave,
+          osDestinoChave: candidata.chave,
         };
       }
 
@@ -268,7 +279,7 @@ export function FormulariosClient() {
                 if (item.codigo === 'REG-022') return false;
                 if (
                   (item.codigo === 'REG-035' || item.codigo === 'REG-009') &&
-                  !resumoPop020Geral.temEtiquetaVerde
+                  !resumoPop020Geral.temOsLiberadaItem5
                 ) {
                   return false;
                 }
@@ -276,7 +287,7 @@ export function FormulariosClient() {
               }
               if (
                 (item.codigo === 'REG-035' || item.codigo === 'REG-009') &&
-                !resumoPop020Geral.temEtiquetaVerde
+                !resumoPop020Geral.temOsLiberadaItem5
               ) {
                 return false;
               }

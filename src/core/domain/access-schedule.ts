@@ -1,13 +1,15 @@
 import type { Perfil } from './enums/user';
+import { FERIADOS_DATAS_PADRAO } from './os-v4/feriados';
+import { dentroDaJanela, entregarEm } from './os-v4/nucleo';
 
 /**
- * Regras de horário de acesso e entrega de notificações (Seção 5.1 do Documento Principal
- * e Seção 3 do Documento de Apoio).
+ * Regras de horário de acesso e entrega de notificações (Seção 5.1 / Decisão D9 / R06).
  *
- * - Horário permitido para AT, ADM e Almoxarifado: Segunda a sexta-feira, das 07:30h às 19:30h (America/Sao_Paulo).
- * - Fora do horário, os logins (AT, ADM e Almoxarifado) não conseguem acessar a plataforma e veem mensagem explicativa.
- * - Notificações só são entregues dentro do horário. As geradas fora dele ficam retidas e são entregues
- *   na abertura seguinte (07:30h do próximo dia útil).
+ * - Horário permitido para AT, ADM e Almoxarifado: Segunda a sexta-feira, das 07:30h às 19:30h
+ *   (America/Recife, 19:30 exclusivo, excluindo feriados nacionais e Recife/PE configuráveis).
+ * - Ativação controlada por `NEXT_PUBLIC_ENABLE_SCHEDULE_RESTRICTION === 'true'` (liberada
+ *   em homologação 24h até validação final do cliente, mantida nos testes unitários).
+ * - Notificações geradas fora da janela ficam retidas até às 07:30h do próximo dia útil.
  */
 
 export type SetorOperacional = 'AT' | 'ADM' | 'ALMOXARIFADO';
@@ -18,10 +20,10 @@ export const SETOR_OPERACIONAL_LABEL: Record<SetorOperacional, string> = {
   ALMOXARIFADO: 'Almoxarifado',
 };
 
-const TZ = 'America/Sao_Paulo';
+const TZ = 'America/Recife';
 
 export const HORARIO_ABERTURA_MINUTOS = 7 * 60 + 30; // 07:30 = 450 min
-export const HORARIO_FECHAMENTO_MINUTOS = 19 * 60 + 30; // 19:30 = 1170 min
+export const HORARIO_FECHAMENTO_MINUTOS = 19 * 60 + 30; // 19:30 = 1170 min (exclusivo no v4)
 
 const DIAS_SEMANA_PT = [
   'Domingo',
@@ -106,79 +108,37 @@ export function isPerfilRestritoHorario(perfil: Perfil): boolean {
 }
 
 /**
- * Verifica se o instante `now` está dentro do horário de funcionamento:
- * Segunda a Sexta-feira, das 07:30h às 19:30h (horário de Brasília).
+ * Verifica se o instante `now` está dentro do horário de funcionamento (R06 / D9):
+ * Segunda a Sexta-feira (não feriado), das 07:30h às 19:30h (America/Recife, 19:30 exclusivo).
  */
-export function estaDentroDoHorarioComercial(now: Date = new Date()): boolean {
-  const { diaSemana, hora, minuto } = extrairPartesBR(now);
-  if (diaSemana === 0 || diaSemana === 6) {
-    return false;
-  }
-  const minutosDoDia = hora * 60 + minuto;
-  return (
-    minutosDoDia >= HORARIO_ABERTURA_MINUTOS &&
-    minutosDoDia <= HORARIO_FECHAMENTO_MINUTOS
-  );
-}
-
-/**
- * Constrói um Date UTC correspondente a YYYY-MM-DD HH:MM:00 no fuso America/Sao_Paulo (-03:00).
- */
-function criarDataBrasilia(ano: number, mes: number, dia: number, hora = 7, minuto = 30): Date {
-  // 07:30 BRT (-03:00) = 10:30 UTC
-  return new Date(Date.UTC(ano, mes - 1, dia, hora + 3, minuto, 0, 0));
+export function estaDentroDoHorarioComercial(
+  now: Date = new Date(),
+  feriados: string[] = FERIADOS_DATAS_PADRAO,
+): boolean {
+  return dentroDaJanela(now, feriados);
 }
 
 /**
  * Calcula o instante exato em que uma notificação deve ser entregue.
- * - Se gerada dentro do horário comercial (seg-sex, 07:30 às 19:30), é entregue imediatamente.
- * - Se gerada fora do horário, fica retida e é entregue às 07:30h do próximo dia útil.
+ * - Se gerada dentro do horário comercial (seg-sex não feriado, 07:30 às 19:30), é entregue imediatamente.
+ * - Se gerada fora do horário, fica retida e é entregue às 07:30h do próximo dia útil (não feriado).
  */
-export function calcularEntregaNotificacao(criadaEm: Date = new Date()): {
+export function calcularEntregaNotificacao(
+  criadaEm: Date = new Date(),
+  feriados: string[] = FERIADOS_DATAS_PADRAO,
+): {
   retida: boolean;
   entregueEm: Date;
   entregueEmBR: string;
 } {
-  if (estaDentroDoHorarioComercial(criadaEm)) {
-    const p = extrairPartesBR(criadaEm);
-    return {
-      retida: false,
-      entregueEm: new Date(criadaEm.getTime()),
-      entregueEmBR: `${p.dataISO.split('-').reverse().join('/')} às ${p.horaFormatada}h`,
-    };
-  }
-
-  const { ano, mes, dia, diaSemana, hora, minuto } = extrairPartesBR(criadaEm);
-  const minutosDoDia = hora * 60 + minuto;
-
-  let diasParaSomar = 0;
-
-  if (diaSemana >= 1 && diaSemana <= 5 && minutosDoDia < HORARIO_ABERTURA_MINUTOS) {
-    // Mesmo dia útil às 07:30h
-    diasParaSomar = 0;
-  } else if (diaSemana >= 1 && diaSemana <= 4 && minutosDoDia > HORARIO_FECHAMENTO_MINUTOS) {
-    // Segunda a quinta após 19:30h -> dia seguinte às 07:30h
-    diasParaSomar = 1;
-  } else if (diaSemana === 5 && minutosDoDia > HORARIO_FECHAMENTO_MINUTOS) {
-    // Sexta após 19:30h -> segunda-feira (+3 dias) às 07:30h
-    diasParaSomar = 3;
-  } else if (diaSemana === 6) {
-    // Sábado -> segunda-feira (+2 dias) às 07:30h
-    diasParaSomar = 2;
-  } else if (diaSemana === 0) {
-    // Domingo -> segunda-feira (+1 dia) às 07:30h
-    diasParaSomar = 1;
-  }
-
-  const baseUtc = new Date(Date.UTC(ano, mes - 1, dia + diasParaSomar, 10, 30, 0, 0));
-  const pEntrega = extrairPartesBR(baseUtc);
-  const entregueEm = criarDataBrasilia(pEntrega.ano, pEntrega.mes, pEntrega.dia, 7, 30);
+  const dentro = estaDentroDoHorarioComercial(criadaEm, feriados);
+  const entregueEm = dentro ? new Date(criadaEm.getTime()) : entregarEm(criadaEm, feriados);
   const pFinal = extrairPartesBR(entregueEm);
 
   return {
-    retida: true,
+    retida: !dentro,
     entregueEm,
-    entregueEmBR: `${pFinal.dataISO.split('-').reverse().join('/')} às 07:30h`,
+    entregueEmBR: `${pFinal.dataISO.split('-').reverse().join('/')} às ${dentro ? `${pFinal.horaFormatada}h` : '07:30h'}`,
   };
 }
 
@@ -193,29 +153,29 @@ export interface ResultadoVerificacaoHorario {
 }
 
 /**
- * Verifica se um perfil pode acessar a plataforma no instante informado (Caso de teste T14).
+ * Verifica se um perfil pode acessar a plataforma no instante informado.
  */
 export function verificarAcessoHorario(
   perfil: Perfil,
   now: Date = new Date(),
+  options?: { enforceSchedule?: boolean; feriados?: string[] },
 ): ResultadoVerificacaoHorario {
   const partes = extrairPartesBR(now);
   const diaSemanaLabel = DIAS_SEMANA_PT[partes.diaSemana] ?? 'Dia';
   const horaAtualLabel = `${partes.horaFormatada}h`;
   const setor = perfilParaSetorOperacional(perfil);
   const restrito = isPerfilRestritoHorario(perfil);
+  const feriados = options?.feriados ?? FERIADOS_DATAS_PADRAO;
 
   // MODO TESTE / HOMOLOGAÇÃO:
-  // Libera acesso 24h para o cliente Filipe testar a plataforma livremente à noite ou fins de semana.
-  // Permanece ativo nos testes automatizados (Vitest) para garantir conformidade contínua.
+  // Libera acesso 24h até validação final do cliente; após validação ativar NEXT_PUBLIC_ENABLE_SCHEDULE_RESTRICTION=true.
   const forcarAtivacao =
-    typeof process !== 'undefined' &&
-    process.env.NEXT_PUBLIC_ENABLE_SCHEDULE_RESTRICTION === 'true';
+    options?.enforceSchedule ??
+    ((typeof process !== 'undefined' &&
+      process.env.NEXT_PUBLIC_ENABLE_SCHEDULE_RESTRICTION === 'true') ||
+      (typeof process !== 'undefined' && Boolean(process.env.VITEST)));
 
-  const emAmbienteTesteAutomatizado =
-    typeof process !== 'undefined' && Boolean(process.env.VITEST);
-
-  if (!forcarAtivacao && !emAmbienteTesteAutomatizado) {
+  if (!forcarAtivacao) {
     return {
       permitido: true,
       restritoPorPerfil: restrito,
@@ -223,7 +183,7 @@ export function verificarAcessoHorario(
       mensagem: null,
       diaSemanaLabel,
       horaAtualLabel,
-      proximaAberturaLabel: 'Acesso liberado 24h para testes da equipe LinkMed',
+      proximaAberturaLabel: 'Acesso liberado 24h durante validação',
     };
   }
 
@@ -239,7 +199,7 @@ export function verificarAcessoHorario(
     };
   }
 
-  if (estaDentroDoHorarioComercial(now)) {
+  if (estaDentroDoHorarioComercial(now, feriados)) {
     return {
       permitido: true,
       restritoPorPerfil: true,
@@ -251,14 +211,14 @@ export function verificarAcessoHorario(
     };
   }
 
-  const entrega = calcularEntregaNotificacao(now);
+  const entrega = calcularEntregaNotificacao(now, feriados);
   const nomeSetor = setor ? SETOR_OPERACIONAL_LABEL[setor] : 'Operacional';
 
   return {
     permitido: false,
     restritoPorPerfil: true,
     setor,
-    mensagem: `Acesso restrito fora do horário de expediente para o perfil ${nomeSetor}. O uso da plataforma é permitido exclusivamente de segunda a sexta-feira, das 07:30h às 19:30h.`,
+    mensagem: `Acesso permitido de segunda a sexta, das 07:30 às 19:30 (${nomeSetor}).`,
     diaSemanaLabel,
     horaAtualLabel,
     proximaAberturaLabel: entrega.entregueEmBR,

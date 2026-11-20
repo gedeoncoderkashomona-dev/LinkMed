@@ -34,18 +34,16 @@ import {
   type NivelAlerta,
 } from '@/core/domain/forms/alerts';
 import {
-  confirmarNotificacaoSetor,
   normalizarNumeroOs,
-  type AtorAcaoOS,
   type OrdemServicoFluxoState,
   type SetorOperacional,
 } from '@/core/domain/forms/os-workflow';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import {
+  useConfirmOsNotification,
   useFormsOverview,
   useNcs,
   useOsFlowList,
-  useSaveOsFlow,
   useTreinamentos,
 } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
@@ -141,7 +139,7 @@ export default function NotificacoesPage() {
   const { data: user } = useCurrentUser();
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
   const { data: osFlowData } = useOsFlowList();
-  const saveOsFlow = useSaveOsFlow();
+  const confirmOsNotif = useConfirmOsNotification();
   const { data: ncsData, isLoading: loadingNcs } = useNcs();
   const { data: popsData, isLoading: loadingPops } = usePops();
   const { data: treinosData, isLoading: loadingTreinos } = useTreinamentos();
@@ -260,58 +258,36 @@ export default function NotificacoesPage() {
     const osAtual = item.numeroOs
       ? osFluxoPorNumero.get(normalizarNumeroOs(item.numeroOs)) ?? null
       : null;
-    const notifAbertaNoServidor =
+
+    // Extrai o id real da notificação no servidor (`os:dyn:<uuid>` -> `<uuid>`)
+    const notifIdReal = item.id.startsWith('os:dyn:')
+      ? item.id.slice('os:dyn:'.length)
+      : item.id;
+    const existeNoServidor =
       osAtual &&
       (osAtual.notificacoes ?? []).some(
-        (n) => !n.confirmadaEm && (`os:dyn:${n.id}` === item.id || n.destinatario === item.destinatarioSetor),
+        (n) => !n.confirmadaEm && n.id === notifIdReal,
       );
 
-    let nextOsPersistida: OrdemServicoFluxoState | null = osAtual;
-
-    if (osAtual && notifAbertaNoServidor) {
-      const atorLogado: AtorAcaoOS = {
-        usuarioId: user?.id ?? 'usr-operador',
-        usuarioNome: nome,
-        perfil: user?.perfil ?? 'tecnico',
-      };
-
-      let nextOs: OrdemServicoFluxoState;
+    if (osAtual && existeNoServidor) {
       try {
-        nextOs = confirmarNotificacaoSetor(structuredClone(osAtual), atorLogado);
-      } catch (err) {
-        showRuleNotice({
-          title: 'Confirmação Exclusiva do Setor Destinatário',
-          message:
-            err instanceof Error
-              ? err.message
-              : 'Você não tem permissão para confirmar a notificação deste setor.',
-          severity: 'blocked',
+        await confirmOsNotif.mutateAsync({
+          notificacaoId: notifIdReal,
+          numeroOs: osAtual.numeroOs,
         });
-        return;
-      }
-
-      try {
-        await saveOsFlow.mutateAsync(nextOs);
-        nextOsPersistida = nextOs;
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(
-            `${STORAGE_KEY_FLUXO_PREFIX}${nextOs.numeroOs}`,
-            JSON.stringify(nextOs),
-          );
-        }
       } catch (err) {
         const msg =
           err instanceof Error
             ? err.message
-            : 'Não foi possível confirmar esta etapa no servidor.';
+            : 'Não foi possível confirmar ciência desta notificação.';
         if (isRuleErrorMessage(msg)) {
           showRuleNotice({
-            title: 'Acesso ou Transição Não Concluída',
+            title: 'Confirmação Exclusiva do Setor Destinatário',
             message: msg,
             severity: 'blocked',
           });
         } else {
-          toast.error('Falha ao sincronizar confirmação', { description: msg });
+          toast.error('Falha ao confirmar ciência', { description: msg });
         }
         return;
       }
@@ -328,20 +304,8 @@ export default function NotificacoesPage() {
       salvarLidas([...lidasIds, item.id]);
     }
 
-    if (nextOsPersistida?.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034') {
-      toast.success('Ciência confirmada! Abrindo REG-034 (Limpeza e Higienização)...', {
-        description: `OS ${nextOsPersistida.numeroOs} confirmada por ${nome}. Marque o equipamento como higienizado para liberar o REG-016.`,
-      });
-      router.push(
-        `/formularios/limpeza-equipamento?os=${encodeURIComponent(nextOsPersistida.numeroOs)}`,
-      );
-      return;
-    }
-
-    toast.success('Ciência confirmada', {
-      description: osAtual && notifAbertaNoServidor
-        ? `OS ${item.numeroOs ?? ''} avançada e REG-016 sincronizado por ${nome}.`
-        : `Notificação ${item.numeroOs ?? ''} registrada como recebida por ${nome}.`,
+    toast.success('Ciência confirmada (etapa da OS mantida — R08)', {
+      description: `Notificação ${item.numeroOs ?? ''} confirmada por ${nome}. Acesse a OS para executar a próxima ação.`,
     });
   }
 
@@ -870,7 +834,7 @@ export default function NotificacoesPage() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={saveOsFlow.isPending}
+                        disabled={confirmOsNotif.isPending}
                         onClick={() => void confirmarCienciaIntersetorial(item)}
                         className="text-xs"
                       >

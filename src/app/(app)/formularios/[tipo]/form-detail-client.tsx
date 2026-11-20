@@ -71,20 +71,12 @@ import {
   type FormDef,
   type InstrumentoMedicaoReg015,
 } from '@/core/domain/forms/definitions';
+import { OsFlowPanel } from '@/components/operacional/os-flow-panel';
 import {
   aggregateServiceOrders,
-  admMarcarEtiquetaBrancaNoReg016,
-  atFinalizarServicoComEtiquetaVerde,
-  atMarcarEtiquetaCinzaAnaliseCompleta,
-  atMarcarEtiquetaVioleta,
-  atPreencherItem5Reg016,
-  atRegistrarReg034,
-  confirmarNotificacaoSetor,
-  criarOsViaReg022,
   normalizarNumeroOs,
   TAG_SPECS,
   verificarPreRequisitoFormularioPop020,
-  type OrdemServicoFluxoState,
   type ServiceOrderContext,
 } from '@/core/domain/forms/os-workflow';
 import {
@@ -100,7 +92,7 @@ import {
   useFormRecords,
   useFormsOverview,
   useOsFlowList,
-  useSaveOsFlow,
+  useUpdateFormRecord,
 } from '@/hooks/use-operacional';
 import { isRuleErrorMessage, showRuleNotice } from '@/lib/rule-notice';
 import { cn } from '@/lib/utils';
@@ -199,8 +191,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   const { data: overviewData } = useFormsOverview();
   const { data: osFlowData } = useOsFlowList();
   const createRecord = useCreateFormRecord();
-  const saveOsFlow = useSaveOsFlow();
+  const updateRecord = useUpdateFormRecord();
   const createNc = useCreateNc();
+  const [editingRecord, setEditingRecord] = React.useState<FormRecord | null>(null);
+  const [motivoEdicao, setMotivoEdicao] = React.useState('');
 
   const [subtipo, setSubtipo] = React.useState<string | null>(() => {
     if (subtipoParam && def?.subtipos?.some((s) => s.key === subtipoParam)) {
@@ -370,7 +364,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
           def.tipo === 'etapas-manutencao' &&
           !next.item5_marca &&
           osCtx.marca &&
-          (osCtx.tagColor === 'GREEN' || osCtx.etapasConcluidas.reg035Manutencao) &&
+          osCtx.etapasConcluidas.reg035Manutencao &&
           osCtx.item5Liberado !== false
         ) {
           next.item5_marca = normalizarMarcaParaItem5(osCtx.marca);
@@ -436,18 +430,40 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     ) {
       const motivo =
         def.tipo === 'checklist-manutencao'
-          ? 'POP-020: Selecione uma OS com Etiqueta VERDE (serviço finalizado no REG-016) para preencher o REG-035 / REG-009.'
+          ? 'POP-020: Selecione uma OS iniciada no REG-022 (e sem Etiqueta VERMELHA) para preencher o REG-035 / REG-009.'
           : def.tipo === 'etapas-manutencao'
-            ? 'POP-020: Selecione uma OS cuja Limpeza e Higienização (REG-034) já foi concluída para preencher o REG-016.'
+            ? 'POP-020: Selecione uma OS aberta no REG-022 (ADM) para abrir ou complementar o REG-016.'
             : 'POP-020: Selecione uma OS registrada pelo setor Administrativo (ADM) no REG-022 para preencher o REG-034.';
       return {
-        visivel: def.tipo !== 'checklist-manutencao',
+        visivel: true,
         liberado: false,
         motivo,
       };
     }
+    if (def.tipo === 'etapas-manutencao' && osContextoAtual) {
+      const fluxoCorrespondente = (osFlowData?.ordens ?? []).find(
+        (o) => normalizarNumeroOs(o.numeroOs) === normalizarNumeroOs(osContextoAtual.numeroOs),
+      );
+      if (fluxoCorrespondente) {
+        return verificarPreRequisitoFormularioPop020(def.tipo, {
+          ...osContextoAtual,
+          v4No: fluxoCorrespondente.v4No,
+        });
+      }
+      return { visivel: true, liberado: true, motivo: null };
+    }
+    if (def.tipo === 'checklist-manutencao' && osContextoAtual) {
+      const fluxoCorrespondente = (osFlowData?.ordens ?? []).find(
+        (o) => normalizarNumeroOs(o.numeroOs) === normalizarNumeroOs(osContextoAtual.numeroOs),
+      );
+      return verificarPreRequisitoFormularioPop020(def.tipo, {
+        ...osContextoAtual,
+        v4No: fluxoCorrespondente?.v4No,
+        item5Liberado: !(fluxoCorrespondente?.v4Estado?.item5Bloqueado ?? osContextoAtual.tagColor === 'RED'),
+      });
+    }
     return verificarPreRequisitoFormularioPop020(def.tipo, osContextoAtual);
-  }, [def, osContextoAtual]);
+  }, [def, osContextoAtual, osFlowData?.ordens]);
 
   const marcaTravadaPeloAdm = Boolean(
     def &&
@@ -468,14 +484,27 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     );
   }, [def?.tipo, dados.numero_os, ordensServico]);
 
-  // Verificação de bloqueio do Item 5 no REG-016 (Seção 3.2)
+  // Verificação de bloqueio do Item 5 no REG-016 (Decisão D4: apenas Etiqueta VERMELHA efetiva)
+  const fluxoAtualDoForm = React.useMemo(() => {
+    const numOs = normalizarNumeroOs(String(dados.numero_os ?? osContextoAtual?.numeroOs ?? ''));
+    if (!numOs) return null;
+    return (
+      (osFlowData?.ordens ?? []).find((o) => normalizarNumeroOs(o.numeroOs) === numOs) ?? null
+    );
+  }, [dados.numero_os, osContextoAtual?.numeroOs, osFlowData?.ordens]);
+
   const bloqueioItem5 = React.useMemo(() => {
     if (def?.tipo !== 'etapas-manutencao') return { bloqueado: false, motivo: null };
     return verificarBloqueioItem5Reg016({
       etiquetaAtual: osContextoAtual?.tagColor ?? String(dados.etiqueta_atual ?? ''),
-      orcamentoReprovado: dados.orcamento_reprovado,
+      etiquetasEfetivas: fluxoAtualDoForm?.v4Estado?.etiquetasEfetivas,
     });
-  }, [def?.tipo, osContextoAtual?.tagColor, dados.etiqueta_atual, dados.orcamento_reprovado]);
+  }, [
+    def?.tipo,
+    osContextoAtual?.tagColor,
+    dados.etiqueta_atual,
+    fluxoAtualDoForm?.v4Estado?.etiquetasEfetivas,
+  ]);
 
   if (!def) {
     return (
@@ -493,65 +522,19 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   }
 
   const secoesBrutas = getSecoes(def, subtipo);
-  const secoes = (() => {
-    if (def.tipo !== 'etapas-manutencao' || !user) return secoesBrutas;
-    if (user.perfil === 'adm') {
-      const camposAdm = new Set([
-        'etiqueta_branca_adm',
-        'conferencia_pecas',
-        'orcamento_enviado',
-        'orcamento_aprovado',
-        'orcamento_reprovado',
-      ]);
-      return secoesBrutas
-        .filter((s) => !s.titulo.startsWith('4.') && !s.titulo.startsWith('5.'))
-        .map((s) => {
-          if (s.titulo.startsWith('2.') || s.titulo.startsWith('3.')) {
-            return {
-              ...s,
-              titulo: `${s.titulo} (Exclusivo Setor ADM)`,
-              campos: s.campos.filter((c) => camposAdm.has(c.name)),
-            };
-          }
-          return s;
-        })
-        .filter((s) => s.campos.length > 0);
-    }
-    if (user.perfil === 'tecnico') {
-      const camposExclusivosAdm = new Set([
-        'etiqueta_branca_adm',
-        'orcamento_enviado',
-        'orcamento_aprovado',
-        'orcamento_reprovado',
-      ]);
-      return secoesBrutas
-        .map((s) => {
-          if (s.titulo.startsWith('2.') || s.titulo.startsWith('3.')) {
-            return {
-              ...s,
-              titulo: `${s.titulo} (Etapas da Assistência Técnica — AT)`,
-              campos: s.campos.filter((c) => !camposExclusivosAdm.has(c.name)),
-            };
-          }
-          return s;
-        })
-        .filter((s) => s.campos.length > 0);
-    }
-    return secoesBrutas;
-  })();
+  const secoes = secoesBrutas;
   const statusPrevia = avaliarConformidade(def, subtipo, dados);
   const podeEditarGovernanca = canEditGovernance(user?.perfil);
 
-  // Verifica se a análise do equipamento está concluída (Etiqueta CINZA) para liberar impressão da Etiqueta Física (Seção 5.4)
+  // Verifica se a OS atingiu a etapa de análise completa para liberar impressão da Etiqueta Física (v4: PERG_GARANTIA em diante)
   const analiseConcluidaParaEtiqueta =
     def.tipo === 'etapas-manutencao' &&
-    (dados.etiqueta_cinza === 'C' ||
-      Boolean(
-        osContextoAtual &&
-          ['GRAY', 'ORANGE', 'BROWN', 'YELLOW', 'BLUE', 'BLACK', 'RED', 'GREEN'].includes(
-            osContextoAtual.tagColor,
-          ),
-      ));
+    Boolean(
+      osContextoAtual &&
+        ['GRAY', 'ORANGE', 'BROWN', 'YELLOW', 'BLUE', 'BLACK', 'RED', 'GREEN'].includes(
+          osContextoAtual.tagColor,
+        ),
+    );
 
   const todosCamposVisiveis = secoes.flatMap((s) =>
     s.campos.filter((c) => campoVisivel(c, dados)),
@@ -627,10 +610,6 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         const prox = calcularProximaCalibracao(dtCal, freq > 0 ? freq : 12);
         if (prox) next.validade = prox;
       }
-      if (def?.tipo === 'etapas-manutencao' && name === 'orcamento_reprovado' && value === 'C') {
-        // Se marcar orçamento reprovado (VERMELHA), limpa o Item 5
-        delete next.item5_marca;
-      }
       return next;
     });
 
@@ -644,18 +623,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   }
 
   function preencherTodosConformes(secaoCampos: FieldDef[], tituloSecao: string) {
-    const naoMarcarAutomatico = new Set([
-      'orcamento_reprovado',
-      'falta_itens_estoque',
-      'etiqueta_cinza',
-      'liberado_qualidade',
-      'etiqueta_verde_sem_defeito',
-    ]);
     setDados((prev) => {
       const next = { ...prev };
       for (const c of secaoCampos) {
         if (c.type === 'cnc' && !next[c.name]) {
-          if (naoMarcarAutomatico.has(c.name)) continue;
           next[c.name] = 'C';
         }
       }
@@ -721,14 +692,24 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     }
 
     try {
-      const res = await createRecord.mutateAsync({
-        tipo: def.tipo,
-        subtipo,
-        dados,
-      });
+      const res = editingRecord
+        ? await updateRecord.mutateAsync({
+            id: editingRecord.id,
+            tipo: def.tipo,
+            subtipo,
+            dados,
+            motivo: motivoEdicao.trim() || 'Edição via formulário',
+          })
+        : await createRecord.mutateAsync({
+            tipo: def.tipo,
+            subtipo,
+            dados,
+          });
 
       const labelStatus = STATUS_REGISTRO_LABEL[res.record.status];
-      const msg = `Registro ${def.reg ?? def.titulo} salvo com sucesso (${labelStatus})!`;
+      const msg = editingRecord
+        ? `Registro ${def.reg ?? def.titulo} atualizado com sucesso (${labelStatus})!`
+        : `Registro ${def.reg ?? def.titulo} salvo com sucesso (${labelStatus})!`;
       setSucessoMsg(msg);
 
       toast.success(msg, {
@@ -736,169 +717,6 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
       });
 
       const numOsSalvo = String(dados.numero_os ?? osContextoAtual?.numeroOs ?? '').trim();
-      const atorAtual = {
-        usuarioId: user?.id ?? 'usr-operacional',
-        usuarioNome: user?.nomeCompleto ?? 'Colaborador Autorizado',
-        perfil: (user?.perfil ?? 'tecnico') as 'adm' | 'tecnico' | 'estoquista' | 'gestor' | 'diretor',
-      };
-
-      // Sincronização automática do Motor de Fluxo Intersetorial v2 (servidor prioritário + fallback local)
-      if (numOsSalvo) {
-        const storageKey = `regulaon:os_fluxo_v2:${numOsSalvo}`;
-        if (res.osFluxo) {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(storageKey, JSON.stringify(res.osFluxo));
-            localStorage.setItem('regulaon:os_fluxo_v2:current', res.osFluxo.numeroOs);
-          }
-        } else {
-          try {
-            const numOsNorm = normalizarNumeroOs(numOsSalvo);
-            let osState: OrdemServicoFluxoState | null =
-              (osFlowData?.ordens ?? []).find(
-                (o) => normalizarNumeroOs(o.numeroOs) === numOsNorm,
-              ) ?? null;
-
-            if (!osState) {
-              const r = await fetch(`/api/os-flow?os=${encodeURIComponent(numOsSalvo)}`);
-              const j = await r.json();
-              if (j?.data?.os) osState = j.data.os as OrdemServicoFluxoState;
-            }
-
-            if (def.tipo === 'inspecao-recebimento') {
-              const criada = criarOsViaReg022({
-                numeroOs: numOsSalvo,
-                identificacao: {
-                  cliente: String(dados.cliente ?? 'Cliente Hospitalar'),
-                  equipamento: String(dados.equipamento ?? 'Equipamento Médico'),
-                  marca: String(dados.marca ?? 'Cardios'),
-                  modelo: String(dados.modelo ?? 'Modelo Padrão'),
-                  numeroSerie: String(dados.numero_serie ?? 'S/N'),
-                  acessorios: String(dados.acessorios ?? ''),
-                  relatoCliente: String(dados.relato_cliente ?? ''),
-                },
-                ator: atorAtual,
-              });
-              osState = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
-                ? admMarcarEtiquetaBrancaNoReg016(criada, atorAtual)
-                : criada;
-            } else if (def.tipo === 'limpeza-equipamento' && osState) {
-              let nextOs = structuredClone(osState);
-              if (
-                nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
-                ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil)
-              ) {
-                nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
-              }
-              if (
-                nextOs.passoAtual === 'A2_BRANCA_NOTIFICA_AT' &&
-                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
-              ) {
-                nextOs = confirmarNotificacaoSetor(nextOs, atorAtual);
-              }
-              if (
-                nextOs.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034' &&
-                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
-              ) {
-                nextOs = atRegistrarReg034(nextOs, atorAtual);
-              }
-              if (
-                nextOs.passoAtual === 'A4_REG034_PREENCHIDO' &&
-                dados.limpeza_realizada === 'C' &&
-                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
-              ) {
-                nextOs = atMarcarEtiquetaVioleta(nextOs, atorAtual);
-              }
-              osState = nextOs;
-            } else if (def.tipo === 'checklist-manutencao' && osState) {
-              if (
-                osState.etiquetaAtual === 'GREEN' &&
-                !osState.item5Preenchido &&
-                ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil)
-              ) {
-                osState = atPreencherItem5Reg016(
-                  structuredClone(osState),
-                  osState.identificacao.marca,
-                  atorAtual,
-                );
-              }
-            } else if (def.tipo === 'etapas-manutencao' && osState) {
-              let nextOs = structuredClone(osState);
-              const podeAdm = ['adm', 'diretor', 'gestor'].includes(atorAtual.perfil);
-              const podeAt = ['tecnico', 'diretor', 'gestor'].includes(atorAtual.perfil);
-
-              if (
-                nextOs.passoAtual === 'A1_CRIADA_NO_REG022' &&
-                dados.etiqueta_branca_adm === 'C' &&
-                podeAdm
-              ) {
-                nextOs = admMarcarEtiquetaBrancaNoReg016(nextOs, atorAtual);
-              }
-              if (
-                nextOs.passoAtual === 'A4_REG034_PREENCHIDO' &&
-                dados.etiqueta_violeta === 'C' &&
-                podeAt
-              ) {
-                nextOs = atMarcarEtiquetaVioleta(nextOs, atorAtual);
-              }
-              if (
-                nextOs.passoAtual === 'A5_VIOLETA_HIGIENIZADO' &&
-                dados.etiqueta_cinza === 'C' &&
-                podeAt
-              ) {
-                nextOs = atMarcarEtiquetaCinzaAnaliseCompleta(nextOs, atorAtual);
-              }
-              if (
-                nextOs.etiquetaAtual !== 'GREEN' &&
-                nextOs.etiquetaAtual !== 'RED' &&
-                (dados.liberado_qualidade === 'C' || dados.etiqueta_verde_sem_defeito === 'C') &&
-                podeAt
-              ) {
-                nextOs = atFinalizarServicoComEtiquetaVerde(nextOs, atorAtual);
-              }
-              if (
-                dados.item5_marca &&
-                !nextOs.item5Preenchido &&
-                nextOs.etiquetaAtual === 'GREEN' &&
-                podeAt
-              ) {
-                nextOs = atPreencherItem5Reg016(nextOs, nextOs.identificacao.marca, atorAtual);
-              }
-              osState = nextOs;
-            }
-
-            if (osState) {
-              await saveOsFlow.mutateAsync(osState);
-              if (typeof window !== 'undefined') {
-                localStorage.setItem(storageKey, JSON.stringify(osState));
-                localStorage.setItem('regulaon:os_fluxo_v2:current', osState.numeroOs);
-              }
-            }
-          } catch (syncErr) {
-            toast.warning('Registro salvo, mas houve pendência ao sincronizar etapa do fluxo', {
-              description:
-                syncErr instanceof Error
-                  ? syncErr.message
-                  : 'Verifique a etapa atual da OS na fila de equipamentos.',
-            });
-          }
-        }
-      }
-
-      // Seção 5.4: se no REG 016 concluiu a análise (etiqueta cinza), abre opção de imprimir etiqueta física
-      const abriuModalEtiqueta =
-        def.tipo === 'etapas-manutencao' && dados.etiqueta_cinza === 'C';
-      if (abriuModalEtiqueta) {
-        setEtiquetaPrintDados({
-          numeroOs: String(dados.numero_os ?? osContextoAtual?.numeroOs ?? 'S/N'),
-          cliente: String(dados.cliente ?? osContextoAtual?.cliente ?? '—'),
-          equipamento: String(dados.equipamento ?? osContextoAtual?.equipamento ?? '—'),
-          marca: String(dados.marca ?? osContextoAtual?.marca ?? '—'),
-          modelo: String(dados.modelo ?? osContextoAtual?.modelo ?? '—'),
-          numeroSerie: String(dados.numero_serie ?? osContextoAtual?.numeroSerie ?? '—'),
-          dataAnalise: agoraBR().data,
-          statusEtiqueta: 'CINZA — Análise Completa',
-        });
-      }
 
       if (res.record.status === 'nao_conforme') {
         const ident =
@@ -912,27 +730,24 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         setNcSugerida(null);
       }
 
-      setDados(criarValoresIniciais(def, subtipo, user?.nomeCompleto));
-      setOsSelecionada('');
-
-      if (!abriuModalEtiqueta) {
-        const verdeAcionadaAgora =
-          def.tipo === 'etapas-manutencao' &&
-          (dados.liberado_qualidade === 'C' || dados.etiqueta_verde_sem_defeito === 'C');
+      if (editingRecord) {
+        setEditingRecord(null);
+        setMotivoEdicao('');
+      } else if (def.tipo !== 'etapas-manutencao') {
+        setDados(criarValoresIniciais(def, subtipo, user?.nomeCompleto));
+        setOsSelecionada('');
 
         const destino = !FORMS_COM_OS.has(def.tipo)
           ? '/formularios'
-          : def.tipo === 'limpeza-equipamento' && numOsSalvo
+          : (def.tipo === 'inspecao-recebimento' || def.tipo === 'limpeza-equipamento') && numOsSalvo
             ? `/formularios/etapas-manutencao?os=${encodeURIComponent(numOsSalvo)}`
-            : verdeAcionadaAgora && numOsSalvo
-              ? `/formularios/checklist-manutencao?os=${encodeURIComponent(numOsSalvo)}`
-              : numOsSalvo
-                ? `/equipamentos?os=${encodeURIComponent(numOsSalvo)}`
-                : '/equipamentos';
+            : numOsSalvo
+              ? `/equipamentos?os=${encodeURIComponent(numOsSalvo)}`
+              : '/equipamentos';
 
         setTimeout(() => {
           router.push(destino);
-        }, 700);
+        }, 650);
       }
     } catch (err) {
       if (err instanceof ApiValidationError) {
@@ -1475,9 +1290,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                   )}
                 {osContextoAtual &&
                   def.tipo === 'checklist-manutencao' &&
-                  osContextoAtual.etapasConcluidas.reg034Limpeza &&
-                  osContextoAtual.tagColor !== 'GREEN' &&
-                  osContextoAtual.tagColor !== 'RED' && (
+                  osContextoAtual.tagColor === 'RED' && (
                     <Link
                       href={`/formularios/etapas-manutencao?os=${encodeURIComponent(osContextoAtual.chave)}`}
                     >
@@ -1649,21 +1462,55 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         </div>
       )}
 
+      {/* Painel Oficial do Fluxo v4 embutido no REG-016 (Seção 8) */}
+      {def.tipo === 'etapas-manutencao' &&
+        Boolean(String(dados.numero_os ?? osContextoAtual?.numeroOs ?? '').trim()) && (
+          <OsFlowPanel
+            compact
+            numeroOs={String(dados.numero_os ?? osContextoAtual?.numeroOs ?? '').trim()}
+            onAbrirDossie={(os) => setDossierOs(os.numeroOs)}
+          />
+        )}
+
+      {/* Barra de modo edição */}
+      {editingRecord && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs">
+          <div className="space-y-0.5">
+            <p className="font-semibold text-amber-800 dark:text-amber-300">
+              Editando registro existente (#{editingRecord.id.slice(0, 8)}) — Histórico de edições ativo
+            </p>
+            <p className="text-muted-foreground">
+              Alterações salvas ficam registradas com autor, data e diff dos campos.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              placeholder="Motivo da edição (opcional)"
+              value={motivoEdicao}
+              onChange={(e) => setMotivoEdicao(e.target.value)}
+              className="h-8 w-56 text-xs"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditingRecord(null);
+                setMotivoEdicao('');
+                setDados(criarValoresIniciais(def, subtipo, user?.nomeCompleto));
+              }}
+            >
+              Cancelar edição
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Formulário Gamificado por Seções */}
       <form onSubmit={handleSubmit} className="space-y-5">
         {secoes.map((secao, idx) => {
           const isSecaoItem5Reg016 =
             def.tipo === 'etapas-manutencao' && secao.titulo.startsWith('5. Item 5');
-          const etiquetaVerdeNoForm =
-            def.tipo === 'etapas-manutencao' &&
-            (dados.liberado_qualidade === 'C' ||
-              dados.etiqueta_verde_sem_defeito === 'C' ||
-              osContextoAtual?.tagColor === 'GREEN' ||
-              Boolean(osContextoAtual?.etapasConcluidas.reg035Manutencao));
-          // REG 035 / Item 5 só aparece quando Etiqueta VERDE estiver acionada (ou bloqueado em VERMELHO para explicitar o bloqueio)
-          if (isSecaoItem5Reg016 && !bloqueioItem5.bloqueado && !etiquetaVerdeNoForm) {
-            return null;
-          }
           const camposVisiveis = secao.campos.filter((c) => campoVisivel(c, dados));
           if (camposVisiveis.length === 0) return null;
           const temCnc = camposVisiveis.some((c) => c.type === 'cnc');
@@ -2022,13 +1869,18 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
             </Button>
             <Button
               type="submit"
-              disabled={createRecord.isPending || !prereqPop020.liberado}
+              disabled={createRecord.isPending || updateRecord.isPending || !prereqPop020.liberado}
               className="min-w-44"
             >
-              {createRecord.isPending ? (
+              {createRecord.isPending || updateRecord.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Validando e salvando...
+                </>
+              ) : editingRecord ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Salvar Edição
                 </>
               ) : (
                 <>
@@ -2119,15 +1971,34 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                         {rec.criadoPorNome ? ` · por ${rec.criadoPorNome}` : ''}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRegistroDetalhe(rec)}
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      Ver detalhes
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {def.perfis.includes(user?.perfil ?? 'tecnico') && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingRecord(rec);
+                            setMotivoEdicao('');
+                            if (rec.subtipo) setSubtipo(rec.subtipo);
+                            setDados({ ...rec.dados });
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            toast.info(`Registro #${rec.id.slice(0, 8)} carregado para edição.`);
+                          }}
+                        >
+                          Editar
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setRegistroDetalhe(rec)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Ver detalhes
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
@@ -2177,6 +2048,42 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                   );
                 })}
               </div>
+              {registroDetalhe.historicoEdicoes &&
+                registroDetalhe.historicoEdicoes.length > 0 && (
+                  <div className="mt-3 space-y-2 border-t border-border pt-3">
+                    <p className="text-xs font-semibold text-foreground">
+                      Histórico de edições ({registroDetalhe.historicoEdicoes.length})
+                    </p>
+                    <div className="space-y-1.5">
+                      {registroDetalhe.historicoEdicoes.map((ed, idx) => (
+                        <div
+                          key={`${ed.alteradoEm}-${idx}`}
+                          className="rounded-md border border-border/70 bg-muted/20 p-2 text-[11px]"
+                        >
+                          <div className="flex flex-wrap justify-between gap-1 font-medium text-foreground">
+                            <span>{ed.usuarioNome ?? ed.usuarioId}</span>
+                            <span className="text-muted-foreground">
+                              {new Date(ed.alteradoEm).toLocaleString('pt-BR')}
+                            </span>
+                          </div>
+                          {ed.motivo && (
+                            <p className="text-muted-foreground">Motivo: {ed.motivo}</p>
+                          )}
+                          {ed.alteracoes.length > 0 && (
+                            <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                              {ed.alteracoes.slice(0, 8).map((ch) => (
+                                <li key={ch.campo}>
+                                  <strong>{ch.campo}</strong>: {String(ch.antes ?? '—')} →{' '}
+                                  {String(ch.depois ?? '—')}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               <DialogFooter>
                 <Button variant="outline" onClick={() => setRegistroDetalhe(null)}>
                   Fechar

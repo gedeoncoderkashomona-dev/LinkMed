@@ -21,7 +21,9 @@ export async function requireAuth(options: RequireAuthOptions = {}): Promise<Acc
   const payload = await tokenService.verifyAccess(token);
 
   if (!options.ignorarJanelaHorario) {
-    const checagem = verificarAcessoHorario(payload.perfil);
+    const checagem = verificarAcessoHorario(payload.perfil, new Date(), {
+      enforceSchedule: process.env.NEXT_PUBLIC_ENABLE_SCHEDULE_RESTRICTION === 'true',
+    });
     if (!checagem.permitido) {
       throw new ForbiddenError(
         checagem.mensagem ??

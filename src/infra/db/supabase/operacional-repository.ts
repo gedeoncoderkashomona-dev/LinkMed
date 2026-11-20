@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type {
   AvaliacaoEficaciaParticipante,
+  FormEditHistoryEntry,
+  FormFieldDiff,
   FormRecord,
   Nc,
   NcOrigem,
@@ -19,6 +21,7 @@ import type {
   CreateTreinamentoInput,
   ListFormRecordsFilter,
   OperacionalRepository,
+  UpdateFormRecordInput,
   UpdateTreinamentoEficaciaInput,
 } from '@/core/repositories/operacional-repository';
 import { supabaseAdmin } from './client';
@@ -32,6 +35,8 @@ interface FormRecordRow {
   data_ref: string;
   criado_por: string;
   created_at: string;
+  versao_schema?: number | null;
+  historico_edicoes?: FormEditHistoryEntry[] | null;
   criador?: { nome_completo: string } | null;
 }
 
@@ -144,7 +149,30 @@ function toFormRecord(row: FormRecordRow): FormRecord {
     criadoPor: row.criado_por,
     criadoPorNome: row.criador?.nome_completo ?? null,
     createdAt: new Date(row.created_at),
+    versaoSchema: typeof row.versao_schema === 'number' ? row.versao_schema : undefined,
+    historicoEdicoes: Array.isArray(row.historico_edicoes) ? row.historico_edicoes : undefined,
   };
+}
+
+function computeFormFieldDiff(
+  antes: Record<string, unknown>,
+  depois: Record<string, unknown>,
+  statusAntes?: StatusRegistro,
+  statusDepois?: StatusRegistro,
+): FormFieldDiff[] {
+  const diffs: FormFieldDiff[] = [];
+  if (statusAntes && statusDepois && statusAntes !== statusDepois) {
+    diffs.push({ campo: 'status', antes: statusAntes, depois: statusDepois });
+  }
+  const keys = Array.from(new Set([...Object.keys(antes), ...Object.keys(depois)]));
+  for (const key of keys) {
+    const prevVal = antes[key] ?? null;
+    const nextVal = depois[key] ?? null;
+    if (JSON.stringify(prevVal) !== JSON.stringify(nextVal)) {
+      diffs.push({ campo: key, antes: prevVal, depois: nextVal });
+    }
+  }
+  return diffs;
 }
 
 function toNc(row: NcRow): Nc {
@@ -210,6 +238,8 @@ interface StoredFormPayload {
   dataRef: string;
   criadoPor: string;
   createdAt: string;
+  versaoSchema?: number;
+  historicoEdicoes?: FormEditHistoryEntry[];
 }
 
 interface StoredNcPayload {
@@ -268,23 +298,51 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
   async createFormRecord(input: CreateFormRecordInput): Promise<FormRecord> {
     const id = randomUUID();
     const agora = new Date().toISOString();
+    const versaoSchema = input.versaoSchema ?? 2;
+    const historicoEdicoes = input.historicoEdicoes ?? [];
 
-    const { data, error } = await supabaseAdmin
-      .from('form_records')
-      .insert({
-        id,
-        tipo: input.tipo,
-        subtipo: input.subtipo,
-        dados: input.dados,
-        status: input.status,
-        data_ref: input.dataRef,
-        criado_por: input.criadoPor,
-      })
-      .select(FORM_COLS)
-      .single();
+    if (hasFormRecordsTable !== false) {
+      let { data, error } = await supabaseAdmin
+        .from('form_records')
+        .insert({
+          id,
+          tipo: input.tipo,
+          subtipo: input.subtipo,
+          dados: input.dados,
+          status: input.status,
+          data_ref: input.dataRef,
+          criado_por: input.criadoPor,
+          versao_schema: versaoSchema,
+          historico_edicoes: historicoEdicoes,
+        })
+        .select(FORM_COLS)
+        .single();
 
-    if (!error && data) {
-      return toFormRecord(data as unknown as FormRecordRow);
+      if (error && error.code === 'PGRST204') {
+        const retry = await supabaseAdmin
+          .from('form_records')
+          .insert({
+            id,
+            tipo: input.tipo,
+            subtipo: input.subtipo,
+            dados: input.dados,
+            status: input.status,
+            data_ref: input.dataRef,
+            criado_por: input.criadoPor,
+          })
+          .select(FORM_COLS)
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (!error && data) {
+        hasFormRecordsTable = true;
+        return toFormRecord(data as unknown as FormRecordRow);
+      }
+      if (error?.code === 'PGRST205') {
+        hasFormRecordsTable = false;
+      }
     }
 
     // Fallback resiliente no Supabase PostgreSQL (audit_logs) caso a tabela form_records ainda não esteja no cache
@@ -297,6 +355,8 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
       dataRef: input.dataRef,
       criadoPor: input.criadoPor,
       createdAt: agora,
+      versaoSchema,
+      historicoEdicoes,
     };
 
     const { error: storeError } = await supabaseAdmin.from('audit_logs').insert({
@@ -324,37 +384,106 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
     };
   }
 
-  async findLatestFormRecordByOs(tipo: FormTipo, numeroOs: string): Promise<FormRecord | null> {
-    const norm = String(numeroOs ?? '').trim().toUpperCase();
-    if (!norm) return null;
-    const records = await this.listFormRecords({ tipo, limit: 500 });
-    return (
-      records.find((r) => String(r.dados?.numero_os ?? '').trim().toUpperCase() === norm) ?? null
-    );
-  }
-
-  async upsertFormRecordByOs(
-    tipo: FormTipo,
-    numeroOs: string,
-    input: Omit<CreateFormRecordInput, 'tipo'>,
-  ): Promise<FormRecord> {
-    const existing = await this.findLatestFormRecordByOs(tipo, numeroOs);
-    if (!existing) {
-      return this.createFormRecord({ tipo, ...input });
-    }
-
+  async findFormRecordById(id: string): Promise<FormRecord | null> {
+    if (!id) return null;
     if (hasFormRecordsTable !== false) {
       const { data, error } = await supabaseAdmin
         .from('form_records')
+        .select(FORM_COLS)
+        .eq('id', id)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (!error && data) {
+        hasFormRecordsTable = true;
+        return toFormRecord(data as unknown as FormRecordRow);
+      }
+      if (error?.code === 'PGRST205') {
+        hasFormRecordsTable = false;
+      }
+    }
+
+    const { data: storeRow } = await supabaseAdmin
+      .from('audit_logs')
+      .select('*')
+      .eq('entidade', '__db_form_record__')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!storeRow) return null;
+    const row = storeRow as AuditStoreRow<StoredFormPayload>;
+    const p = row.dados_depois;
+    if (!p || !p.tipo) return null;
+    const userNames = await fetchUserNamesMap([p.criadoPor || row.usuario_id]);
+    return {
+      id: p.id || row.id,
+      tipo: p.tipo,
+      subtipo: p.subtipo ?? null,
+      dados: p.dados ?? {},
+      status: p.status ?? 'conforme',
+      dataRef: p.dataRef,
+      criadoPor: p.criadoPor || row.usuario_id,
+      criadoPorNome: userNames.get(p.criadoPor || row.usuario_id) ?? null,
+      createdAt: new Date(p.createdAt || row.created_at),
+      versaoSchema: p.versaoSchema,
+      historicoEdicoes: Array.isArray(p.historicoEdicoes) ? p.historicoEdicoes : [],
+    };
+  }
+
+  async updateFormRecordById(id: string, input: UpdateFormRecordInput): Promise<FormRecord | null> {
+    const existing = await this.findFormRecordById(id);
+    if (!existing) return null;
+
+    const agora = new Date().toISOString();
+    const diffs = computeFormFieldDiff(existing.dados, input.dados, existing.status, input.status);
+    const historicoAtual = Array.isArray(existing.historicoEdicoes)
+      ? [...existing.historicoEdicoes]
+      : [];
+
+    if (diffs.length > 0 || input.motivo) {
+      historicoAtual.push({
+        alteradoEm: agora,
+        usuarioId: input.alteradoPorId,
+        usuarioNome: input.alteradoPorNome ?? null,
+        motivo: input.motivo ?? null,
+        alteracoes: diffs,
+      });
+    }
+
+    const nextSubtipo = input.subtipo !== undefined ? input.subtipo : existing.subtipo;
+    const nextDataRef = input.dataRef ?? existing.dataRef;
+    const nextVersao = input.versaoSchema ?? existing.versaoSchema ?? 2;
+
+    if (hasFormRecordsTable !== false) {
+      let { data, error } = await supabaseAdmin
+        .from('form_records')
         .update({
-          subtipo: input.subtipo,
+          subtipo: nextSubtipo,
           dados: input.dados,
           status: input.status,
-          data_ref: input.dataRef,
+          data_ref: nextDataRef,
+          versao_schema: nextVersao,
+          historico_edicoes: historicoAtual,
         })
         .eq('id', existing.id)
         .select(FORM_COLS)
         .maybeSingle();
+
+      if (error && error.code === 'PGRST204') {
+        const retry = await supabaseAdmin
+          .from('form_records')
+          .update({
+            subtipo: nextSubtipo,
+            dados: input.dados,
+            status: input.status,
+            data_ref: nextDataRef,
+          })
+          .eq('id', existing.id)
+          .select(FORM_COLS)
+          .maybeSingle();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (!error && data) {
         hasFormRecordsTable = true;
@@ -376,10 +505,12 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
       const row = storeRow as AuditStoreRow<StoredFormPayload>;
       const updatedPayload: StoredFormPayload = {
         ...row.dados_depois,
-        subtipo: input.subtipo,
+        subtipo: nextSubtipo,
         dados: input.dados,
         status: input.status,
-        dataRef: input.dataRef,
+        dataRef: nextDataRef,
+        versaoSchema: nextVersao,
+        historicoEdicoes: historicoAtual,
       };
       const { error: updateErr } = await supabaseAdmin
         .from('audit_logs')
@@ -398,6 +529,38 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
         createdAt: new Date(updatedPayload.createdAt || row.created_at),
       };
     }
+
+    return null;
+  }
+
+  async findLatestFormRecordByOs(tipo: FormTipo, numeroOs: string): Promise<FormRecord | null> {
+    const norm = String(numeroOs ?? '').trim().toUpperCase();
+    if (!norm) return null;
+    const records = await this.listFormRecords({ tipo, limit: 500 });
+    return (
+      records.find((r) => String(r.dados?.numero_os ?? '').trim().toUpperCase() === norm) ?? null
+    );
+  }
+
+  async upsertFormRecordByOs(
+    tipo: FormTipo,
+    numeroOs: string,
+    input: Omit<CreateFormRecordInput, 'tipo'>,
+  ): Promise<FormRecord> {
+    const existing = await this.findLatestFormRecordByOs(tipo, numeroOs);
+    if (!existing) {
+      return this.createFormRecord({ tipo, ...input });
+    }
+
+    const updated = await this.updateFormRecordById(existing.id, {
+      subtipo: input.subtipo,
+      dados: input.dados,
+      status: input.status,
+      dataRef: input.dataRef,
+      alteradoPorId: input.criadoPor,
+      versaoSchema: input.versaoSchema,
+    });
+    if (updated) return updated;
 
     return this.createFormRecord({ tipo, ...input });
   }
@@ -454,6 +617,8 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
           criadoPor: p.criadoPor || r.usuario_id,
           criadoPorNome: userNames.get(p.criadoPor || r.usuario_id) ?? null,
           createdAt: new Date(p.createdAt || r.created_at),
+          versaoSchema: p.versaoSchema,
+          historicoEdicoes: Array.isArray(p.historicoEdicoes) ? p.historicoEdicoes : [],
         };
       })
       .filter((x): x is FormRecord => x !== null)

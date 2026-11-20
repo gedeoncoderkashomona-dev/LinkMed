@@ -152,7 +152,7 @@ describe('Subtarefa 1 — Perfis (ADM, AT, Almoxarifado), Horário de Acesso (T1
     for (const perfil of ['tecnico', 'adm', 'estoquista'] as const) {
       const res20h = verificarAcessoHorario(perfil, quarta20h);
       expect(res20h.permitido).toBe(false);
-      expect(res20h.mensagem).toContain('07:30h às 19:30h');
+      expect(res20h.mensagem).toContain('07:30 às 19:30');
       expect(res20h.proximaAberturaLabel).toBe('29/10/2026 às 07:30h');
     }
 
@@ -162,14 +162,17 @@ describe('Subtarefa 1 — Perfis (ADM, AT, Almoxarifado), Horário de Acesso (T1
     for (const perfil of ['tecnico', 'adm', 'estoquista'] as const) {
       const resSabado = verificarAcessoHorario(perfil, sabado10h);
       expect(resSabado.permitido).toBe(false);
-      expect(resSabado.mensagem).toContain('segunda a sexta-feira');
-      expect(resSabado.proximaAberturaLabel).toBe('02/11/2026 às 07:30h');
+      expect(resSabado.mensagem).toContain('segunda a sexta');
+      // 02/11/2026 é Finados (feriado nacional) -> próxima abertura útil em 03/11/2026 às 07:30h
+      expect(resSabado.proximaAberturaLabel).toBe('03/11/2026 às 07:30h');
     }
 
     const quarta0730 = new Date('2026-10-28T10:30:00Z');
-    const quarta1930 = new Date('2026-10-28T22:30:00Z');
+    const quarta1929 = new Date('2026-10-28T22:29:00Z');
+    const quarta1930Exclusivo = new Date('2026-10-28T22:30:00Z');
     expect(verificarAcessoHorario('tecnico', quarta0730).permitido).toBe(true);
-    expect(verificarAcessoHorario('adm', quarta1930).permitido).toBe(true);
+    expect(verificarAcessoHorario('adm', quarta1929).permitido).toBe(true);
+    expect(verificarAcessoHorario('adm', quarta1930Exclusivo).permitido).toBe(false);
     expect(verificarAcessoHorario('estoquista', quarta0730).permitido).toBe(true);
   });
 
@@ -183,9 +186,9 @@ describe('Subtarefa 1 — Perfis (ADM, AT, Almoxarifado), Horário de Acesso (T1
     expect(notificacaoEstaEntregue(entregaQuinta.entregueEm, new Date('2026-10-29T10:30:00Z'))).toBe(true);
 
     const geradaSexta20h = new Date('2026-10-30T23:00:00Z');
-    const entregaSegunda = calcularEntregaNotificacao(geradaSexta20h);
-    expect(entregaSegunda.retida).toBe(true);
-    expect(entregaSegunda.entregueEmBR).toBe('02/11/2026 às 07:30h');
+    const entregaProximoUtil = calcularEntregaNotificacao(geradaSexta20h);
+    expect(entregaProximoUtil.retida).toBe(true);
+    expect(entregaProximoUtil.entregueEmBR).toBe('03/11/2026 às 07:30h');
   });
 });
 
@@ -678,6 +681,7 @@ describe('Subtarefa 4 — Módulo Treinamentos (Seção 2) e Catálogo Oficial d
         },
       }).liberado,
     ).toBe(true);
+    // Seção 7 / v4: REG-016 editável a partir de AGUARDA_REG016 (após REG-022)
     expect(
       verificarPreRequisitoFormularioPop020('etapas-manutencao', {
         tagColor: 'WHITE',
@@ -688,7 +692,8 @@ describe('Subtarefa 4 — Módulo Treinamentos (Seção 2) e Catálogo Oficial d
           reg035Manutencao: false,
         },
       }).liberado,
-    ).toBe(false);
+    ).toBe(true);
+    // Decisão D8 (v4): Item 5 (REG-035 / REG-009) liberado ANTES da Etiqueta VERDE se não houve VERMELHA
     expect(
       verificarPreRequisitoFormularioPop020('checklist-manutencao', {
         tagColor: 'GRAY',
@@ -699,10 +704,12 @@ describe('Subtarefa 4 — Módulo Treinamentos (Seção 2) e Catálogo Oficial d
           reg035Manutencao: false,
         },
       }).liberado,
-    ).toBe(false);
+    ).toBe(true);
+    // Bloqueia Item 5 apenas quando etiqueta efetiva contém VERMELHA (RED)
     expect(
       verificarPreRequisitoFormularioPop020('checklist-manutencao', {
-        tagColor: 'GREEN',
+        tagColor: 'RED',
+        item5Liberado: false,
         etapasConcluidas: {
           reg022Recebimento: true,
           reg034Limpeza: true,
@@ -710,7 +717,7 @@ describe('Subtarefa 4 — Módulo Treinamentos (Seção 2) e Catálogo Oficial d
           reg035Manutencao: false,
         },
       }).liberado,
-    ).toBe(true);
+    ).toBe(false);
 
     const ncsCodigos = DOCUMENTOS_OFICIAIS_POR_MODULO.naoConformidades.map((n) => n.codigo);
     expect(ncsCodigos).toEqual(['REG-038', 'REG-047']);
@@ -758,21 +765,33 @@ describe('Subtarefa 6 — REG 022 (ADM) e REG 016 (Item 5 por Marca: Cardios/REG
     expect(verificarBloqueioItem5Reg016({ etiquetaAtual: 'BROWN' }).bloqueado).toBe(false);
     expect(verificarBloqueioItem5Reg016({ etiquetaAtual: 'BLUE' }).bloqueado).toBe(false);
 
-    // VERMELHA ou orçamento reprovado bloqueia o Item 5
-    const bloqRed = verificarBloqueioItem5Reg016({ etiquetaAtual: 'RED' });
+    // VERMELHA no histórico efetivo (D4) bloqueia o Item 5
+    const bloqRed = verificarBloqueioItem5Reg016({
+      etiquetaAtual: 'RED',
+      etiquetasEfetivas: ['BRANCA', 'VIOLETA', 'CINZA', 'AMARELA', 'VERMELHA'],
+    });
     expect(bloqRed.bloqueado).toBe(true);
     expect(bloqRed.motivo).toContain('VERMELHA');
 
     const reg016 = getFormDef('etapas-manutencao')!;
-    const erros = validarDados(reg016, null, {
+    const errosRed = validarDados(reg016, null, {
       cliente: 'Hosp Teste',
       data_abertura: '2026-10-28',
       numero_os: 'OS-RED-01',
       equipamento: 'Monitor',
-      orcamento_reprovado: 'C',
+      etiqueta_atual: 'RED',
       item5_marca: 'Cardios',
     });
-    expect(erros.item5_marca).toContain('VERMELHA');
+    expect(errosRed.item5_marca).toContain('VERMELHA');
+
+    // Salvar REG-016 sem preencher item5_marca passa sem bloqueio de checklist
+    const errosSemItem5 = validarDados(reg016, null, {
+      cliente: 'Hosp Teste',
+      data_abertura: '2026-10-28',
+      numero_os: 'OS-CLEAN-01',
+      equipamento: 'Monitor',
+    });
+    expect(errosSemItem5).toEqual({});
   });
 });
 

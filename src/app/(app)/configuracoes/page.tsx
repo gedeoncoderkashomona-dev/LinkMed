@@ -3,13 +3,16 @@
 import * as React from 'react';
 import {
   Building2,
+  CalendarDays,
   Palette,
+  Plus,
   RotateCcw,
   Save,
   ShieldCheck,
   Sliders,
   Thermometer,
   Timer,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,6 +27,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SelectNative } from '@/components/ui/select-native';
+import { useCurrentUser } from '@/hooks/use-current-user';
+import {
+  useDeleteFeriado,
+  useFeriados,
+  useSaveFeriado,
+} from '@/hooks/use-operacional';
 
 interface SgqSettings {
   prazoNcBaixaDias: number;
@@ -63,6 +72,17 @@ const PRESET_TEMAS_HOSPITALARES = [
 ];
 
 export default function ConfiguracoesPage() {
+  const { data: currentUser } = useCurrentUser();
+  const { data: feriadosData, isLoading: loadingFeriados } = useFeriados();
+  const saveFeriado = useSaveFeriado();
+  const deleteFeriado = useDeleteFeriado();
+
+  const [novoFeriadoData, setNovoFeriadoData] = React.useState('');
+  const [novoFeriadoDesc, setNovoFeriadoDesc] = React.useState('');
+  const [novoFeriadoEscopo, setNovoFeriadoEscopo] = React.useState<
+    'personalizado' | 'municipal_recife' | 'estadual_pe' | 'nacional'
+  >('personalizado');
+
   const [settings, setSettings] = React.useState<SgqSettings>(DEFAULT_SETTINGS);
   const [branding, setBranding] = React.useState<WhiteLabelBranding>(DEFAULT_BRANDING);
 
@@ -114,8 +134,43 @@ export default function ConfiguracoesPage() {
     toast.info('Parâmetros e identidade restaurados para o padrão LINKMED · Soluções Médicas.');
   }
 
+  const podeGerirFeriados = ['adm', 'diretor', 'gestor'].includes(
+    currentUser?.perfil ?? '',
+  );
+  const travaHorarioAtiva =
+    process.env.NEXT_PUBLIC_ENABLE_SCHEDULE_RESTRICTION === 'true';
+
+  async function handleAdicionarFeriado() {
+    if (!novoFeriadoData || !novoFeriadoDesc.trim()) {
+      toast.error('Informe a data e a descrição do feriado.');
+      return;
+    }
+    try {
+      await saveFeriado.mutateAsync({
+        data: novoFeriadoData,
+        descricao: novoFeriadoDesc.trim(),
+        escopo: novoFeriadoEscopo,
+      });
+      setNovoFeriadoData('');
+      setNovoFeriadoDesc('');
+      toast.success('Feriado adicionado à janela operacional.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar feriado.');
+    }
+  }
+
+  async function handleRemoverFeriado(dataIso: string) {
+    try {
+      await deleteFeriado.mutateAsync(dataIso);
+      toast.success(`Feriado ${dataIso} removido.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao remover feriado.');
+    }
+  }
+
   return (
-    <form onSubmit={salvar} className="space-y-6">
+    <div className="space-y-6">
+      <form onSubmit={salvar} className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -387,6 +442,133 @@ export default function ConfiguracoesPage() {
           </CardContent>
         </Card>
       </div>
-    </form>
+      </form>
+
+      {/* Feriados da Janela Operacional (R06 / Decisão D9 — America/Recife) */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CalendarDays className="h-4 w-4 text-primary" />
+                Feriados e Janela Operacional das OS (R06 / Decisão D9)
+              </CardTitle>
+              <CardDescription>
+                Seg–Sex, 07:30 às 19:30 (America/Recife). Notificações geradas em feriados ficam retidas até a próxima abertura útil.
+              </CardDescription>
+            </div>
+            <Badge variant={travaHorarioAtiva ? 'success' : 'warning'}>
+              {travaHorarioAtiva
+                ? 'Trava de horário ATIVA (Produção)'
+                : 'Acesso 24h durante validação (trava armada)'}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {podeGerirFeriados && (
+            <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:grid-cols-[160px_1fr_180px_auto] sm:items-end">
+              <div className="space-y-1">
+                <Label htmlFor="feriado-data" className="text-xs">
+                  Data
+                </Label>
+                <Input
+                  id="feriado-data"
+                  type="date"
+                  value={novoFeriadoData}
+                  onChange={(e) => setNovoFeriadoData(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="feriado-desc" className="text-xs">
+                  Descrição do feriado
+                </Label>
+                <Input
+                  id="feriado-desc"
+                  placeholder="Ex.: São João / Emenda corporativa"
+                  value={novoFeriadoDesc}
+                  onChange={(e) => setNovoFeriadoDesc(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="feriado-escopo" className="text-xs">
+                  Abrangência
+                </Label>
+                <SelectNative
+                  id="feriado-escopo"
+                  value={novoFeriadoEscopo}
+                  onChange={(e) =>
+                    setNovoFeriadoEscopo(
+                      e.target.value as
+                        | 'personalizado'
+                        | 'municipal_recife'
+                        | 'estadual_pe'
+                        | 'nacional',
+                    )
+                  }
+                >
+                  <option value="personalizado">Personalizado / Linkmed</option>
+                  <option value="municipal_recife">Municipal (Recife)</option>
+                  <option value="estadual_pe">Estadual (PE)</option>
+                  <option value="nacional">Nacional (Brasil)</option>
+                </SelectNative>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                disabled={saveFeriado.isPending}
+                onClick={() => void handleAdicionarFeriado()}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Adicionar
+              </Button>
+            </div>
+          )}
+
+          {loadingFeriados ? (
+            <p className="text-xs text-muted-foreground">Carregando calendário de feriados...</p>
+          ) : (
+            <div className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+              {(feriadosData?.feriados ?? []).map((f) => (
+                <div
+                  key={f.data}
+                  className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <p className="font-mono font-semibold text-foreground">
+                      {f.data.split('-').reverse().join('/')}
+                    </p>
+                    <p className="truncate text-[11px] text-muted-foreground">{f.descricao}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Badge variant="outline" className="text-[10px]">
+                      {f.escopo === 'nacional'
+                        ? 'BR'
+                        : f.escopo === 'estadual_pe'
+                          ? 'PE'
+                          : f.escopo === 'municipal_recife'
+                            ? 'Recife'
+                            : 'Custom'}
+                    </Badge>
+                    {podeGerirFeriados && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={deleteFeriado.isPending}
+                        onClick={() => void handleRemoverFeriado(f.data)}
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        title="Remover feriado"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

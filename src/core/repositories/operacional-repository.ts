@@ -1,5 +1,6 @@
 import type {
   AvaliacaoEficaciaParticipante,
+  FormEditHistoryEntry,
   FormRecord,
   Nc,
   NcResumo,
@@ -19,6 +20,19 @@ export interface CreateFormRecordInput {
   status: StatusRegistro;
   dataRef: string;
   criadoPor: string;
+  versaoSchema?: number;
+  historicoEdicoes?: FormEditHistoryEntry[];
+}
+
+export interface UpdateFormRecordInput {
+  subtipo?: string | null;
+  dados: Record<string, unknown>;
+  status: StatusRegistro;
+  dataRef?: string;
+  alteradoPorId: string;
+  alteradoPorNome?: string | null;
+  motivo?: string | null;
+  versaoSchema?: number;
 }
 
 export interface ListFormRecordsFilter {
@@ -81,6 +95,8 @@ export interface UpdateTreinamentoEficaciaInput {
 /** Persistência dos módulos operacionais (formulários, NCs, treinamentos). */
 export interface OperacionalRepository {
   createFormRecord(input: CreateFormRecordInput): Promise<FormRecord>;
+  findFormRecordById?(id: string): Promise<FormRecord | null>;
+  updateFormRecordById?(id: string, input: UpdateFormRecordInput): Promise<FormRecord | null>;
   findLatestFormRecordByOs(tipo: FormTipo, numeroOs: string): Promise<FormRecord | null>;
   upsertFormRecordByOs(
     tipo: FormTipo,

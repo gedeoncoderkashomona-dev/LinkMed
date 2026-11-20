@@ -1,5 +1,6 @@
 import type { FormRecord } from '@/core/domain/entities/operacional';
 import type { Perfil } from '@/core/domain/enums/user';
+import type { Estado as EstadoV4, Evento as EventoV4 } from '@/core/domain/os-v4/nucleo';
 
 function randomUUID(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -320,6 +321,9 @@ export interface OrdemServicoFluxoState {
   historico: EventoHistoricoOS[];
   notificacoes: NotificacaoSetorOS[];
   versao?: number;
+  v4No?: string;
+  v4Estado?: EstadoV4;
+  v4Eventos?: EventoV4[];
 }
 
 export interface AtorAcaoOS {
@@ -403,22 +407,31 @@ export function determinarFormularioItem5PorMarca(
 export function isItem5Reg016Liberado(
   etiquetaAtual: TagColor | null,
   orcamentoAprovado?: boolean | null,
+  etiquetasEfetivas?: string[] | null,
 ): boolean {
+  if (Array.isArray(etiquetasEfetivas) && etiquetasEfetivas.length > 0) {
+    const upper = etiquetasEfetivas.map((e) => String(e).toUpperCase());
+    if (upper.includes('VERMELHA') || upper.includes('RED')) return false;
+  }
   if (etiquetaAtual === 'RED') return false;
   if (orcamentoAprovado === false) return false;
   return true;
 }
 
 /**
- * Regra estrita da Trilha de Execução POP-020:
- *   REG-022 -> REG-034 -> REG-016 -> REG-035
- * Cada REG somente é liberado após conclusão do REG anterior, e o REG-035
- * só se torna visível e acessível quando a Etiqueta VERDE estiver acionada no REG-016.
+ * Regra da Trilha POP-020 / Especificação v4 (Seção 7 & D8):
+ * - REG-022 (ADM): Criação da OS -> nó AGUARDA_REG016.
+ * - REG-016 itens 1 a 4 (ADM e AT): Editável do nó AGUARDA_REG016 em diante (ADM aplica BRANCA no A01).
+ * - REG-034 (AT): Editável após REG-022 e recebimento pela AT (AT_REG034 / AT_RECEBER).
+ * - REG-009 / REG-035 (Item 5 - AT): Liberado quando item5Bloqueado = false (sem VERMELHA efetiva).
+ *   Obrigatório ANTES de marcar VERDE em P05 (EM_EXECUCAO) e B06 (não enviado -> VERDE); dispensado em B07.
  */
 export function verificarPreRequisitoFormularioPop020(
   formTipo: FormTipo | string,
   osCtx?: {
     tagColor: TagColor;
+    v4No?: string;
+    item5Liberado?: boolean;
     etapasConcluidas: {
       reg022Recebimento: boolean;
       reg034Limpeza: boolean;
@@ -440,46 +453,54 @@ export function verificarPreRequisitoFormularioPop020(
           visivel: true,
           liberado: false,
           motivo:
-            'Pré-requisito obrigatório (POP-020): toda OS deve começar no REG-022 (Inspeção de Recebimento — Etiqueta BRANCA), preenchido pelo Setor Administrativo (ADM). Conclua o REG-022 para liberar o REG-034 (Limpeza e Higienização).',
+            'Pré-requisito obrigatório: toda OS deve começar no REG-022 (Inspeção de Recebimento — ADM).',
         };
       }
-      return { visivel: true, liberado: true, motivo: null };
-    case 'etapas-manutencao':
-      if (osCtx && !osCtx.etapasConcluidas.reg034Limpeza) {
+      if (osCtx?.v4No === 'AGUARDA_REG016') {
         return {
           visivel: true,
           liberado: false,
           motivo:
-            'Pré-requisito obrigatório (POP-020): toda OS começa no REG-022 (ADM) e precisa ter o REG-034 (Limpeza e Higienização) concluído pela Assistência Técnica (AT) antes de abrir o REG-016.',
+            'A OS foi criada no REG-022, mas o Setor Administrativo (ADM) ainda precisa abrir o REG-016 e aplicar a Etiqueta BRANCA (A01) antes do envio para a Assistência Técnica (AT).',
+        };
+      }
+      if (osCtx?.v4No === 'AT_RECEBER') {
+        return {
+          visivel: true,
+          liberado: false,
+          motivo:
+            'Clique primeiro no botão "Receber OS" (Assistência Técnica — A02) dentro da OS/REG-016 para iniciar a etapa do REG-034.',
+        };
+      }
+      return { visivel: true, liberado: true, motivo: null };
+    case 'etapas-manutencao':
+      if (osCtx && !osCtx.etapasConcluidas.reg022Recebimento) {
+        return {
+          visivel: true,
+          liberado: false,
+          motivo:
+            'Pré-requisito obrigatório: inicie a OS primeiro pelo REG-022 (Inspeção de Recebimento — ADM).',
         };
       }
       return { visivel: true, liberado: true, motivo: null };
     case 'checklist-manutencao':
-      if (!osCtx) {
+      if (!osCtx || !osCtx.etapasConcluidas.reg022Recebimento) {
         return {
           visivel: false,
           liberado: false,
           motivo:
-            'Pré-requisito obrigatório (POP-020): o fluxo inicia no REG-022 (ADM), segue para REG-034 e REG-016 (AT) e só libera o REG-035 (Checklist Pós-Serviço) após acionar a Etiqueta VERDE no REG-016.',
+            'Pré-requisito obrigatório (Especificação v4): crie primeiro a OS no REG-022 (ADM). O Item 5 (REG-009 / REG-035) fica liberado enquanto não houver Etiqueta VERMELHA efetiva.',
         };
       }
-      if (osCtx.tagColor === 'RED') {
+      if (osCtx.tagColor === 'RED' || osCtx.item5Liberado === false) {
         return {
           visivel: false,
           liberado: false,
           motivo:
-            'Acesso bloqueado (POP-020): o equipamento recebeu Etiqueta VERMELHA (orçamento reprovado pelo cliente) no REG-016. O REG-035 só libera para OS finalizadas com Etiqueta VERDE.',
+            'Item 5 bloqueado (D4 / R01): esta OS possui Etiqueta VERMELHA efetiva (orçamento não aprovado). Caso seja erro, solicite Estorno ao ADM.',
         };
       }
-      if (osCtx.tagColor === 'GREEN') {
-        return { visivel: true, liberado: true, motivo: null };
-      }
-      return {
-        visivel: false,
-        liberado: false,
-        motivo:
-          'Pré-requisito obrigatório (POP-020): o fluxo começa no REG-022 (ADM), passa pelo REG-034 (AT) e o REG-035 só fica visível e liberado após acionar a Etiqueta VERDE (Serviço Finalizado) no REG-016.',
-      };
+      return { visivel: true, liberado: true, motivo: null };
     default:
       return { visivel: true, liberado: true, motivo: null };
   }
@@ -1837,6 +1858,7 @@ export interface ServiceOrderContext {
   tipoTransporte?: string;
   tagColor: TagColor;
   osStatus: OSStatus;
+  v4No?: string;
   estadoGeral?: EstadoGeralOS;
   setorPendente?: SetorPendenteOS;
   item5Liberado?: boolean;
@@ -2039,22 +2061,19 @@ export function hydrateFormFieldsFromOs(
   }
 
   if (formTipo === 'etapas-manutencao') {
-    if (ctx.marca) {
+    if (
+      ctx.marca &&
+      (ctx.v4No === 'EM_EXECUCAO' ||
+        ctx.v4No === 'AGUARDA_ENVIO' ||
+        ctx.etapasConcluidas.reg035Manutencao) &&
+      ctx.item5Liberado !== false
+    ) {
       const m = ctx.marca.toLowerCase();
       if (m.includes('cardios')) base.item5_marca = 'Cardios';
       else if (m.includes('teb')) base.item5_marca = 'TEB';
       else if (m.includes('olidef')) base.item5_marca = 'OLIDEF';
     }
     if (ctx.etapasConcluidas.reg022Recebimento) base.conferencia_pecas = 'C';
-    if (ctx.etapasConcluidas.reg016Etapas || ctx.tagColor !== 'WHITE') {
-      base.etiqueta_branca_adm = 'C';
-    }
-    if (ctx.etapasConcluidas.reg034Limpeza) base.etiqueta_violeta = 'C';
-    if (ctx.emGarantia) base.etiqueta_laranja = 'C';
-    if (ctx.enviadoFabrica) {
-      base.enviado_fabrica = true;
-      if (ctx.tipoTransporte) base.tipo_transporte = ctx.tipoTransporte;
-    }
     if (ctx.etapasConcluidas.reg030Calibracao) base.etiqueta_calibracao = 'C';
   }
 
