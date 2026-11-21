@@ -307,8 +307,24 @@ export function EquipamentosClient() {
               <Tag className="h-7 w-7 text-muted-foreground/60" strokeWidth={1.5} />
               <p className="text-sm font-semibold">Nenhuma Ordem de Serviço encontrada</p>
               <p className="text-xs text-muted-foreground">
-                Cadastre uma inspeção no REG-022 para iniciar uma nova OS.
+                {busca || filtroCor
+                  ? 'Nenhuma OS corresponde aos filtros atuais.'
+                  : 'Cadastre uma inspeção no REG-022 para iniciar uma nova OS.'}
               </p>
+              {(busca || filtroCor) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => {
+                    setBusca('');
+                    setFiltroCor('');
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -328,6 +344,17 @@ export function EquipamentosClient() {
               const mostrarItem5Card =
                 reg022Done && (!item5Bloqueado || os.etapasConcluidas.reg035Manutencao);
 
+              const reg034Unlocked =
+                reg022Done &&
+                (!fluxoMatch?.v4No ||
+                  (fluxoMatch.v4No !== 'AGUARDA_REG016' &&
+                    fluxoMatch.v4No !== 'AT_RECEBER'));
+              const reg034LockMsg = !reg022Done
+                ? 'Conclua o REG-022 (Inspeção de Recebimento — ADM) para liberar o REG-034.'
+                : fluxoMatch?.v4No === 'AGUARDA_REG016'
+                  ? 'ADM precisa primeiro abrir o REG-016 (Etiqueta BRANCA) antes do REG-034.'
+                  : 'Clique em "Receber OS (Iniciar REG-034)" no painel da AT para liberar o preenchimento do REG-034.';
+
               const etapas = [
                 {
                   label: '1. REG-022 (Recebimento ADM)',
@@ -335,16 +362,15 @@ export function EquipamentosClient() {
                   unlocked: true,
                   sectorLabel: 'Setor Administrativo (ADM)',
                   lockMsg: '',
-                  href: `/formularios/inspecao-recebimento?os=${encodeURIComponent(os.chave)}`,
+                  href: `/formularios/inspecao-recebimento?os=${encodeURIComponent(os.numeroOs)}`,
                 },
                 {
                   label: '2. REG-034 (Higienização AT)',
                   done: reg034Done,
-                  unlocked: reg022Done,
+                  unlocked: reg034Unlocked,
                   sectorLabel: 'Assistência Técnica (AT)',
-                  lockMsg:
-                    'Conclua o REG-022 (Inspeção de Recebimento — ADM) para liberar o REG-034.',
-                  href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(os.chave)}`,
+                  lockMsg: reg034LockMsg,
+                  href: `/formularios/limpeza-equipamento?os=${encodeURIComponent(os.numeroOs)}`,
                 },
                 {
                   label: '3. REG-016 (Central OS)',
@@ -353,7 +379,7 @@ export function EquipamentosClient() {
                   sectorLabel: 'ADM / Assistência Técnica (AT)',
                   lockMsg:
                     'Cadastre o REG-022 (ADM) antes de abrir o REG-016.',
-                  href: `/formularios/etapas-manutencao?os=${encodeURIComponent(os.chave)}`,
+                  href: `/formularios/etapas-manutencao?os=${encodeURIComponent(os.numeroOs)}`,
                 },
                 ...(mostrarItem5Card
                   ? [
@@ -364,7 +390,7 @@ export function EquipamentosClient() {
                         sectorLabel: 'Assistência Técnica (AT)',
                         lockMsg:
                           'Item 5 bloqueado definitivamente: esta OS possui Etiqueta VERMELHA (orçamento não aprovado).',
-                        href: `/formularios/checklist-manutencao?os=${encodeURIComponent(os.chave)}`,
+                        href: `/formularios/checklist-manutencao?os=${encodeURIComponent(os.numeroOs)}`,
                       },
                     ]
                   : []),

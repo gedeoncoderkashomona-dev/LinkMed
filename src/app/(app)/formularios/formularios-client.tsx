@@ -40,11 +40,11 @@ import { cn } from '@/lib/utils';
 import { showRuleNotice } from '@/lib/rule-notice';
 
 /**
- * Ordem operacional estrita conforme Trilha de Execução POP-020 e Auditoria Linkmed:
+ * Ordem operacional estrita conforme Trilha de Execução POP-020 (Especificação v4):
  * 1. REG 022 (Inspeção de Recebimento - ADM)
  * 2. REG 034 (Limpeza / Higienização de Equipamentos - AT)
  * 3. REG 016 (Etapas da Manutenção & Etiquetas - Central AT / ADM / Almox)
- * 4. REG 009 / REG 035 (Checklist Final Pós-Serviço — visível somente após Etiqueta VERDE no REG 016)
+ * 4. REG 009 / REG 035 (Item 5 — liberado enquanto não houver Etiqueta VERMELHA; obrigatório antes da Etiqueta VERDE)
  * 5. REG 018 (Higienização de Bancada - POP 006 - AT)
  * 6. REG 017 (Temperatura e Umidade - POP 007 - AT e Almoxarifado)
  * 7. REG 040 (Teste da Pulseira Antiestática - POP 007 - AT)
@@ -307,11 +307,11 @@ export function FormulariosClient() {
         </div>
         {user?.perfil !== 'estoquista' && (
           <p className="text-[11px] text-muted-foreground">
-            Sequência obrigatória POP-020:{' '}
+            Sequência obrigatória POP-020 (v4):{' '}
             <span className="font-mono font-medium text-foreground">
-              REG-022 → REG-034 → REG-016 → REG-035
+              REG-022 (ADM) → REG-016 (BRANCA) → REG-034 (AT) → REG-016 ↔ Item 5 (REG-009 / REG-035)
             </span>{' '}
-            (REG-035/REG-009 liberam após a Etiqueta VERDE).
+            (Item 5 liberado enquanto não houver Etiqueta VERMELHA e obrigatório antes da Etiqueta VERDE).
           </p>
         )}
       </div>
@@ -399,15 +399,36 @@ export function FormulariosClient() {
             value={osSelecionadaChave}
             onChange={(e) => setOsSelecionadaChave(e.target.value)}
           >
-            <option value="">Todas as OS (visão geral)</option>
+            <option value="">Todas as OS ({ordensServico.length})</option>
             {ordensServico.map((o) => (
               <option key={o.chave} value={o.chave}>
-                OS {o.numeroOs} — {o.equipamento} ({o.marca})
+                OS {o.numeroOs} — {o.equipamento} ({o.marca}) · {o.tagColor ? o.tagColor : 'SEM ETIQUETA'}
               </option>
             ))}
           </SelectNative>
         </CardContent>
       </Card>
+
+      {(busca || setor || osSelecionadaChave) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3.5 py-2 text-xs">
+          <span className="text-muted-foreground">
+            Filtros ativos{osAtiva ? ` · OS ${osAtiva.numeroOs}` : ''}.
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={() => {
+              setBusca('');
+              setSetor('');
+              setOsSelecionadaChave('');
+            }}
+          >
+            Limpar filtros
+          </Button>
+        </div>
+      )}
 
       {/* Grid de Formulários */}
       {isLoading ? (

@@ -85,9 +85,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
       typeof body.details.versaoAtual === 'number'
         ? body.details.versaoAtual
         : undefined;
-    const msg = reason
-      ? `${body?.message ?? 'Erro'} (${reason})`
-      : (body?.message ?? 'Erro inesperado.');
+    const msg = body?.message ?? 'Erro inesperado ao processar a solicitação.';
     if (reason) {
       throw new OsCommandError(msg, reason, versaoAtual);
     }

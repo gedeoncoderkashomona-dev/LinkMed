@@ -211,11 +211,11 @@ describe('Subtarefa 2 — Motor de Máquina de Estados da OS (Casos de Teste Ofi
 
     // D5: AT confirma recebimento das peças
     confirmarNotificacaoSetor(os, atorAt1);
-    // REG 035 / Item 5 ainda não abre antes da Etiqueta VERDE (POP-020)
-    expect(() => atPreencherItem5Reg016(os, 'Cardios', atorAt1)).toThrow(/Etiqueta VERDE/);
-    // D6: Finaliza em VERDE e libera o REG 035 / Item 5 (REG 009 para Cardios)
-    atFinalizarServicoComEtiquetaVerde(os, atorAt1);
+    // Decisão D8 (v4): Item 5 (REG-009 / REG-035) pode ser preenchido antes da Etiqueta VERDE
     atPreencherItem5Reg016(os, 'Cardios', atorAt1);
+    expect(os.item5Preenchido).toBe(true);
+    // D6: Finaliza em VERDE após Item 5 preenchido
+    atFinalizarServicoComEtiquetaVerde(os, atorAt1);
 
     expect(os.etiquetaAtual).toBe('GREEN');
     expect(os.estadoGeral).toBe('finalizada');

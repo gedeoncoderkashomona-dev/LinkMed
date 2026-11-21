@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { CheckCircle2, Clock } from 'lucide-react';
+import { CheckCircle2, Clock, Lock, ShieldCheck } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,10 +14,21 @@ import { useReadReport } from '@/hooks/use-pops';
 interface Props {
   popId: string;
   canSeeReport: boolean;
+  isPublished?: boolean;
+  leituraConfirmadaPorMim?: boolean;
+  confirmingRead?: boolean;
+  onConfirmRead?: () => void;
 }
 
-export function ReadReportPanel({ popId, canSeeReport }: Props) {
-  const { data, isLoading } = useReadReport(canSeeReport ? popId : null);
+export function ReadReportPanel({
+  popId,
+  canSeeReport,
+  isPublished = false,
+  leituraConfirmadaPorMim = false,
+  confirmingRead = false,
+  onConfirmRead,
+}: Props) {
+  const { data, isLoading, isError } = useReadReport(canSeeReport ? popId : null);
 
   // Resumo por setor para que o Gestor e Diretor vejam imediatamente quais setores leram
   const resumoPorSetor = React.useMemo(() => {
@@ -32,11 +44,78 @@ export function ReadReportPanel({ popId, canSeeReport }: Props) {
     return Array.from(map.entries());
   }, [data]);
 
-  if (isLoading || !data) {
+  const selfReadBanner = isPublished ? (
+    <Card
+      className={
+        leituraConfirmadaPorMim
+          ? 'border-emerald-500/35 bg-emerald-500/5'
+          : 'border-primary/35 bg-primary/5'
+      }
+    >
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="space-y-0.5">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            Minha Ciência e Leitura Obrigatória (RDC 665/2022)
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {leituraConfirmadaPorMim
+              ? 'Sua confirmação de leitura para a versão vigente já está registrada na trilha de auditoria.'
+              : 'Leia o procedimento na aba anterior ou no PDF oficial e registre sua confirmação abaixo.'}
+          </p>
+        </div>
+        {leituraConfirmadaPorMim ? (
+          <Badge variant="success" className="gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Leitura Confirmada
+          </Badge>
+        ) : (
+          onConfirmRead && (
+            <Button size="sm" disabled={confirmingRead} onClick={onConfirmRead}>
+              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+              {confirmingRead ? 'Confirmando...' : 'Confirmar Minha Leitura'}
+            </Button>
+          )
+        )}
+      </CardContent>
+    </Card>
+  ) : null;
+
+  if (!canSeeReport) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-4">
+        {selfReadBanner}
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4 text-xs text-muted-foreground">
+            <Lock className="h-4 w-4 shrink-0 text-amber-600" />
+            <span>
+              A listagem completa de leituras por colaborador está restrita a perfis autorizados.
+            </span>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {selfReadBanner}
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-20 w-full" />
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="space-y-4">
+        {selfReadBanner}
+        <Card>
+          <CardContent className="p-4 text-center text-xs text-muted-foreground">
+            Ainda não há versão vigente com relatório de leituras disponível para este POP.
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -48,6 +127,7 @@ export function ReadReportPanel({ popId, canSeeReport }: Props) {
 
   return (
     <div className="space-y-4">
+      {selfReadBanner}
       <Card>
         <CardContent className="space-y-3 p-4">
           <div className="flex items-center justify-between">

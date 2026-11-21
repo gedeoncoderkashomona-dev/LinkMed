@@ -91,6 +91,7 @@ import {
   useCreateNc,
   useFormRecords,
   useFormsOverview,
+  useOsCommand,
   useOsFlowList,
   useUpdateFormRecord,
 } from '@/hooks/use-operacional';
@@ -190,6 +191,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
   const { data: recordsData, isLoading } = useFormRecords(tipo);
   const { data: overviewData } = useFormsOverview();
   const { data: osFlowData } = useOsFlowList();
+  const osCommand = useOsCommand();
   const createRecord = useCreateFormRecord();
   const updateRecord = useUpdateFormRecord();
   const createNc = useCreateNc();
@@ -667,7 +669,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
     if (!prereqPop020.liberado) {
       const msgPrereq =
         prereqPop020.motivo ??
-        'A Trilha POP-020 começa no REG-022 (ADM), segue para o REG-034 (AT), depois REG-016 e por último REG-035 após a Etiqueta VERDE.';
+        'A Trilha POP-020 (v4) começa no REG-022 (ADM), segue para o REG-016 (BRANCA), REG-034 (AT) e conclui Item 5 (REG-035 / REG-009) antes da Etiqueta VERDE.';
       setErroGeral(msgPrereq);
       showRuleNotice({
         title: 'Etapa Anterior Obrigatória (POP-020)',
@@ -1249,10 +1251,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                     {ordensElegiveisParaFormulario.length > 0
                       ? 'Selecionar OS liberada para esta etapa...'
                       : def.tipo === 'checklist-manutencao'
-                        ? 'Nenhuma OS com Etiqueta VERDE no REG-016'
+                        ? 'Nenhuma OS liberada para Item 5 (D8)'
                         : def.tipo === 'etapas-manutencao'
-                          ? 'Nenhuma OS com REG-034 concluído'
-                          : 'Nenhuma OS anterior registrada ainda'}
+                          ? 'Nenhuma OS iniciada no REG-022 ainda'
+                          : 'Nenhuma OS liberada para esta etapa'}
                   </option>
                   {(osContextoAtual &&
                   !ordensElegiveisParaFormulario.some((o) => o.chave === osContextoAtual.chave)
@@ -1276,6 +1278,46 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                     <strong>Etapa Bloqueada (POP-020):</strong> {prereqPop020.motivo}
                   </span>
                 </div>
+                {osContextoAtual &&
+                  def.tipo === 'limpeza-equipamento' &&
+                  fluxoAtualDoForm?.v4No === 'AT_RECEBER' &&
+                  user?.perfil === 'tecnico' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={osCommand.isPending}
+                      onClick={async () => {
+                        if (!fluxoAtualDoForm?.v4Estado) return;
+                        try {
+                          await osCommand.mutateAsync({
+                            numeroOs: osContextoAtual.numeroOs,
+                            versaoVista: fluxoAtualDoForm.v4Estado.versao,
+                            comando: { tipo: 'ACAO', acao: 'RECEBER_OS' },
+                          });
+                          toast.success('OS recebida pela AT! REG-034 liberado para preenchimento.');
+                        } catch (err) {
+                          const msg =
+                            err instanceof Error ? err.message : 'Não foi possível receber a OS.';
+                          showRuleNotice({ message: msg, severity: 'warning' });
+                        }
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      Receber OS Agora e Liberar REG-034
+                    </Button>
+                  )}
+                {osContextoAtual &&
+                  def.tipo === 'limpeza-equipamento' &&
+                  (fluxoAtualDoForm?.v4No === 'AGUARDA_REG016' ||
+                    (fluxoAtualDoForm?.v4No === 'AT_RECEBER' && user?.perfil !== 'tecnico')) && (
+                    <Link
+                      href={`/formularios/etapas-manutencao?os=${encodeURIComponent(osContextoAtual.numeroOs)}`}
+                    >
+                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs">
+                        Abrir REG-016 / Painel da OS
+                      </Button>
+                    </Link>
+                  )}
                 {osContextoAtual &&
                   def.tipo === 'etapas-manutencao' &&
                   osContextoAtual.etapasConcluidas.reg022Recebimento &&
@@ -2028,11 +2070,13 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-2 py-2 sm:grid-cols-2">
-                {Object.entries(registroDetalhe.dados).map(([k, v]) => {
-                  const campoDef = getCampos(def, registroDetalhe.subtipo).find(
-                    (c) => c.name === k,
-                  );
-                  return (
+                {Object.entries(registroDetalhe.dados)
+                  .filter(([k]) => !k.startsWith('__'))
+                  .map(([k, v]) => {
+                    const campoDef = getCampos(def, registroDetalhe.subtipo).find(
+                      (c) => c.name === k,
+                    );
+                    return (
                     <div
                       key={k}
                       className="rounded-lg border border-border bg-muted/20 p-2.5 text-xs"
@@ -2107,7 +2151,6 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         onOpenChange={(open) => {
           if (!open) {
             setEtiquetaPrintDados(null);
-            router.push('/equipamentos');
           }
         }}
         dados={etiquetaPrintDados}

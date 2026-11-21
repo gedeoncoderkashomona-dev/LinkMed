@@ -12,9 +12,11 @@ import {
   Mail,
   MessageSquare,
   PenTool,
+  RotateCcw,
   Save,
   Send,
   ShieldCheck,
+  Upload,
   UserCheck,
   X,
 } from 'lucide-react';
@@ -41,8 +43,10 @@ import {
   useApprovePop,
   useConfirmRead,
   useCreateChangeRequest,
+  useNewVersion,
   usePop,
   usePublishPop,
+  useRejectPop,
   useRespondChangeRequest,
 } from '@/hooks/use-pops';
 import { can } from '@/lib/auth/rbac';
@@ -61,6 +65,8 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
   const { data, isLoading, refetch } = usePop(popId);
   const publish = usePublishPop();
   const approve = useApprovePop();
+  const reject = useRejectPop();
+  const newVersion = useNewVersion();
   const confirmRead = useConfirmRead();
   const createCr = useCreateChangeRequest();
   const respondCr = useRespondChangeRequest();
@@ -72,6 +78,10 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
   const [editRevisado, setEditRevisado] = React.useState('');
   const [editAprovado, setEditAprovado] = React.useState('');
   const [salvandoGov, setSalvandoGov] = React.useState(false);
+  const [rejeitandoAberto, setRejeitandoAberto] = React.useState(false);
+  const [motivoRejeicao, setMotivoRejeicao] = React.useState('');
+  const [novaVersaoArquivo, setNovaVersaoArquivo] = React.useState<File | null>(null);
+  const fileInputNovaVersaoRef = React.useRef<HTMLInputElement | null>(null);
 
   const [assinandoTipo, setAssinandoTipo] = React.useState<
     'elaborado' | 'revisado' | 'aprovado' | null
@@ -169,7 +179,116 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
     }
   }
 
-  const docCompleto = data?.pop ? obterConteudoPop(data.pop.codigo) : null;
+  async function handleConfirmRead() {
+    try {
+      await confirmRead.mutateAsync(popId);
+      toast.success('Leitura confirmada com sucesso!', {
+        description: 'Ciência registrada com data/hora e carimbo de auditoria RDC 665/22.',
+      });
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Erro ao confirmar leitura do POP.');
+    }
+  }
+
+  async function handlePublish() {
+    try {
+      await publish.mutateAsync(popId);
+      toast.success('POP enviado para aprovação da Diretoria!');
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Erro ao submeter POP para aprovação.');
+    }
+  }
+
+  async function handleApprove() {
+    try {
+      await approve.mutateAsync(popId);
+      toast.success('POP aprovado, assinado e publicado com sucesso!');
+      setRejeitandoAberto(false);
+      setMotivoRejeicao('');
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Erro ao aprovar e publicar POP.');
+    }
+  }
+
+  async function handleReject() {
+    const motivo = motivoRejeicao.trim();
+    if (motivo.length < 3) {
+      toast.error('Informe o motivo da devolução / rejeição (mínimo 3 caracteres).');
+      return;
+    }
+    try {
+      await reject.mutateAsync({ id: popId, motivo });
+      toast.info('POP devolvido para rascunho para ajustes.');
+      setRejeitandoAberto(false);
+      setMotivoRejeicao('');
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Erro ao rejeitar POP.');
+    }
+  }
+
+  async function handleEnviarNovaVersao() {
+    if (!novaVersaoArquivo) {
+      toast.error('Selecione o arquivo PDF da nova revisão.');
+      return;
+    }
+    try {
+      const res = await newVersion.mutateAsync({ id: popId, arquivo: novaVersaoArquivo });
+      toast.success(`Versão ${String(res.versao.numeroVersao).padStart(2, '0')} publicada!`);
+      setNovaVersaoArquivo(null);
+      if (fileInputNovaVersaoRef.current) fileInputNovaVersaoRef.current.value = '';
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Falha ao publicar nova versão do POP.');
+    }
+  }
+
+  async function handleAssinaturaGovernanca(resumoFormatado: string) {
+    if (!data?.pop || !assinandoTipo) return;
+    const payload = {
+      elaboradoPor:
+        assinandoTipo === 'elaborado'
+          ? resumoFormatado
+          : data.pop.elaboradoPor ?? editElaborado,
+      revisadoPor:
+        assinandoTipo === 'revisado'
+          ? resumoFormatado
+          : data.pop.revisadoPor ?? editRevisado,
+      aprovadoPorNome:
+        assinandoTipo === 'aprovado'
+          ? resumoFormatado
+          : data.pop.aprovadoPorNome ?? editAprovado,
+    };
+    const res = await fetch(`/api/pops/${popId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(err.message ?? 'Não foi possível registrar assinatura de governança.');
+      return;
+    }
+    toast.success('Assinatura eletrônica LGPD gravada na governança do POP!');
+    await refetch();
+  }
+
+  const docCompleto = data?.pop
+    ? obterConteudoPop(data.pop.codigo, {
+        titulo: data.pop.titulo,
+        descricao: data.pop.descricao,
+        setor: data.pop.setor,
+        setorNome: SETOR_LABEL[data.pop.setor] ?? data.pop.setor,
+        versao: data.pop.versaoAtual,
+        periodicidadeMeses: data.pop.periodicidadeRevisaoMeses,
+        elaboradoPor: data.pop.elaboradoPor,
+        revisadoPor: data.pop.revisadoPor,
+        aprovadoPorNome: data.pop.aprovadoPorNome,
+      })
+    : null;
 
   return (
     <div
@@ -225,6 +344,109 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
                 Versão {String(data.pop.versaoAtual).padStart(2, '0')} · Periodicidade de revisão:{' '}
                 {data.pop.periodicidadeRevisaoMeses} meses
               </p>
+            </div>
+
+            {/* Ação Principal de Ciclo de Vida & Leitura Obrigatória */}
+            <div className="rounded-xl border border-primary/25 bg-primary/5 p-3.5 text-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    {data.pop.status === 'publicado'
+                      ? 'Documento Vigente — Controle de Ciência e Ciclo de Vida'
+                      : data.pop.status === 'aguardando_aprovacao'
+                        ? 'Documento Aguardando Aprovação da Diretoria'
+                        : 'Documento em Elaboração (Rascunho)'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {data.pop.status === 'publicado'
+                      ? data.leituraConfirmadaPorMim
+                        ? 'Sua confirmação de leitura já foi gravada para esta versão vigente.'
+                        : 'Confirme sua leitura após revisar o procedimento para cumprir a RDC 665/22.'
+                      : data.pop.status === 'aguardando_aprovacao'
+                        ? 'A Diretoria pode aprovar e publicar oficialmente ou devolver para rascunho.'
+                        : 'Conclua a revisão e envie o POP para aprovação para liberar às equipes.'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {data.pop.status === 'publicado' &&
+                    (data.leituraConfirmadaPorMim ? (
+                      <Badge variant="success" className="gap-1 px-2.5 py-1">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Minha leitura confirmada
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        disabled={confirmRead.isPending}
+                        onClick={handleConfirmRead}
+                      >
+                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                        {confirmRead.isPending ? 'Registrando...' : 'Confirmar Minha Leitura'}
+                      </Button>
+                    ))}
+
+                  {data.pop.status === 'rascunho' && canPublish && (
+                    <Button
+                      size="sm"
+                      disabled={publish.isPending}
+                      onClick={handlePublish}
+                    >
+                      <Send className="mr-1.5 h-3.5 w-3.5" />
+                      {publish.isPending ? 'Enviando...' : 'Submeter para Aprovação'}
+                    </Button>
+                  )}
+
+                  {data.pop.status === 'aguardando_aprovacao' && canApprove && (
+                    <>
+                      <Button
+                        size="sm"
+                        disabled={approve.isPending || reject.isPending}
+                        onClick={handleApprove}
+                      >
+                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                        {approve.isPending ? 'Publicando...' : 'Aprovar e Publicar'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={approve.isPending || reject.isPending}
+                        onClick={() => setRejeitandoAberto((v) => !v)}
+                      >
+                        <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                        Devolver (Rejeitar)
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {rejeitandoAberto && data.pop.status === 'aguardando_aprovacao' && canApprove && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-2.5">
+                  <Input
+                    placeholder="Motivo da devolução para ajustes..."
+                    value={motivoRejeicao}
+                    onChange={(e) => setMotivoRejeicao(e.target.value)}
+                    className="h-8 flex-1 min-w-[200px] text-xs bg-background"
+                  />
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={reject.isPending}
+                    onClick={handleReject}
+                  >
+                    Confirmar Devolução
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRejeitandoAberto(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Governança Documental */}
@@ -293,28 +515,64 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
                 </div>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <div className="space-y-0.5 rounded-lg border border-border/60 bg-card p-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <UserCheck className="h-3.5 w-3.5 text-primary" />
-                      <span>Elaboração:</span>
+                  <div className="space-y-1 rounded-lg border border-border/60 bg-card p-2.5">
+                    <div className="flex items-center justify-between gap-1 text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <UserCheck className="h-3.5 w-3.5 text-primary" />
+                        <span>Elaboração:</span>
+                      </span>
+                      {podeEditarGov && (
+                        <button
+                          type="button"
+                          onClick={() => setAssinandoTipo('elaborado')}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                        >
+                          <PenTool className="h-2.5 w-2.5" />
+                          Assinar
+                        </button>
+                      )}
                     </div>
                     <strong className="block truncate text-foreground font-semibold">
                       {data.pop.elaboradoPor ?? 'Vanessa Ribeiro (Qualidade)'}
                     </strong>
                   </div>
-                  <div className="space-y-0.5 rounded-lg border border-border/60 bg-card p-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                      <span>Revisão:</span>
+                  <div className="space-y-1 rounded-lg border border-border/60 bg-card p-2.5">
+                    <div className="flex items-center justify-between gap-1 text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <UserCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                        <span>Revisão:</span>
+                      </span>
+                      {podeEditarGov && (
+                        <button
+                          type="button"
+                          onClick={() => setAssinandoTipo('revisado')}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                        >
+                          <PenTool className="h-2.5 w-2.5" />
+                          Assinar
+                        </button>
+                      )}
                     </div>
                     <strong className="block truncate text-foreground font-semibold">
                       {data.pop.revisadoPor ?? 'Marina Lopes (RT)'}
                     </strong>
                   </div>
-                  <div className="space-y-0.5 rounded-lg border border-border/60 bg-card p-2.5">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <UserCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>Aprovação:</span>
+                  <div className="space-y-1 rounded-lg border border-border/60 bg-card p-2.5">
+                    <div className="flex items-center justify-between gap-1 text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <UserCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span>Aprovação:</span>
+                      </span>
+                      {podeEditarGov && (
+                        <button
+                          type="button"
+                          onClick={() => setAssinandoTipo('aprovado')}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-primary hover:underline"
+                        >
+                          <PenTool className="h-2.5 w-2.5" />
+                          Assinar
+                        </button>
+                      )}
                     </div>
                     <strong className="block truncate text-foreground font-semibold">
                       {data.pop.aprovadoPorNome ?? 'Pedro Costa (Diretor)'}
@@ -426,15 +684,50 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
                 </div>
               </TabsContent>
 
-              <TabsContent value="versoes" className="space-y-2">
+              <TabsContent value="versoes" className="space-y-3">
+                {canPublish && (
+                  <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3 text-xs space-y-2">
+                    <p className="font-semibold text-foreground flex items-center gap-1.5">
+                      <Upload className="h-3.5 w-3.5 text-primary" />
+                      Publicar Nova Revisão (Versão {String(data.pop.versaoAtual + 1).padStart(2, '0')})
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      A versão anterior é arquivada automaticamente como obsoleta na trilha de auditoria.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        ref={fileInputNovaVersaoRef}
+                        type="file"
+                        accept="application/pdf"
+                        onChange={(e) => setNovaVersaoArquivo(e.target.files?.[0] ?? null)}
+                        className="h-8 flex-1 min-w-[200px] text-xs bg-background"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!novaVersaoArquivo || newVersion.isPending}
+                        onClick={handleEnviarNovaVersao}
+                      >
+                        <Upload className="mr-1.5 h-3.5 w-3.5" />
+                        {newVersion.isPending ? 'Enviando...' : 'Publicar Nova Versão'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {data.versoes.map((v) => (
                   <div
                     key={v.id}
                     className="flex items-center justify-between rounded-lg border border-border bg-card p-3 text-xs"
                   >
                     <div>
-                      <p className="font-medium">
-                        Versão {v.numeroVersao} · {v.arquivoNome}
+                      <p className="font-medium flex items-center gap-2">
+                        <span>
+                          Versão {String(v.numeroVersao).padStart(2, '0')} · {v.arquivoNome}
+                        </span>
+                        <Badge variant={v.status === 'vigente' ? 'success' : 'secondary'} className="text-[10px]">
+                          {v.status === 'vigente' ? 'Vigente' : 'Obsoleta'}
+                        </Badge>
                       </p>
                       <p className="font-mono text-[10px] text-muted-foreground">
                         SHA-256: {v.hashArquivo.slice(0, 16)}...
@@ -455,7 +748,14 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
               </TabsContent>
 
               <TabsContent value="leituras">
-                <ReadReportPanel popId={data.pop.id} canSeeReport={Boolean(user && can(user.perfil, 'pops:read:report'))} />
+                <ReadReportPanel
+                  popId={data.pop.id}
+                  canSeeReport={Boolean(user && can(user.perfil, 'pops:read:report'))}
+                  isPublished={data.pop.status === 'publicado'}
+                  leituraConfirmadaPorMim={Boolean(data.leituraConfirmadaPorMim)}
+                  confirmingRead={confirmRead.isPending}
+                  onConfirmRead={handleConfirmRead}
+                />
               </TabsContent>
 
               <TabsContent value="sugestoes" className="space-y-4">
@@ -587,6 +887,41 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
           </div>
         )}
       </div>
+
+      {data && (
+        <SignaturePadDialog
+          open={Boolean(assinandoTipo)}
+          onOpenChange={(open) => {
+            if (!open) setAssinandoTipo(null);
+          }}
+          documentoCodigo={data.pop.codigo}
+          documentoTitulo={
+            assinandoTipo === 'elaborado'
+              ? `Assinatura de Elaboração (${data.pop.codigo})`
+              : assinandoTipo === 'revisado'
+                ? `Assinatura de Revisão Técnica (${data.pop.codigo})`
+                : `Assinatura de Aprovação (${data.pop.codigo})`
+          }
+          signatarioNomePadrao={
+            assinandoTipo === 'elaborado'
+              ? data.pop.elaboradoPor ?? user?.nomeCompleto ?? 'Gestão da Qualidade'
+              : assinandoTipo === 'revisado'
+                ? data.pop.revisadoPor ?? user?.nomeCompleto ?? 'Responsável Técnica'
+                : data.pop.aprovadoPorNome ?? user?.nomeCompleto ?? 'Diretoria'
+          }
+          signatarioIdPadrao={user?.id}
+          funcaoPadrao={
+            assinandoTipo === 'elaborado'
+              ? 'Elaborador'
+              : assinandoTipo === 'revisado'
+                ? 'Revisor Técnico'
+                : 'Aprovador / Diretoria'
+          }
+          onConfirm={(reg) => {
+            void handleAssinaturaGovernanca(reg.resumoFormatado);
+          }}
+        />
+      )}
     </div>
   );
 }

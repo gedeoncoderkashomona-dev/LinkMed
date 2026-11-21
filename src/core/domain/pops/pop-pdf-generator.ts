@@ -1,6 +1,6 @@
 import {
   obterConteudoPop,
-  type PopDocumentoCompleto,
+  type PopMetaOverride,
 } from './pop-catalog-content';
 
 export function sanitizarTextoPdf(texto: string): string {
@@ -162,8 +162,12 @@ export function adicionarCabecalhoRodapePop(
 /**
  * Gera documento PDF oficial completo para qualquer POP Linkmed.
  */
-export function gerarPdfPopCompleto(codigo: string, hashArquivo = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'): Buffer {
-  const doc = obterConteudoPop(codigo);
+export function gerarPdfPopCompleto(
+  codigo: string,
+  hashArquivo = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+  override?: PopMetaOverride,
+): Buffer {
+  const doc = obterConteudoPop(codigo, override);
   const metaHeader = {
     codigo: doc.codigo,
     titulo: doc.titulo,

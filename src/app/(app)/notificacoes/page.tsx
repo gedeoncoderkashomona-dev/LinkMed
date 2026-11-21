@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -14,10 +13,8 @@ import {
   Clock,
   FileText,
   GraduationCap,
-  Layers,
-  Send,
   ShieldAlert,
-  UserCheck,
+  Tag,
   Wrench,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -37,7 +34,12 @@ import {
   normalizarNumeroOs,
   type OrdemServicoFluxoState,
   type SetorOperacional,
+  type TagSpec,
 } from '@/core/domain/forms/os-workflow';
+import {
+  gerarAvisosOsV4,
+  usuarioPodeConfirmarAvisoSetor,
+} from '@/core/domain/forms/os-notices';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import {
   useConfirmOsNotification,
@@ -61,84 +63,43 @@ interface NotificacaoItem {
   href: string;
   origemLabel: string;
   destinatarioSetor?: SetorOperacional;
-  remetenteSetor?: SetorOperacional;
   numeroOs?: string;
   confirmadaEm?: string | null;
   confirmadaPorNome?: string | null;
+  tipoAviso?: 'pendencia_etapa' | 'comunicacao_intersetorial';
+  etapaAtualPt?: string;
+  equipamentoResumo?: string;
+  tagSpec?: TagSpec | null;
+  ehLembrete?: boolean;
+  retidaAteIso?: string | null;
+  entregueEmIso?: string | null;
+  notifIdReal?: string | null;
+  acaoSugeridaLabel?: string;
+  formularioSecundarioLabel?: string | null;
+  formularioSecundarioHref?: string | null;
 }
 
 const STORAGE_KEY_LIDAS = 'regulaon:notificacoes:lidas:v1';
 const STORAGE_KEY_CONFIRMADAS = 'regulaon:notificacoes:confirmadas:v1';
 const STORAGE_KEY_FLUXO_PREFIX = 'regulaon:os_fluxo_v2:';
 
-const NOTIFICACOES_SEMENTE_INTERSETORIAIS: NotificacaoItem[] = [
-  {
-    id: 'os:notif:0102:aprovado',
-    categoria: 'intersetorial',
-    nivel: 'info',
-    titulo: 'OS-2026-0102 — Orçamento APROVADO pelo ADM (CardioSmart)',
-    descricao:
-      'O setor Administrativo (ADM) aprovou o orçamento junto ao cliente. O Almoxarifado foi notificado para separação e liberação imediata das peças solicitadas pela Assistência Técnica.',
-    href: '/equipamentos?os=OS-2026-0102',
-    origemLabel: 'Notificação Intersetorial (ADM → Almoxarifado)',
-    destinatarioSetor: 'ALMOXARIFADO',
-    remetenteSetor: 'ADM',
-    numeroOs: 'OS-2026-0102',
-    confirmadaEm: null,
-    confirmadaPorNome: null,
-  },
-  {
-    id: 'os:notif:0101:branca',
-    categoria: 'intersetorial',
-    nivel: 'info',
-    titulo: 'OS-2026-0101 — Equipamento com Etiqueta BRANCA no Almoxarifado',
-    descricao:
-      'Equipamento Incubadora Neonatal (Olidef SC Line) recebido no Almoxarifado com Etiqueta BRANCA (REG 016). Assistência Técnica notificada para proceder com triagem técnica e higienização (REG 034).',
-    href: '/equipamentos?os=OS-2026-0101',
-    origemLabel: 'Notificação Intersetorial (Almoxarifado → AT)',
-    destinatarioSetor: 'AT',
-    remetenteSetor: 'ALMOXARIFADO',
-    numeroOs: 'OS-2026-0101',
-    confirmadaEm: null,
-    confirmadaPorNome: null,
-  },
-  {
-    id: 'os:notif:0103:reprovado',
-    categoria: 'intersetorial',
-    nivel: 'warning',
-    titulo: 'OS-2026-0103 — Orçamento REPROVADO pelo Cliente (ADM)',
-    descricao:
-      'O cliente reprovou o orçamento de manutenção. O equipamento recebeu Etiqueta VERMELHA e o Almoxarifado foi notificado para providenciar a devolução formal com comprovante de entrega.',
-    href: '/equipamentos?os=OS-2026-0103',
-    origemLabel: 'Notificação Intersetorial (ADM → Almoxarifado)',
-    destinatarioSetor: 'ALMOXARIFADO',
-    remetenteSetor: 'ADM',
-    numeroOs: 'OS-2026-0103',
-    confirmadaEm: null,
-    confirmadaPorNome: null,
-  },
-  {
-    id: 'os:notif:0104:orcamento',
-    categoria: 'intersetorial',
-    nivel: 'info',
-    titulo: 'OS-2026-0104 — Diagnóstico e Orçamento Concluídos pela AT (Etiqueta AMARELA)',
-    descricao:
-      'A Assistência Técnica concluiu a análise e elaborou a proposta no REG 022. Setor Administrativo (ADM) notificado para envio comercial e aprovação do orçamento com o cliente.',
-    href: '/equipamentos?os=OS-2026-0104',
-    origemLabel: 'Notificação Intersetorial (AT → ADM)',
-    destinatarioSetor: 'ADM',
-    remetenteSetor: 'AT',
-    numeroOs: 'OS-2026-0104',
-    confirmadaEm: null,
-    confirmadaPorNome: null,
-  },
-];
+function formatarDataHoraBR(iso: string): string {
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return iso;
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Recife',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(dt);
+}
 
 export default function NotificacoesPage() {
-  const router = useRouter();
   const { data: user } = useCurrentUser();
   const { data: formsData, isLoading: loadingForms } = useFormsOverview();
-  const { data: osFlowData } = useOsFlowList();
+  const { data: osFlowData, isLoading: loadingOsFlow } = useOsFlowList();
   const confirmOsNotif = useConfirmOsNotification();
   const { data: ncsData, isLoading: loadingNcs } = useNcs();
   const { data: popsData, isLoading: loadingPops } = usePops();
@@ -159,7 +120,6 @@ export default function NotificacoesPage() {
   const [confirmadasMap, setConfirmadasMap] = React.useState<
     Record<string, { porNome: string; em: string }>
   >({});
-  const [osNotificacoesLocais, setOsNotificacoesLocais] = React.useState<NotificacaoItem[]>([]);
 
   const osFluxoPorNumero = React.useMemo(() => {
     const map = new Map<string, OrdemServicoFluxoState>();
@@ -169,31 +129,36 @@ export default function NotificacoesPage() {
     return map;
   }, [osFlowData?.ordens]);
 
-  const osNotificacoesDinâmicas = React.useMemo<NotificacaoItem[]>(() => {
-    const map = new Map<string, NotificacaoItem>();
-    for (const item of osNotificacoesLocais) {
-      map.set(item.id, item);
-    }
-    for (const os of osFlowData?.ordens ?? []) {
-      if (!Array.isArray(os.notificacoes)) continue;
-      for (const notif of os.notificacoes) {
-        map.set(`os:dyn:${notif.id}`, {
-          id: `os:dyn:${notif.id}`,
-          categoria: 'intersetorial',
-          nivel: notif.retidaForaHorario ? 'warning' : 'info',
-          titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
-          descricao: notif.mensagem,
-          href: `/equipamentos?os=${encodeURIComponent(os.numeroOs)}`,
-          origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
-          destinatarioSetor: notif.destinatario,
-          numeroOs: os.numeroOs,
-          confirmadaEm: notif.confirmadaEm ? new Date(notif.confirmadaEm).toISOString() : null,
-          confirmadaPorNome: notif.confirmadaPorNome,
-        });
-      }
-    }
-    return Array.from(map.values());
-  }, [osFlowData?.ordens, osNotificacoesLocais]);
+  const osNotificacoesDinamicas = React.useMemo<NotificacaoItem[]>(() => {
+    const avisos = gerarAvisosOsV4(osFlowData?.ordens ?? []);
+    return avisos.map((av) => ({
+      id: av.id,
+      categoria: 'intersetorial',
+      nivel: av.nivel,
+      titulo: av.titulo,
+      descricao: av.descricao,
+      href: av.acaoSugeridaHref,
+      origemLabel:
+        av.tipoAviso === 'pendencia_etapa'
+          ? `Ação Pendente no Fluxo (${av.destinatarioSetor})`
+          : `Aviso Intersetorial (Destino: ${av.destinatarioSetor})`,
+      destinatarioSetor: av.destinatarioSetor,
+      numeroOs: av.numeroOs,
+      confirmadaEm: av.confirmadaEm,
+      confirmadaPorNome: av.confirmadaPorNome,
+      tipoAviso: av.tipoAviso,
+      etapaAtualPt: av.etapaAtualPt,
+      equipamentoResumo: av.equipamentoResumo,
+      tagSpec: av.tagSpec,
+      ehLembrete: av.ehLembrete,
+      retidaAteIso: av.retidaAteIso,
+      entregueEmIso: av.entregueEmIso,
+      notifIdReal: av.notifIdReal,
+      acaoSugeridaLabel: av.acaoSugeridaLabel,
+      formularioSecundarioLabel: av.formularioSecundarioLabel,
+      formularioSecundarioHref: av.formularioSecundarioHref,
+    }));
+  }, [osFlowData?.ordens]);
 
   React.useEffect(() => {
     try {
@@ -201,44 +166,20 @@ export default function NotificacoesPage() {
       if (raw) setLidasIds(JSON.parse(raw) as string[]);
       const rawConf = localStorage.getItem(STORAGE_KEY_CONFIRMADAS);
       if (rawConf) setConfirmadasMap(JSON.parse(rawConf));
+
+      // Purga caches legados de OS de teste do navegador para evitar poluição visual após reset do banco
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(STORAGE_KEY_FLUXO_PREFIX)) {
+          keysToRemove.push(key);
+        }
+      }
+      for (const k of keysToRemove) {
+        localStorage.removeItem(k);
+      }
     } catch {
       // ignora erro de storage
-    }
-
-    // Fallback offline para notificações salvas localmente antes do envio ao servidor
-    if (typeof window !== 'undefined') {
-      try {
-        const dinâmicas: NotificacaoItem[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(STORAGE_KEY_FLUXO_PREFIX) && key !== `${STORAGE_KEY_FLUXO_PREFIX}current`) {
-            const raw = localStorage.getItem(key);
-            if (raw) {
-              const os = JSON.parse(raw) as OrdemServicoFluxoState;
-              if (Array.isArray(os.notificacoes)) {
-                for (const notif of os.notificacoes) {
-                  dinâmicas.push({
-                    id: `os:dyn:${notif.id}`,
-                    categoria: 'intersetorial',
-                    nivel: notif.retidaForaHorario ? 'warning' : 'info',
-                    titulo: `${os.numeroOs} — Notificação para Setor ${notif.destinatario}`,
-                    descricao: notif.mensagem,
-                    href: `/equipamentos?os=${encodeURIComponent(os.numeroOs)}`,
-                    origemLabel: `Comunicação Intersetorial (Destino: ${notif.destinatario})`,
-                    destinatarioSetor: notif.destinatario,
-                    numeroOs: os.numeroOs,
-                    confirmadaEm: notif.confirmadaEm ? new Date(notif.confirmadaEm).toISOString() : null,
-                    confirmadaPorNome: notif.confirmadaPorNome,
-                  });
-                }
-              }
-            }
-          }
-        }
-        setOsNotificacoesLocais(dinâmicas);
-      } catch {
-        // ignora erro ao ler storage
-      }
     }
   }, []);
 
@@ -326,15 +267,9 @@ export default function NotificacoesPage() {
     const lista: NotificacaoItem[] = [];
     const hoje = agoraBR().data;
 
-    // 1. Notificações Intersetoriais (ADM <-> Almoxarifado <-> Assistência Técnica)
-    // Prioriza as notificações reais do banco (`os_fluxo`) e exibe exemplos apenas se ainda não houver OS ativa
+    // 1. Avisos e Pendências Intersetoriais reais do fluxo v4 (`os_fluxo` — sem dados fictícios)
     const idsVistos = new Set<string>();
-    const intersetoriaisTodas =
-      osNotificacoesDinâmicas.length > 0
-        ? osNotificacoesDinâmicas
-        : NOTIFICACOES_SEMENTE_INTERSETORIAIS;
-
-    for (const notif of intersetoriaisTodas) {
+    for (const notif of osNotificacoesDinamicas) {
       if (idsVistos.has(notif.id)) continue;
       idsVistos.add(notif.id);
 
@@ -384,7 +319,7 @@ export default function NotificacoesPage() {
           nivel: 'warning',
           titulo: `${pop.codigo} aguardando aprovação da Direção`,
           descricao: `O documento "${pop.titulo}" foi submetido e aguarda assinatura eletrônica.`,
-          href: '/pops',
+          href: `/pops?popId=${encodeURIComponent(pop.id)}`,
           origemLabel: 'Gestão Documental (POPs)',
         });
       } else if (pop.status === 'publicado' && pop.totalPendentes > 0) {
@@ -394,7 +329,7 @@ export default function NotificacoesPage() {
           nivel: 'info',
           titulo: `${pop.codigo} possui ${pop.totalPendentes} leitura(s) pendente(s)`,
           descricao: `${pop.titulo} (v${pop.versaoAtual}) — colaboradores ainda precisam confirmar ciência.`,
-          href: '/pops',
+          href: `/pops?popId=${encodeURIComponent(pop.id)}&tab=leituras`,
           origemLabel: 'Gestão Documental (POPs)',
         });
       }
@@ -442,7 +377,7 @@ export default function NotificacoesPage() {
     const pesoNivel: Record<NivelAlerta, number> = { danger: 0, warning: 1, info: 2 };
     return lista.sort((a, b) => pesoNivel[a.nivel] - pesoNivel[b.nivel]);
   }, [
-    osNotificacoesDinâmicas,
+    osNotificacoesDinamicas,
     confirmadasMap,
     formsData?.records,
     ncsData?.ncs,
@@ -453,19 +388,19 @@ export default function NotificacoesPage() {
   const filtradas = React.useMemo(() => {
     return notificacoes.filter((n) => {
       if (categoria !== 'todas' && n.categoria !== categoria) return false;
-      if (
-        setorFiltro !== 'todos' &&
-        n.destinatarioSetor &&
-        n.destinatarioSetor !== setorFiltro
-      ) {
-        return false;
+      if (setorFiltro !== 'todos') {
+        if (n.categoria === 'intersetorial') {
+          if (n.destinatarioSetor !== setorFiltro) return false;
+        } else if (categoria === 'intersetorial') {
+          return false;
+        }
       }
       if (apenasNaoLidas && lidasIds.includes(n.id)) return false;
       return true;
     });
   }, [notificacoes, categoria, setorFiltro, apenasNaoLidas, lidasIds]);
 
-  const isLoading = loadingForms || loadingNcs || loadingPops || loadingTreinos;
+  const isLoading = loadingForms || loadingOsFlow || loadingNcs || loadingPops || loadingTreinos;
   const naoLidasCount = notificacoes.filter((n) => !lidasIds.includes(n.id)).length;
   const criticasCount = notificacoes.filter((n) => n.nivel === 'danger').length;
   const intersetoriaisCount = notificacoes.filter((n) => n.categoria === 'intersetorial').length;
@@ -766,23 +701,44 @@ export default function NotificacoesPage() {
           {filtradas.map((item) => {
             const lida = lidasIds.includes(item.id);
             const isIntersetorial = item.categoria === 'intersetorial';
+            const isComunicacaoOs = item.tipoAviso === 'comunicacao_intersetorial';
+            const isPendenciaEtapa = item.tipoAviso === 'pendencia_etapa';
             const confirmada = Boolean(item.confirmadaPorNome);
+            const podeConfirmarEsteSetor = Boolean(
+              isComunicacaoOs &&
+                !confirmada &&
+                item.destinatarioSetor &&
+                usuarioPodeConfirmarAvisoSetor(user?.perfil, item.destinatarioSetor),
+            );
 
             return (
               <Card
                 key={item.id}
                 className={cn(
                   'transition-colors',
-                  lida ? 'opacity-70' : 'border-l-4',
+                  lida ? 'opacity-75' : 'border-l-4',
                   !lida && item.nivel === 'danger' && 'border-l-rose-500',
                   !lida && item.nivel === 'warning' && 'border-l-amber-500',
-                  !lida && item.nivel === 'info' && (isIntersetorial ? 'border-l-indigo-500' : 'border-l-sky-500'),
+                  !lida &&
+                    item.nivel === 'info' &&
+                    (isPendenciaEtapa
+                      ? 'border-l-emerald-500'
+                      : isIntersetorial
+                        ? 'border-l-indigo-500'
+                        : 'border-l-sky-500'),
                 )}
               >
                 <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
                     {isIntersetorial ? (
-                      <ArrowLeftRight className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                      <ArrowLeftRight
+                        className={cn(
+                          'mt-0.5 h-4 w-4 shrink-0',
+                          isPendenciaEtapa
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-indigo-600 dark:text-indigo-400',
+                        )}
+                      />
                     ) : (
                       <AlertTriangle
                         className={cn(
@@ -796,8 +752,8 @@ export default function NotificacoesPage() {
                       />
                     )}
 
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {!lida && (
                           <span
                             className="inline-block h-2 w-2 shrink-0 rounded-full bg-primary"
@@ -805,13 +761,35 @@ export default function NotificacoesPage() {
                           />
                         )}
                         <p className="text-sm font-semibold text-foreground">{item.titulo}</p>
+                        {item.tagSpec && (
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase',
+                              item.tagSpec.badgeClass,
+                            )}
+                          >
+                            <Tag className="h-2.5 w-2.5" />
+                            {item.tagSpec.nomeCor}
+                          </span>
+                        )}
                         {item.destinatarioSetor && (
                           <Badge variant="secondary" className="font-mono text-[10px]">
-                            {item.destinatarioSetor}
+                            Setor: {item.destinatarioSetor}
                           </Badge>
                         )}
-                        {isIntersetorial && (
-                          confirmada ? (
+                        {item.ehLembrete && (
+                          <Badge variant="destructive" className="text-[10px]">
+                            Lembrete 7 dias
+                          </Badge>
+                        )}
+                        {item.retidaAteIso && (
+                          <Badge variant="warning" className="text-[10px]">
+                            <Clock className="mr-1 h-2.5 w-2.5" />
+                            Retida até {formatarDataHoraBR(item.retidaAteIso)}
+                          </Badge>
+                        )}
+                        {isComunicacaoOs &&
+                          (confirmada ? (
                             <Badge variant="success" className="text-[10px]">
                               Ciência: {item.confirmadaPorNome}
                             </Badge>
@@ -820,17 +798,33 @@ export default function NotificacoesPage() {
                               variant="outline"
                               className="text-[10px] text-amber-700 border-amber-500/35 dark:text-amber-300"
                             >
-                              Aguardando ciência
+                              Aguardando ciência de {item.destinatarioSetor}
                             </Badge>
-                          )
-                        )}
+                          ))}
                       </div>
-                      <p className="text-xs leading-relaxed text-muted-foreground">{item.descricao}</p>
+
+                      {item.equipamentoResumo && (
+                        <p className="text-[11px] font-medium text-foreground/85">
+                          {item.equipamentoResumo}
+                          {item.etapaAtualPt ? ` · Etapa: ${item.etapaAtualPt}` : ''}
+                        </p>
+                      )}
+
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        {item.descricao}
+                      </p>
+
+                      {isComunicacaoOs && !confirmada && (
+                        <p className="text-[10px] text-muted-foreground/80">
+                          Regra R08: confirmar ciência registra o recebimento deste aviso sem
+                          avançar automaticamente a etapa da OS.
+                        </p>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {isIntersetorial && !confirmada && (
+                    {podeConfirmarEsteSetor && (
                       <Button
                         size="sm"
                         variant="secondary"
@@ -839,7 +833,7 @@ export default function NotificacoesPage() {
                         className="text-xs"
                       >
                         <Check className="h-3.5 w-3.5" />
-                        Confirmar Ciência
+                        Confirmar Ciência (R08)
                       </Button>
                     )}
 
@@ -852,51 +846,19 @@ export default function NotificacoesPage() {
                       {lida ? 'Marcar não lida' : 'Marcar lida'}
                     </Button>
 
-                    {isIntersetorial && item.numeroOs && (() => {
-                      const osDaNotif = osFluxoPorNumero.get(normalizarNumeroOs(item.numeroOs));
-                      const reg034Concluido = Boolean(osDaNotif?.reg034Preenchido);
-                      const reg035Liberado = osDaNotif?.etiquetaAtual === 'GREEN';
-
-                      if (!reg034Concluido) {
-                        return (
-                          <Link
-                            href={`/formularios/limpeza-equipamento?os=${encodeURIComponent(item.numeroOs)}`}
-                          >
-                            <Button size="sm" variant="outline" className="text-xs">
-                              <FileText className="h-3.5 w-3.5" />
-                              REG-034
-                            </Button>
-                          </Link>
-                        );
-                      }
-
-                      return (
-                        <>
-                          <Link
-                            href={`/formularios/etapas-manutencao?os=${encodeURIComponent(item.numeroOs)}`}
-                          >
-                            <Button size="sm" variant="outline" className="text-xs">
-                              <FileText className="h-3.5 w-3.5" />
-                              REG-016
-                            </Button>
-                          </Link>
-                          {reg035Liberado && (
-                            <Link
-                              href={`/formularios/checklist-manutencao?os=${encodeURIComponent(item.numeroOs)}`}
-                            >
-                              <Button size="sm" variant="outline" className="text-xs">
-                                <FileText className="h-3.5 w-3.5" />
-                                REG-035
-                              </Button>
-                            </Link>
-                          )}
-                        </>
-                      );
-                    })()}
+                    {item.formularioSecundarioLabel && item.formularioSecundarioHref && (
+                      <Link href={item.formularioSecundarioHref}>
+                        <Button size="sm" variant="outline" className="text-xs">
+                          <FileText className="h-3.5 w-3.5" />
+                          {item.formularioSecundarioLabel}
+                        </Button>
+                      </Link>
+                    )}
 
                     <Link href={item.href}>
-                      <Button size="sm" variant="outline">
-                        {isIntersetorial ? 'Ver na Fila de OS' : 'Resolver'}
+                      <Button size="sm" variant={isIntersetorial ? 'default' : 'outline'}>
+                        {item.acaoSugeridaLabel ??
+                          (isIntersetorial ? 'Abrir Painel da OS' : 'Resolver')}
                         <ArrowRight className="h-3.5 w-3.5" />
                       </Button>
                     </Link>

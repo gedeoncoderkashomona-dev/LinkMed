@@ -1478,8 +1478,8 @@ export function almoxarifadoRetomarOsDeAguardandoPecas(
 
 /**
  * Registra o preenchimento do Item 5 / REG 035 (REG 009 para Cardios ou REG 035 para TEB/OLIDEF).
- * Respeita estritamente a regra de bloqueio (Etiqueta VERMELHA) e o pré-requisito da Trilha POP-020:
- * somente liberado após a Etiqueta VERDE (serviço finalizado) estar acionada no REG 016.
+ * Decisão D8 / v4: liberado enquanto não houver Etiqueta VERMELHA efetiva,
+ * sendo obrigatório antes de concluir a OS com Etiqueta VERDE (serviço finalizado).
  */
 export function atPreencherItem5Reg016(
   os: OrdemServicoFluxoState,
@@ -1489,12 +1489,7 @@ export function atPreencherItem5Reg016(
   validarPermissaoSetor(ator, ['AT']);
   if (!isItem5Reg016Liberado(os.etiquetaAtual, os.orcamentoAprovado)) {
     throw new Error(
-      'O Item 5 do REG 016 / REG 035 está bloqueado porque a OS possui etiqueta VERMELHA (orçamento não aprovado pelo cliente). O fluxo segue apenas quando aprovado e finalizado com Etiqueta VERDE.',
-    );
-  }
-  if (os.etiquetaAtual !== 'GREEN') {
-    throw new Error(
-      'Pré-requisito obrigatório (POP-020): toda OS começa no REG-022 (ADM) e o REG 035 / Item 5 só é liberado pela Assistência Técnica (AT) após acionar a Etiqueta VERDE (serviço finalizado) no REG 016.',
+      'O Item 5 do REG 016 / REG 035 está bloqueado porque a OS possui etiqueta VERMELHA (orçamento não aprovado pelo cliente).',
     );
   }
 

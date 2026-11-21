@@ -68,6 +68,7 @@ export function PopsClient() {
     }
   }, [searchParams]);
 
+  const { data: allCatalogData } = usePops();
   const { data, isLoading } = usePops({
     search: search || undefined,
     setor: setor || undefined,
@@ -75,16 +76,29 @@ export function PopsClient() {
   });
 
   const canUpload = user ? can(user.perfil, 'pops:upload') : false;
+  const temFiltroAtivo = Boolean(search.trim() || setor || status);
 
   const inlinePop = React.useMemo(() => {
-    if (!inlinePopId || !data?.pops) return null;
-    const pop = data.pops.find((p) => p.id === inlinePopId);
+    if (!inlinePopId) return null;
+    const pop =
+      data?.pops.find((p) => p.id === inlinePopId) ??
+      allCatalogData?.pops.find((p) => p.id === inlinePopId);
     if (!pop) return null;
     return {
       pop,
-      conteudo: obterConteudoPop(pop.codigo),
+      conteudo: obterConteudoPop(pop.codigo, {
+        titulo: pop.titulo,
+        descricao: pop.descricao,
+        setor: pop.setor,
+        setorNome: SETOR_LABEL[pop.setor] ?? pop.setor,
+        versao: pop.versaoAtual,
+        periodicidadeMeses: pop.periodicidadeRevisaoMeses,
+        elaboradoPor: pop.elaboradoPor,
+        revisadoPor: pop.revisadoPor,
+        aprovadoPorNome: pop.aprovadoPorNome,
+      }),
     };
-  }, [inlinePopId, data?.pops]);
+  }, [inlinePopId, data?.pops, allCatalogData?.pops]);
 
   return (
     <div className="space-y-6">
@@ -105,26 +119,64 @@ export function PopsClient() {
 
       {/* Acesso rápido aos POPs oficiais */}
       <div className="rounded-2xl border border-border/70 bg-card/85 p-3.5 text-xs space-y-2.5 shadow-2xs">
-        <div className="flex items-center gap-2 font-medium text-foreground">
-          <FileCheck2 className="h-4 w-4 text-primary" strokeWidth={1.6} />
-          <span>Acesso rápido por código POP</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {DOCUMENTOS_OFICIAIS_POR_MODULO.documentosPops.map((item) => (
+        <div className="flex flex-wrap items-center justify-between gap-2 font-medium text-foreground">
+          <div className="flex items-center gap-2">
+            <FileCheck2 className="h-4 w-4 text-primary" strokeWidth={1.6} />
+            <span>Acesso rápido por código POP</span>
+          </div>
+          {temFiltroAtivo && (
             <button
-              key={item.codigo}
               type="button"
               onClick={() => {
-                setSearch(item.codigo);
-                const popEncontrado = data?.pops.find((p) => p.codigo === item.codigo);
-                if (popEncontrado) setInlinePopId(popEncontrado.id);
+                setSearch('');
+                setSetor('');
+                setStatus('');
               }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3 py-1 text-[11px] font-medium transition hover:border-primary/50 hover:bg-primary/5 active:scale-[0.98]"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
             >
-              <span className="font-mono font-semibold text-primary">{item.codigo}</span>
-              <span className="text-muted-foreground">· {item.titulo}</span>
+              <X className="h-3 w-3" />
+              Limpar filtros
             </button>
-          ))}
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {DOCUMENTOS_OFICIAIS_POR_MODULO.documentosPops.map((item) => {
+            const ativo = search.trim().toUpperCase() === item.codigo;
+            return (
+              <button
+                key={item.codigo}
+                type="button"
+                onClick={() => {
+                  if (ativo) {
+                    setSearch('');
+                    setInlinePopId(null);
+                    return;
+                  }
+                  setSetor('');
+                  setStatus('');
+                  setSearch(item.codigo);
+                  const popEncontrado = (allCatalogData?.pops ?? data?.pops ?? []).find(
+                    (p) => p.codigo.toUpperCase() === item.codigo.toUpperCase(),
+                  );
+                  if (popEncontrado) {
+                    setInlinePopId(popEncontrado.id);
+                    setTimeout(() => {
+                      const el = document.getElementById('leitor-pop-inferior');
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 80);
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition active:scale-[0.98] ${
+                  ativo
+                    ? 'border-primary bg-primary/10 text-foreground ring-1 ring-primary/30'
+                    : 'border-border/80 bg-background/80 hover:border-primary/50 hover:bg-primary/5'
+                }`}
+              >
+                <span className="font-mono font-semibold text-primary">{item.codigo}</span>
+                <span className="text-muted-foreground">· {item.titulo}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -180,6 +232,21 @@ export function PopsClient() {
             <p className="text-xs text-muted-foreground">
               Ajuste os filtros ou selecione um dos POPs do catálogo oficial acima.
             </p>
+            {temFiltroAtivo && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-2"
+                onClick={() => {
+                  setSearch('');
+                  setSetor('');
+                  setStatus('');
+                }}
+              >
+                Limpar filtros e mostrar todos
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (

@@ -160,14 +160,14 @@ export function validarTransicaoOsNoServidor(params: {
         );
       }
       if (autor !== 'sistema' && !supervisor) {
-        const isItem5PosVerde =
+        const isItem5Permitido =
           ev.codigoPasso === 'ITEM5_REG016' &&
-          (ev.etiquetaAnterior === 'GREEN' || anterior.etiquetaAtual === 'GREEN') &&
+          anterior.etiquetaAtual !== 'RED' &&
           anterior.item5Liberado;
-        if (isItem5PosVerde) {
+        if (isItem5Permitido) {
           if (perfil !== 'tecnico') {
             return negar(
-              'Somente a Assistência Técnica (AT), Gestor ou Diretor podem preencher o REG-035 (Item 5) após a Etiqueta VERDE no REG-016.',
+              'Somente a Assistência Técnica (AT), Gestor ou Diretor podem preencher o Item 5 (REG-035 / REG-009) para Ordens de Serviço sem Etiqueta VERMELHA.',
             );
           }
         } else if (!meuSetor || (!ehLoteCorrecaoDono && String(ev.setorPendenteAnterior) !== meuSetor)) {

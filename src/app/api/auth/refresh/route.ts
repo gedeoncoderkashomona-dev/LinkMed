@@ -12,7 +12,7 @@ export const POST = apiHandler(async (_req: NextRequest) => {
   const refreshToken = await readRefreshToken();
   if (!refreshToken) {
     const res = NextResponse.json(
-      { error: 'UNAUTHORIZED', message: 'Refresh token ausente.' },
+      { error: 'UNAUTHORIZED', message: 'Sessão expirada. Faça login novamente.' },
       { status: 401 },
     );
     await clearAuthCookies(res);

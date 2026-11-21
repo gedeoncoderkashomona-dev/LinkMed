@@ -466,20 +466,52 @@ export const POPS_CATALOG_DATA: Record<string, PopDocumentoCompleto> = {
   },
 };
 
-export function obterConteudoPop(codigo: string): PopDocumentoCompleto {
+export interface PopMetaOverride {
+  titulo?: string;
+  descricao?: string | null;
+  setor?: string;
+  setorNome?: string;
+  versao?: number;
+  periodicidadeMeses?: number;
+  elaboradoPor?: string | null;
+  revisadoPor?: string | null;
+  aprovadoPorNome?: string | null;
+}
+
+export function obterConteudoPop(
+  codigo: string,
+  override?: PopMetaOverride,
+): PopDocumentoCompleto {
   const norm = codigo.toUpperCase().replace(/\s+/g, '-');
-  return POPS_CATALOG_DATA[norm] ?? {
+  const base = POPS_CATALOG_DATA[norm];
+  const versao = override?.versao ?? base?.versao ?? 1;
+  const versaoLabel = String(versao).padStart(2, '0');
+
+  if (base) {
+    return {
+      ...base,
+      titulo: override?.titulo || base.titulo,
+      versao,
+      versaoLabel,
+      periodicidadeMeses: override?.periodicidadeMeses ?? base.periodicidadeMeses,
+      elaboradoPor: override?.elaboradoPor || base.elaboradoPor,
+      revisadoPor: override?.revisadoPor || base.revisadoPor,
+      aprovadoPor: override?.aprovadoPorNome || base.aprovadoPor,
+    };
+  }
+
+  return {
     codigo: norm,
-    titulo: `${norm} - Procedimento Operacional Padrão LinkMed`,
-    setor: 'qualidade',
-    setorNome: 'Gestão da Qualidade',
-    versao: 1,
-    versaoLabel: '01',
-    vigencia: '30/01/2026',
-    periodicidadeMeses: 24,
-    elaboradoPor: 'Vanessa Ribeiro (Gestão da Qualidade)',
-    revisadoPor: 'Marina Lopes (Responsável Técnica)',
-    aprovadoPor: 'Pedro Costa (Diretoria)',
+    titulo: override?.titulo || `${norm} - Procedimento Operacional Padrão LinkMed`,
+    setor: override?.setor ?? 'qualidade',
+    setorNome: override?.setorNome ?? 'Gestão da Qualidade',
+    versao,
+    versaoLabel,
+    vigencia: new Date().toLocaleDateString('pt-BR'),
+    periodicidadeMeses: override?.periodicidadeMeses ?? 24,
+    elaboradoPor: override?.elaboradoPor || 'Vanessa Ribeiro (Gestão da Qualidade)',
+    revisadoPor: override?.revisadoPor || 'Marina Lopes (Responsável Técnica)',
+    aprovadoPor: override?.aprovadoPorNome || 'Pedro Costa (Diretoria)',
     distribuicaoEletronica: 'Google Drive https://bit.ly/SgqLinkmed',
     distribuicaoImpressa: 'Setor LinkMed',
     secoes: [
@@ -487,7 +519,8 @@ export function obterConteudoPop(codigo: string): PopDocumentoCompleto {
         numero: '1',
         titulo: '1. OBJETIVO',
         paragrafos: [
-          `Procedimento operacional padrão ${norm} em conformidade com as Boas Práticas de Fabricação e Manutenção da RDC nº 665/2022 (ANVISA).`,
+          override?.descricao?.trim() ||
+            `Procedimento operacional padrão ${norm} em conformidade com as Boas Práticas de Fabricação e Manutenção da RDC nº 665/2022 (ANVISA).`,
         ],
       },
       {
@@ -500,7 +533,11 @@ export function obterConteudoPop(codigo: string): PopDocumentoCompleto {
     ],
     registros: [],
     revisoes: [
-      { data: '30/01/2026', numero: '01', historico: 'Emissão oficial LinkMed.' },
+      {
+        data: new Date().toLocaleDateString('pt-BR'),
+        numero: versaoLabel,
+        historico: 'Emissão oficial LinkMed.',
+      },
     ],
   };
 }

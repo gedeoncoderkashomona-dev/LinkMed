@@ -77,6 +77,11 @@ const ACAO_META: Record<
     cor: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/25',
     categoria: 'pop',
   },
+  'pop.update': {
+    label: 'Edição de governança POP',
+    cor: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/25',
+    categoria: 'pop',
+  },
   'pop.publish': {
     label: 'Envio de POP p/ aprovação',
     cor: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
@@ -122,8 +127,43 @@ const ACAO_META: Record<
     cor: 'bg-primary/10 text-primary border-primary/25',
     categoria: 'operacional',
   },
+  'form.update': {
+    label: 'Edição de formulário (REG)',
+    cor: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
+    categoria: 'operacional',
+  },
+  'os_v4.acao': {
+    label: 'Avanço de etapa na OS',
+    cor: 'bg-primary/10 text-primary border-primary/25',
+    categoria: 'operacional',
+  },
+  'os_v4.cancelar': {
+    label: 'Cancelamento de OS',
+    cor: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/25',
+    categoria: 'operacional',
+  },
+  'os_v4.reabrir': {
+    label: 'Reabertura de OS',
+    cor: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25',
+    categoria: 'operacional',
+  },
+  'os_v4.corrigir': {
+    label: 'Correção de ação na OS',
+    cor: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
+    categoria: 'operacional',
+  },
+  'os_v4.estornar': {
+    label: 'Estorno de etapa na OS',
+    cor: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25',
+    categoria: 'operacional',
+  },
+  'os_v4.notificacao_confirmada': {
+    label: 'Ciência de aviso intersetorial',
+    cor: 'bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25',
+    categoria: 'operacional',
+  },
   'nc.create': {
-    label: 'Abertura de NC (REG-020)',
+    label: 'Abertura de NC (REG-038)',
     cor: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/25',
     categoria: 'operacional',
   },
