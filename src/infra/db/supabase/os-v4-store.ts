@@ -911,7 +911,10 @@ export async function listarOrdensV4(): Promise<OrdemServicoFluxoState[]> {
     .sort((a, b) => new Date(b.atualizadaEm).getTime() - new Date(a.atualizadaEm).getTime());
 }
 
-export async function existeNumeroOsV4(numeroOs: string): Promise<{ existe: boolean; numeroExistente?: string }> {
+export async function existeNumeroOsV4(
+  numeroOs: string,
+  opcoes?: { ignorarFormRecordId?: string; apenasTabelaOs?: boolean },
+): Promise<{ existe: boolean; numeroExistente?: string }> {
   const norm = normalizarNumero(numeroOs);
   if (!norm) return { existe: false };
 
@@ -920,13 +923,19 @@ export async function existeNumeroOsV4(numeroOs: string): Promise<{ existe: bool
     return { existe: true, numeroExistente: existente.meta.numeroOs };
   }
 
+  if (opcoes?.apenasTabelaOs) {
+    return { existe: false };
+  }
+
   const { operacionalRepository } = getRepositories();
   const registros22 = await operacionalRepository.listFormRecords({
     tipo: 'inspecao-recebimento',
     limit: 500,
   });
   const dup = registros22.find(
-    (r) => normalizarNumero(String(r.dados?.numero_os ?? '')) === norm,
+    (r) =>
+      r.id !== opcoes?.ignorarFormRecordId &&
+      normalizarNumero(String(r.dados?.numero_os ?? '')) === norm,
   );
   if (dup) {
     return { existe: true, numeroExistente: String(dup.dados?.numero_os ?? numeroOs) };
@@ -942,8 +951,11 @@ export async function criarOsInicialV4(params: {
   usuarioNome: string;
   ip?: string;
   userAgent?: string | null;
+  ignorarFormRecordId?: string;
 }): Promise<OsV4Carregada> {
-  const dup = await existeNumeroOsV4(params.numeroOs);
+  const dup = await existeNumeroOsV4(params.numeroOs, {
+    ignorarFormRecordId: params.ignorarFormRecordId,
+  });
   if (dup.existe) {
     throw new Recusado(
       'estado',

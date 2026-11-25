@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
+import type { FormRecord } from '@/core/domain/entities/operacional';
 import {
   gerarAvisosOsV4,
   usuarioPodeConfirmarAvisoSetor,
 } from '@/core/domain/forms/os-notices';
-import { criarOsViaReg022, type AtorAcaoOS } from '@/core/domain/forms/os-workflow';
+import {
+  aggregateServiceOrders,
+  criarOsViaReg022,
+  type AtorAcaoOS,
+} from '@/core/domain/forms/os-workflow';
 import { obterConteudoPop } from '@/core/domain/pops/pop-catalog-content';
 import { gerarPdfPopCompleto } from '@/core/domain/pops/pop-pdf-generator';
 import { traduzirMensagemZod } from '@/lib/http/api-handler';
+import { formatarCodigoOs, formatarDataCurtaBR } from '@/lib/utils';
 
 const ATOR_ADM: AtorAcaoOS = {
   usuarioId: 'u-adm',
@@ -125,5 +131,79 @@ describe('Auditorias UX/UI & Português — Avisos de OS, POPs e Zod', () => {
     expect(traduzirMensagemZod('Expected number, received string')).toBe(
       'Informe um número válido.',
     );
+  });
+
+  it('aggregateServiceOrders não cria OS fantasma para REG-015 nem ressuscita OS de REG-030 órfão', () => {
+    const records: FormRecord[] = [
+      {
+        id: 'reg015-1',
+        tipo: 'validade-calibracao',
+        subtipo: null,
+        dados: {
+          equipamento: 'Analisador de Segurança Elétrica Fluke ESA612',
+          numero_serie: 'FLK-9920',
+          validade: '2026-11-20',
+        },
+        status: 'conforme',
+        dataRef: '2026-09-23',
+        criadoPor: 'u-at',
+        criadoPorNome: 'Técnico AT',
+        createdAt: new Date('2026-09-23T12:00:00Z'),
+      },
+      {
+        id: 'reg030-orfao',
+        tipo: 'verificacao-calibracao',
+        subtipo: null,
+        dados: {
+          numero_os: 'OS-2026-0101',
+          equipamento: 'Incubadora Neonatal',
+          numero_serie: 'OLD-8841',
+          resultado_final: 'conforme',
+        },
+        status: 'conforme',
+        dataRef: '2026-10-22',
+        criadoPor: 'u-at',
+        criadoPorNome: 'Técnico AT',
+        createdAt: new Date('2026-10-22T12:00:00Z'),
+      },
+    ];
+
+    expect(aggregateServiceOrders(records)).toEqual([]);
+
+    // Quando existe REG-022 da OS-2026-0101, o REG-030 enriquece essa OS normalmente
+    const comReg022: FormRecord[] = [
+      {
+        id: 'reg022-1',
+        tipo: 'inspecao-recebimento',
+        subtipo: null,
+        dados: {
+          numero_os: 'OS-2026-0101',
+          cliente: 'Hospital Santa Clara',
+          equipamento: 'Incubadora Neonatal',
+          marca: 'OLIDEF',
+          numero_serie: 'OLD-8841',
+        },
+        status: 'conforme',
+        dataRef: '2026-10-21',
+        criadoPor: 'u-adm',
+        criadoPorNome: 'Adm Teste',
+        createdAt: new Date('2026-10-21T12:00:00Z'),
+      },
+      ...records,
+    ];
+    const agregadas = aggregateServiceOrders(comReg022);
+    expect(agregadas).toHaveLength(1);
+    expect(agregadas[0]?.numeroOs).toBe('OS-2026-0101');
+    expect(agregadas[0]?.etapasConcluidas.reg030Calibracao).toBe(true);
+  });
+
+  it('formatarDataCurtaBR e formatarCodigoOs evitam datas ISO quebradas e prefixo OS duplicado', () => {
+    expect(formatarDataCurtaBR('2026-11-25T18:54:19.841Z')).toBe('25/11/2026');
+    expect(formatarDataCurtaBR('2026-10-22')).toBe('22/10/2026');
+    expect(formatarDataCurtaBR(null)).toBe('—');
+
+    expect(formatarCodigoOs('303030')).toBe('OS 303030');
+    expect(formatarCodigoOs('OS-2026-0101')).toBe('OS-2026-0101');
+    expect(formatarCodigoOs('os 2060')).toBe('OS 2060');
   });
 });

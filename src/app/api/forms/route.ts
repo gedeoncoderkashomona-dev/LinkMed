@@ -280,16 +280,9 @@ export const POST = apiHandler(async (req: NextRequest) => {
     }
   } else {
     const status = avaliarConformidade(def, subtipo, dados);
-    record = await operacionalRepository.createFormRecord({
-      tipo: def.tipo,
-      subtipo,
-      dados,
-      status,
-      dataRef,
-      criadoPor: auth.sub,
-      versaoSchema: 2,
-    });
 
+    // No REG-022, cria a OS oficial v4 ANTES de gravar o form_record para garantir
+    // atomicidade lógica (sem falso duplicado e sem registro órfão caso a criação seja recusada).
     if (numOsNorm && def.tipo === 'inspecao-recebimento') {
       try {
         const criada = await criarOsInicialV4({
@@ -312,7 +305,19 @@ export const POST = apiHandler(async (req: NextRequest) => {
       } catch (err) {
         mapRecusadoParaAppError(err);
       }
-    } else if (numOsNorm && def.tipo === 'limpeza-equipamento' && osV4Inicial) {
+    }
+
+    record = await operacionalRepository.createFormRecord({
+      tipo: def.tipo,
+      subtipo,
+      dados,
+      status,
+      dataRef,
+      criadoPor: auth.sub,
+      versaoSchema: 2,
+    });
+
+    if (numOsNorm && def.tipo === 'limpeza-equipamento' && osV4Inicial) {
       // Se a OS está exatamente em AT_REG034 e o técnico salvou o REG-034, executa A03 REG034_SALVO -> AT_HIGIENIZAR
       if (osV4Inicial.estado.no === 'AT_REG034' && setorV4 === 'AT') {
         try {

@@ -1165,10 +1165,10 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-xs font-semibold text-foreground">
                   {progressoPct === 100
-                    ? '🎉 Formulário 100% preenchido e pronto para envio!'
+                    ? 'Formulário 100% preenchido e pronto para envio'
                     : progressoPct >= 60
-                      ? `⚡ Ótimo ritmo! Faltam apenas ${faltamCount} campo(s) obrigatório(s)`
-                      : `📋 Progresso do preenchimento: ${preenchidosCount} de ${totalObrigatorios} obrigatórios`}
+                      ? `Quase lá! Faltam apenas ${faltamCount} campo(s) obrigatório(s)`
+                      : `Progresso do preenchimento: ${preenchidosCount} de ${totalObrigatorios} obrigatórios`}
                 </p>
               </div>
               <p className="text-[11px] text-muted-foreground">
@@ -1251,7 +1251,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                     {ordensElegiveisParaFormulario.length > 0
                       ? 'Selecionar OS liberada para esta etapa...'
                       : def.tipo === 'checklist-manutencao'
-                        ? 'Nenhuma OS liberada para Item 5 (D8)'
+                        ? 'Nenhuma OS liberada para Item 5 ainda'
                         : def.tipo === 'etapas-manutencao'
                           ? 'Nenhuma OS iniciada no REG-022 ainda'
                           : 'Nenhuma OS liberada para esta etapa'}

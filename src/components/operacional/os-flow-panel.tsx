@@ -19,6 +19,7 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import {
   EquipmentLabelPrintDialog,
@@ -56,7 +57,7 @@ import {
   type OsNotificacaoV4Item,
 } from '@/hooks/use-operacional';
 import { showRuleNotice } from '@/lib/rule-notice';
-import { cn } from '@/lib/utils';
+import { cn, formatarCodigoOs } from '@/lib/utils';
 
 export interface OsFlowPanelProps {
   numeroOs: string;
@@ -78,6 +79,46 @@ const ESTADO_GERAL_LABEL: Record<string, string> = {
   finalizada: 'Finalizada',
   cancelada: 'Cancelada',
 };
+
+const MACRO_ETAPAS_OS = [
+  { id: 1, label: 'Recebimento' },
+  { id: 2, label: 'Higienização' },
+  { id: 3, label: 'Análise' },
+  { id: 4, label: 'Decisão / Orçam.' },
+  { id: 5, label: 'Peças / Reparo' },
+  { id: 6, label: 'Concluída' },
+] as const;
+
+function obterIndiceMacroEtapa(no: string): number {
+  switch (no) {
+    case 'AGUARDA_REG016':
+      return 1;
+    case 'AT_RECEBER':
+    case 'AT_REG034':
+    case 'AT_HIGIENIZAR':
+      return 2;
+    case 'EM_ANALISE':
+    case 'PERG_GARANTIA':
+    case 'PERG_ENVIO':
+      return 3;
+    case 'AGUARDA_ENVIO':
+    case 'AGUARDA_RETORNO':
+    case 'O_CONTATO':
+    case 'O_APROVACAO':
+    case 'O_REPROVADO':
+      return 4;
+    case 'P_TRIAGEM':
+    case 'P_COMPRA':
+    case 'P_ENTREGA':
+    case 'EM_EXECUCAO':
+      return 5;
+    case 'FIM_VERDE':
+    case 'FIM_VERMELHA':
+      return 6;
+    default:
+      return 1;
+  }
+}
 
 function formatDataHoraBR(iso: string): string {
   const dt = new Date(iso);
@@ -210,6 +251,10 @@ export function OsFlowPanel({
       setMotivoTransversal('');
       setMostrarNaoEnviado(false);
       setJustificativaNaoEnviado('');
+      const proxEtapa = NODE_LABEL_PT[res.estado.no] ?? res.estado.no;
+      toast.success('Fluxo da OS atualizado!', {
+        description: `${formatarCodigoOs(os.numeroOs)} · ${proxEtapa}`,
+      });
       onAtualizada?.(res.os);
     } catch (err) {
       const msg =
@@ -230,6 +275,9 @@ export function OsFlowPanel({
       const res = await confirmNotifMutation.mutateAsync({
         notificacaoId: n.id,
         numeroOs: n.numeroOs,
+      });
+      toast.success('Ciência registrada com sucesso!', {
+        description: 'O aviso foi confirmado mantendo a etapa atual da OS.',
       });
       if (res.os) onAtualizada?.(res.os);
     } catch (err) {
@@ -277,7 +325,7 @@ export function OsFlowPanel({
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-base font-bold text-foreground">
-                  OS {os.numeroOs}
+                  {formatarCodigoOs(os.numeroOs)}
                 </span>
                 {tagSpec ? (
                   <Badge className={cn('border font-medium', tagSpec.badgeClass)}>
@@ -285,7 +333,7 @@ export function OsFlowPanel({
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-muted-foreground">
-                    Sem etiqueta atribuída (Inicial)
+                    Aguardando abertura do REG-016
                   </Badge>
                 )}
                 <Badge
@@ -300,9 +348,6 @@ export function OsFlowPanel({
                   }
                 >
                   {ESTADO_GERAL_LABEL[estado.estadoGeral] ?? estado.estadoGeral}
-                </Badge>
-                <Badge variant="outline" className="font-mono text-[11px]">
-                  v{estado.versao}
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -327,6 +372,55 @@ export function OsFlowPanel({
               )}
             </div>
           </div>
+
+          {/* Trilha Visual Horizontal de Progresso da OS */}
+          {(() => {
+            const etapaAtualIdx = obterIndiceMacroEtapa(estado.no);
+            return (
+              <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
+                {MACRO_ETAPAS_OS.map((step) => {
+                  const concluida =
+                    !estado.cancelada &&
+                    (step.id < etapaAtualIdx ||
+                      (step.id === 6 && estado.estadoGeral === 'finalizada'));
+                  const ativa = !estado.cancelada && step.id === etapaAtualIdx && estado.estadoGeral !== 'finalizada';
+                  return (
+                    <div
+                      key={step.id}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors',
+                        estado.cancelada
+                          ? 'border-border/60 bg-muted/20 text-muted-foreground/70'
+                          : concluida
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                            : ativa
+                              ? estado.estadoGeral === 'stand_by'
+                                ? 'border-amber-500/50 bg-amber-500/15 text-amber-800 dark:text-amber-200 font-semibold'
+                                : 'border-primary/60 bg-primary/12 text-primary font-semibold'
+                              : 'border-border/60 bg-muted/20 text-muted-foreground',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+                          concluida
+                            ? 'bg-emerald-600 text-white'
+                            : ativa
+                              ? estado.estadoGeral === 'stand_by'
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {concluida ? '✓' : step.id}
+                      </span>
+                      <span className="truncate">{step.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Linha de status operacional + Item 5 + Setor Pendente */}
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/70 pt-2.5 text-xs">
@@ -713,7 +807,7 @@ export function OsFlowPanel({
                       </div>
                       {finalNaoEnviado === 'VERDE' && !item5Preenchido && (
                         <p className="text-xs text-amber-700 dark:text-amber-300">
-                          Atenção (D8): para encerrar como VERDE, salve antes o Item 5 no REG-016
+                          Atenção: para encerrar com Etiqueta VERDE, preencha antes o Item 5 no REG-016
                           ou o {item5Form}.
                         </p>
                       )}
@@ -757,7 +851,7 @@ export function OsFlowPanel({
                     </p>
                     <p className="text-muted-foreground">
                       Quando retornar da fábrica, confirme abaixo para encerrar com Etiqueta VERDE
-                      (D7: sem orçamento adicional).
+                      (sem orçamento adicional).
                     </p>
                   </div>
                   <Button
@@ -832,8 +926,7 @@ export function OsFlowPanel({
                       Orçamento reprovado pelo cliente
                     </p>
                     <p className="text-muted-foreground">
-                      Confirme a ciência da AT para aplicar Etiqueta VERMELHA e encerrar a OS (D4:
-                      Item 5 bloqueado).
+                      Confirme a ciência da AT para aplicar Etiqueta VERMELHA e encerrar a OS (Item 5 bloqueado).
                     </p>
                   </div>
                   <Button
@@ -909,7 +1002,7 @@ export function OsFlowPanel({
                       <p className="text-muted-foreground">
                         {item5Preenchido
                           ? `Item 5 (${item5Form}) preenchido. Pronto para encerrar com Etiqueta VERDE.`
-                          : `Decisão D8: preencha antes a seção 5 (Item 5) no REG-016 ou o ${item5Form}.`}
+                          : `Antes de finalizar, preencha a seção 5 (Item 5) no REG-016 ou o ${item5Form}.`}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -992,8 +1085,8 @@ export function OsFlowPanel({
             <div className="space-y-2.5 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                 <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
-                {modoTransversal === 'CORRIGIR' && 'Corrigir última ação (R09)'}
-                {modoTransversal === 'ESTORNAR' && 'Estornar OS para nó já percorrido (ADM)'}
+                {modoTransversal === 'CORRIGIR' && 'Corrigir minha última ação'}
+                {modoTransversal === 'ESTORNAR' && 'Estornar OS para etapa anterior (ADM)'}
                 {modoTransversal === 'CANCELAR' && 'Cancelar Ordem de Serviço'}
                 {modoTransversal === 'REABRIR' && 'Reabrir Ordem de Serviço'}
               </p>
@@ -1001,7 +1094,7 @@ export function OsFlowPanel({
               {modoTransversal === 'ESTORNAR' && (
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Retornar para o nó
+                    Retornar para a etapa
                   </label>
                   <SelectNative
                     value={paraNoEstorno}
@@ -1070,7 +1163,7 @@ export function OsFlowPanel({
               <Bell className="h-4 w-4 text-primary" />
               Notificações entre setores
               <Badge variant="outline" className="text-[11px] font-normal">
-                Confirmar ciência não avança etapa (R08)
+                Confirmar ciência registra leitura sem avançar etapa
               </Badge>
             </CardTitle>
           </CardHeader>

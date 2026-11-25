@@ -44,7 +44,7 @@ import {
 } from '@/core/domain/forms/os-workflow';
 import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
 import { useFormsOverview, useOsFlowList } from '@/hooks/use-operacional';
-import { cn } from '@/lib/utils';
+import { cn, formatarDataCurtaBR } from '@/lib/utils';
 
 interface Props {
   osChaveOuNumero: string | null;
@@ -352,9 +352,7 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
           </DialogTitle>
           <DialogDescription className="text-xs">
             Cliente: <strong>{osCtx?.cliente || 'Não informado'}</strong> · Última movimentação:{' '}
-            {osCtx?.ultimaAtualizacao
-              ? osCtx.ultimaAtualizacao.split('-').reverse().join('/')
-              : '—'}
+            {formatarDataCurtaBR(osCtx?.ultimaAtualizacao)}
           </DialogDescription>
         </DialogHeader>
 

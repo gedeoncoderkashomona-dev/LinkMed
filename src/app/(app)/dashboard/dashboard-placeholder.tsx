@@ -11,6 +11,7 @@ import {
   ClipboardList,
   FileText,
   LayoutDashboard,
+  Plus,
   ShieldAlert,
   Tag,
   Wrench,
@@ -30,10 +31,11 @@ import {
   aggregateServiceOrders,
   TAG_SPECS,
 } from '@/core/domain/forms/os-workflow';
+import { NODE_LABEL_PT, etiquetaV4ParaTagColor } from '@/core/domain/os-v4/adapter';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFormsOverview, useNcs, useOsFlowList } from '@/hooks/use-operacional';
 import { usePops } from '@/hooks/use-pops';
-import { cn } from '@/lib/utils';
+import { cn, formatarCodigoOs, formatarDataCurtaBR } from '@/lib/utils';
 
 export function DashboardPlaceholder() {
   const { data: user } = useCurrentUser();
@@ -150,8 +152,21 @@ export function DashboardPlaceholder() {
             </div>
           )}
 
+          {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+            <Link href="/formularios/inspecao-recebimento">
+              <Button size="sm" className="gap-1.5 shadow-xs">
+                <Plus className="h-4 w-4" />
+                Nova OS (REG-022)
+              </Button>
+            </Link>
+          )}
+
           <Link href="/equipamentos">
-            <Button size="sm">
+            <Button
+              size="sm"
+              variant={['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') ? 'outline' : 'default'}
+              className="gap-1.5"
+            >
               <Wrench className="h-4 w-4" />
               Fila de OS / Equipamentos
             </Button>
@@ -185,6 +200,13 @@ export function DashboardPlaceholder() {
           <div className="divide-y divide-border/70">
             {ordensPendentesMeuSetor.map((o) => {
               const ultimaNotif = o.notificacoes?.[0];
+              const tagColor =
+                etiquetaV4ParaTagColor(o.v4Estado?.etiqueta ?? null) ?? o.etiquetaAtual ?? null;
+              const tagSpec = tagColor ? TAG_SPECS[tagColor] : null;
+              const etapaTexto =
+                (o.v4No ? NODE_LABEL_PT[o.v4No] : null) ??
+                ultimaNotif?.mensagem ??
+                'Aguardando atuação do setor';
               const rotaDireta =
                 o.v4No === 'AT_REG034' || o.passoAtual === 'A3_AT_CONFIRMOU_PREENCHER_REG034'
                   ? `/formularios/limpeza-equipamento?os=${encodeURIComponent(o.numeroOs)}`
@@ -196,17 +218,29 @@ export function DashboardPlaceholder() {
                   key={o.numeroOs}
                   className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs transition-colors hover:bg-muted/30"
                 >
-                  <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs font-semibold text-primary">
-                        OS {o.numeroOs}
+                        {formatarCodigoOs(o.numeroOs)}
                       </span>
                       <span className="truncate font-medium text-foreground">
                         {o.identificacao.equipamento} · {o.identificacao.marca}
                       </span>
+                      {tagSpec && (
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                            tagSpec.badgeClass,
+                          )}
+                        >
+                          <Tag className="h-2.5 w-2.5" />
+                          {tagSpec.nomeCor}
+                        </span>
+                      )}
                     </div>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      {ultimaNotif?.mensagem || o.mensagemTelaAtual || 'Aguardando ação do setor'}
+                      <strong className="font-medium text-foreground/80">Próximo passo:</strong>{' '}
+                      {etapaTexto}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
@@ -246,101 +280,113 @@ export function DashboardPlaceholder() {
 
       {/* KPIs Principais */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Documentos vigentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingPops ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                  {popsVigentes}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  de {popsData?.pops.length ?? 0} POP(s) cadastrados
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <Link href="/pops" className="group block">
+          <Card className="h-full transition-all group-hover:border-primary/40 group-hover:shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Documentos vigentes
+              </CardTitle>
+              <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            </CardHeader>
+            <CardContent>
+              {loadingPops ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {popsVigentes}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    de {popsData?.pops.length ?? 0} POP(s) cadastrados
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              NCs em aberto
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingNcs ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">
-                  {resumoNc.abertas + resumoNc.emAndamento}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {resumoNc.abertas} aberta(s) · {resumoNc.emAndamento} em andamento ·{' '}
-                  {resumoNc.concluidas} concluída(s)
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <Link href="/ncs" className="group block">
+          <Card className="h-full transition-all group-hover:border-primary/40 group-hover:shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                NCs em aberto
+              </CardTitle>
+              <ShieldAlert className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+            </CardHeader>
+            <CardContent>
+              {loadingNcs ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">
+                    {resumoNc.abertas + resumoNc.emAndamento}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {resumoNc.abertas} aberta(s) · {resumoNc.emAndamento} em andamento ·{' '}
+                    {resumoNc.concluidas} concluída(s)
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Registros Operacionais (90d)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingForms ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-primary">{totalForms}</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Checklists e controles preenchidos
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <Link href="/formularios" className="group block">
+          <Card className="h-full transition-all group-hover:border-primary/40 group-hover:shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Registros Operacionais (90d)
+              </CardTitle>
+              <ClipboardList className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingForms ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <p className="text-2xl font-bold text-primary">{totalForms}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Checklists e controles preenchidos
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Alertas Operacionais
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingForms ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <>
-                <p
-                  className={cn(
-                    'text-2xl font-bold',
-                    alertas.length > 0
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-emerald-600 dark:text-emerald-400',
-                  )}
-                >
-                  {alertas.length}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {alertas.length > 0
-                    ? 'Ações periódicas ou calibrações pendentes'
-                    : 'Todas as rotinas em dia'}
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <Link href="/notificacoes" className="group block">
+          <Card className="h-full transition-all group-hover:border-primary/40 group-hover:shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Alertas Operacionais
+              </CardTitle>
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </CardHeader>
+            <CardContent>
+              {loadingForms ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <>
+                  <p
+                    className={cn(
+                      'text-2xl font-bold',
+                      alertas.length > 0
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-emerald-600 dark:text-emerald-400',
+                    )}
+                  >
+                    {alertas.length}
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {alertas.length > 0
+                      ? 'Ações periódicas ou calibrações pendentes'
+                      : 'Todas as rotinas em dia'}
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -384,18 +430,17 @@ export function DashboardPlaceholder() {
                     return (
                       <div
                         key={os.chave}
-                        className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-xs"
+                        className="flex flex-wrap items-center justify-between gap-2 py-3 text-xs transition-colors hover:bg-muted/20 rounded-lg px-2 -mx-2"
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setDossierOs(os.numeroOs)}
-                              className="font-mono font-semibold text-primary underline hover:text-primary/80 cursor-pointer"
-                              title="Clique para abrir o Dossiê completo desta OS"
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              href={`/equipamentos?os=${encodeURIComponent(os.numeroOs)}`}
+                              className="font-mono font-semibold text-primary hover:underline"
+                              title="Abrir fluxo desta OS"
                             >
-                              OS {os.numeroOs}
-                            </button>
+                              {formatarCodigoOs(os.numeroOs)}
+                            </Link>
                             <span className="font-medium text-foreground">
                               {os.equipamento || 'Equipamento'}
                             </span>
@@ -407,19 +452,30 @@ export function DashboardPlaceholder() {
                           </div>
                           <p className="text-[11px] text-muted-foreground">
                             Cliente: {os.cliente || '—'} · Atualizado em{' '}
-                            {os.ultimaAtualizacao.split('-').reverse().join('/')}
+                            {formatarDataCurtaBR(os.ultimaAtualizacao)}
                           </p>
                         </div>
 
-                        <span
-                          className={cn(
-                            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
-                            tag.badgeClass,
-                          )}
-                        >
-                          <Tag className="h-3 w-3" />
-                          {tag.nomeCor}: {tag.labelStatus}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold',
+                              tag.badgeClass,
+                            )}
+                          >
+                            <Tag className="h-3 w-3" />
+                            {tag.nomeCor}: {tag.labelStatus}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setDossierOs(os.numeroOs)}
+                            className="h-7 px-2 text-[11px]"
+                          >
+                            Dossiê
+                          </Button>
+                        </div>
                       </div>
                     );
                   })}

@@ -816,8 +816,8 @@ export default function NotificacoesPage() {
 
                       {isComunicacaoOs && !confirmada && (
                         <p className="text-[10px] text-muted-foreground/80">
-                          Regra R08: confirmar ciência registra o recebimento deste aviso sem
-                          avançar automaticamente a etapa da OS.
+                          Confirmar ciência registra o recebimento deste aviso sem avançar
+                          automaticamente a etapa da OS.
                         </p>
                       )}
                     </div>
@@ -833,7 +833,7 @@ export default function NotificacoesPage() {
                         className="text-xs"
                       >
                         <Check className="h-3.5 w-3.5" />
-                        Confirmar Ciência (R08)
+                        Confirmar Ciência
                       </Button>
                     )}
 

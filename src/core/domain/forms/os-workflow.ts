@@ -1885,6 +1885,13 @@ function inferirTagDoReg016(dados: Record<string, unknown>): TagColor {
   return 'WHITE';
 }
 
+const TIPOS_FORM_OS_DIRETOS = new Set<FormTipo>([
+  'inspecao-recebimento',
+  'limpeza-equipamento',
+  'etapas-manutencao',
+  'checklist-manutencao',
+]);
+
 export function aggregateServiceOrders(records: FormRecord[]): ServiceOrderContext[] {
   const map = new Map<string, ServiceOrderContext>();
 
@@ -1893,12 +1900,36 @@ export function aggregateServiceOrders(records: FormRecord[]): ServiceOrderConte
   );
 
   for (const r of sorted) {
+    // Apenas formulários vinculados ao ciclo da OS entram na agregação.
+    // Instrumentos internos (REG-015), controles diários (REG-017/018/040) e calibrações avulsas
+    // nunca devem gerar OS fictícias na bancada.
+    if (!TIPOS_FORM_OS_DIRETOS.has(r.tipo) && r.tipo !== 'verificacao-calibracao') {
+      continue;
+    }
+
     const d = r.dados ?? {};
     const numOs = String(d.numero_os ?? '').trim();
     const numSerie = String(d.numero_serie ?? '').trim();
     const equip = String(d.equipamento ?? '').trim();
 
     if (!numOs && !numSerie) continue;
+
+    // REG-030 (verificacao-calibracao) só enriquece uma OS já existente — jamais cria OS nova/fantasma
+    if (r.tipo === 'verificacao-calibracao') {
+      if (!numOs) continue;
+      const existente = map.get(`OS:${numOs.toUpperCase()}`);
+      if (!existente) continue;
+      existente.etapasConcluidas.reg030Calibracao = true;
+      if (d.resultado_final === 'conforme' || d.resultado_final === 'ajustado_aprovado') {
+        existente.tagColor = 'GREEN';
+        existente.osStatus = TAG_SPECS.GREEN.status;
+      }
+      const dataLimpa = String(r.dataRef ?? '').slice(0, 10);
+      if (dataLimpa && dataLimpa >= existente.ultimaAtualizacao.slice(0, 10)) {
+        existente.ultimaAtualizacao = dataLimpa;
+      }
+      continue;
+    }
 
     let chave = numOs ? `OS:${numOs.toUpperCase()}` : `SN:${numSerie.toUpperCase()}`;
     if (numOs && numSerie) {
@@ -2014,13 +2045,6 @@ export function aggregateServiceOrders(records: FormRecord[]): ServiceOrderConte
         }
         break;
       }
-      case 'verificacao-calibracao':
-        atual.etapasConcluidas.reg030Calibracao = true;
-        if (d.resultado_final === 'conforme' || d.resultado_final === 'ajustado_aprovado') {
-          atual.tagColor = 'GREEN';
-          atual.osStatus = TAG_SPECS.GREEN.status;
-        }
-        break;
       default:
         break;
     }

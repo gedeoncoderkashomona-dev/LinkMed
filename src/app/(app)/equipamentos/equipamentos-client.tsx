@@ -14,7 +14,6 @@ import {
   Search,
   Tag,
 } from 'lucide-react';
-import { toast } from 'sonner';
 
 import {
   EquipmentLabelPrintDialog,
@@ -34,11 +33,12 @@ import {
   type TagColor,
 } from '@/core/domain/forms/os-workflow';
 import { mergeOsFluxoIntoServiceOrders } from '@/core/domain/forms/os-reg016-sync';
+import { NODE_LABEL_PT } from '@/core/domain/os-v4/adapter';
 import { FLUXO, perfilSistemaParaSetorV4 } from '@/core/domain/os-v4/nucleo';
 import { useCurrentUser } from '@/hooks/use-current-user';
 import { useFormsOverview, useOsFlowList } from '@/hooks/use-operacional';
 import { showRuleNotice } from '@/lib/rule-notice';
-import { cn } from '@/lib/utils';
+import { cn, formatarCodigoOs, formatarDataCurtaBR } from '@/lib/utils';
 
 export function EquipamentosClient() {
   const { data: user } = useCurrentUser();
@@ -145,7 +145,7 @@ export function EquipamentosClient() {
             Equipamentos & Ordens de Serviço
           </h1>
           <p className="text-xs text-muted-foreground sm:text-sm">
-            Trilha POP-020 (v4): REG-022 (ADM) → REG-016 (AT) ↔ REG-034 (Limpeza) → Item 5 (REG-009 / REG-035).
+            Trilha POP-020: REG-022 (ADM) → REG-016 (Central OS) ↔ REG-034 (Higienização) → Item 5 (REG-009 / REG-035).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -183,7 +183,7 @@ export function EquipamentosClient() {
                   Pendências do Seu Setor ({ordensPendentesMeuSetor.length})
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  Selecione uma OS para executar a próxima ação oficial no fluxo v4.
+                  Selecione uma OS para executar a próxima ação do seu setor.
                 </p>
               </div>
             </div>
@@ -197,19 +197,22 @@ export function EquipamentosClient() {
             {ordensPendentesMeuSetor.map((o) => {
               const isAtiva =
                 selectedNumeroOs?.trim().toUpperCase() === o.numeroOs.trim().toUpperCase();
-              const ultimaNotif = o.notificacoes?.[0];
+              const etapaTexto =
+                (o.v4No ? NODE_LABEL_PT[o.v4No] : null) ??
+                o.notificacoes?.[0]?.mensagem ??
+                'Aguardando execução';
               return (
                 <div
                   key={o.numeroOs}
                   className={cn(
                     'flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs transition-colors',
-                    isAtiva ? 'bg-primary/[0.04]' : 'hover:bg-muted/30',
+                    isAtiva ? 'bg-primary/[0.06]' : 'hover:bg-muted/30',
                   )}
                 >
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs font-semibold text-primary">
-                        OS {o.numeroOs}
+                        {formatarCodigoOs(o.numeroOs)}
                       </span>
                       <span className="truncate font-medium text-foreground">
                         {o.identificacao.equipamento} · {o.identificacao.marca}
@@ -226,7 +229,8 @@ export function EquipamentosClient() {
                       )}
                     </div>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      {ultimaNotif?.mensagem || o.mensagemTelaAtual || 'Aguardando execução'}
+                      <strong className="font-medium text-foreground/80">Etapa atual:</strong>{' '}
+                      {etapaTexto}
                     </p>
                   </div>
                   <Button
@@ -236,10 +240,16 @@ export function EquipamentosClient() {
                     onClick={() => {
                       setSelectedNumeroOs(o.numeroOs);
                       setMostrarPainelExecucao(true);
+                      setTimeout(() => {
+                        document.getElementById('painel-os-ativo')?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start',
+                        });
+                      }, 50);
                     }}
                     className="h-8 shrink-0 text-xs"
                   >
-                    {isAtiva ? 'Selecionada' : 'Assumir OS'}
+                    {isAtiva ? 'Em exibição' : 'Executar agora'}
                   </Button>
                 </div>
               );
@@ -248,24 +258,25 @@ export function EquipamentosClient() {
         </div>
       )}
 
-      {/* Painel Unificado da OS Selecionada (Motor v4) */}
-      {mostrarPainelExecucao && (
-        selectedNumeroOs ? (
-          <OsFlowPanel
-            numeroOs={selectedNumeroOs}
-            osInicial={osSelecionadaInicial}
-            onAbrirDossie={(os) => setDossierOs(os.numeroOs)}
-          />
-        ) : (
-          <Card>
-            <CardContent className="p-6 text-center text-xs text-muted-foreground">
-              {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '')
-                ? 'Cadastre uma nova OS pelo REG-022 ou selecione uma OS na fila abaixo.'
-                : 'Aguarde o Setor Administrativo (ADM) iniciar a OS pelo REG-022 ou selecione uma OS na fila abaixo.'}
-            </CardContent>
-          </Card>
-        )
-      )}
+      {/* Painel Unificado da OS Selecionada */}
+      <div id="painel-os-ativo" className="scroll-mt-20">
+        {mostrarPainelExecucao &&
+          (selectedNumeroOs ? (
+            <OsFlowPanel
+              numeroOs={selectedNumeroOs}
+              osInicial={osSelecionadaInicial}
+              onAbrirDossie={(os) => setDossierOs(os.numeroOs)}
+            />
+          ) : (
+            <Card>
+              <CardContent className="p-6 text-center text-xs text-muted-foreground">
+                {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '')
+                  ? 'Cadastre uma nova OS pelo botão "Nova OS (REG-022)" ou selecione uma OS na fila abaixo.'
+                  : 'Aguarde o Setor Administrativo (ADM) iniciar uma OS pelo REG-022 ou selecione uma OS na fila abaixo.'}
+              </CardContent>
+            </Card>
+          ))}
+      </div>
 
       {/* Filtros + Fila de OS */}
       <div className="space-y-3.5">
@@ -396,8 +407,17 @@ export function EquipamentosClient() {
                   : []),
               ];
 
+              const isCardAtivo =
+                selectedNumeroOs?.trim().toUpperCase() === os.numeroOs.trim().toUpperCase();
+
               return (
-                <Card key={os.chave}>
+                <Card
+                  key={os.chave}
+                  className={cn(
+                    'transition-all',
+                    isCardAtivo && 'border-primary/60 ring-1 ring-primary/30 shadow-sm',
+                  )}
+                >
                   <CardContent className="space-y-3 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 space-y-1">
@@ -408,7 +428,7 @@ export function EquipamentosClient() {
                             className="ios-touch font-mono text-sm font-semibold text-primary hover:underline"
                             title="Abrir Dossiê completo da OS"
                           >
-                            OS {os.numeroOs}
+                            {formatarCodigoOs(os.numeroOs)}
                           </button>
                           <span className="text-sm font-medium text-foreground">
                             {os.equipamento || 'Equipamento'}
@@ -426,7 +446,7 @@ export function EquipamentosClient() {
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {os.cliente || '—'} · Atualizado em{' '}
-                          {os.ultimaAtualizacao.split('-').reverse().join('/')}
+                          {formatarDataCurtaBR(os.ultimaAtualizacao)}
                           {fluxoMatch?.setorPendente && fluxoMatch.setorPendente !== 'NENHUM'
                             ? ` · Setor pendente: ${fluxoMatch.setorPendente}`
                             : ''}
@@ -437,16 +457,21 @@ export function EquipamentosClient() {
                         <Button
                           type="button"
                           size="sm"
-                          variant="secondary"
+                          variant={isCardAtivo ? 'default' : 'secondary'}
                           onClick={() => {
                             setSelectedNumeroOs(os.numeroOs);
                             setMostrarPainelExecucao(true);
-                            toast.success(`OS ${os.numeroOs} selecionada no painel.`);
+                            setTimeout(() => {
+                              document.getElementById('painel-os-ativo')?.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'start',
+                              });
+                            }, 50);
                           }}
                           className="h-8 gap-1.5 text-xs"
                         >
-                          <PlayCircle className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} />
-                          Selecionar OS
+                          <PlayCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
+                          {isCardAtivo ? 'No Painel' : 'Abrir Painel'}
                         </Button>
 
                         {liberaImpressao && (
