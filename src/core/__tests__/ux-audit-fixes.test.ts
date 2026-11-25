@@ -17,6 +17,7 @@ import { gerarPdfPopCompleto } from '@/core/domain/pops/pop-pdf-generator';
 import { traduzirMensagemZod } from '@/lib/http/api-handler';
 import { isRuleErrorMessage } from '@/lib/rule-notice';
 import { formatarCodigoOs, formatarDataCurtaBR } from '@/lib/utils';
+import { verificarFlagsFormulariosOs } from '@/infra/db/supabase/os-v4-store';
 
 const ATOR_ADM: AtorAcaoOS = {
   usuarioId: 'u-adm',
@@ -248,5 +249,56 @@ describe('Auditorias UX/UI & Português — Avisos de OS, POPs e Zod', () => {
     expect(isRuleErrorMessage('Item 5 bloqueado definitivamente: esta OS possui Etiqueta VERMELHA.')).toBe(true);
     expect(isRuleErrorMessage('A OS mudou desde que você abriu. Recarregue a tela.')).toBe(true);
     expect(isRuleErrorMessage('Erro genérico de rede')).toBe(false);
+  });
+
+  it('verificarFlagsFormulariosOs reconhece Item 5 preenchido dentro do REG-016 para Cardios, TEB e OLIDEF', () => {
+    const base = {
+      id: 'f-1',
+      tipo: 'etapas-manutencao' as const,
+      subtipo: null,
+      status: 'conforme' as const,
+      dataRef: '2026-11-25',
+      criadoPor: 'u-at',
+      criadoPorNome: 'Técnico AT',
+      createdAt: new Date('2026-11-25T12:00:00Z'),
+    };
+
+    expect(
+      verificarFlagsFormulariosOs('OS-500', [
+        {
+          ...base,
+          dados: {
+            numero_os: 'OS-500',
+            item5_marca: 'Cardios',
+            item5_cardios_laudo: 'Serviço concluído e testado.',
+          },
+        },
+      ]).item5Preenchido,
+    ).toBe(true);
+
+    expect(
+      verificarFlagsFormulariosOs('OS-501', [
+        {
+          ...base,
+          dados: {
+            numero_os: 'OS-501',
+            item5_marca: 'TEB',
+            item5_teb_laudo: 'Sistema calibrado v2.',
+          },
+        },
+      ]).item5Preenchido,
+    ).toBe(true);
+
+    expect(
+      verificarFlagsFormulariosOs('OS-502', [
+        {
+          ...base,
+          dados: {
+            numero_os: 'OS-502',
+            item5_marca: 'OLIDEF',
+          },
+        },
+      ]).item5Preenchido,
+    ).toBe(false);
   });
 });

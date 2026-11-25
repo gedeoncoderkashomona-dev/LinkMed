@@ -323,18 +323,12 @@ export function verificarFlagsFormulariosOs(
     if (r.tipo === 'etapas-manutencao') {
       const d = r.dados ?? {};
       const temMarca = Boolean(String(d.item5_marca ?? '').trim());
-      const temConteudoItem5 = Boolean(
-        String(d.item5_serial ?? '').trim() ||
-          String(d.item5_data_calibracao ?? '').trim() ||
-          String(d.item5_proxima_calibracao ?? '').trim() ||
-          String(d.item5_tipo_verificacao ?? '').trim() ||
-          String(d.item5_responsavel ?? '').trim() ||
-          String(d.item5_verificacao_pos_manutencao ?? '').trim() ||
-          String(d.item5_resultado_final ?? '').trim() ||
-          String(d.item5_observacoes ?? '').trim() ||
-          String(d.item5_assinatura ?? '').trim(),
-      );
-      if (temMarca && temConteudoItem5) {
+      const temCampoDinamicoItem5 = Object.entries(d).some(([chave, valor]) => {
+        if (!chave.startsWith('item5_') || chave === 'item5_marca') return false;
+        if (valor === null || valor === undefined) return false;
+        return String(valor).trim().length > 0;
+      });
+      if (temMarca && temCampoDinamicoItem5) {
         item5Preenchido = true;
       }
     }
