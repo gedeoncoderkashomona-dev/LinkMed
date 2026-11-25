@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AlertCircle, Loader2, LockKeyhole, Mail } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Loader2, LockKeyhole, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { BrandSplashLoader } from '@/components/layout/brand-logo';
@@ -20,6 +20,7 @@ export function LoginForm() {
   const [submitting, setSubmitting] = React.useState(false);
   const [authConfirmed, setAuthConfirmed] = React.useState(false);
   const [authErrorDetail, setAuthErrorDetail] = React.useState<string | null>(null);
+  const [showPassword, setShowPassword] = React.useState(false);
   const nextRoute = searchParams.get('next') ?? '/dashboard';
 
   React.useEffect(() => {
@@ -77,15 +78,18 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="border-border/70 bg-white/95 shadow-xl backdrop-blur-xl dark:border-emerald-500/20 dark:bg-card/95">
-      <CardHeader className="items-center pb-4 pt-8 text-center">
+    <Card className="border-border/75 bg-white/95 shadow-ios backdrop-blur-xl dark:border-emerald-500/20 dark:bg-card/95">
+      <CardHeader className="items-center space-y-2 pb-4 pt-8 text-center">
         <div className="dark:rounded-2xl dark:bg-white dark:px-5 dark:py-2.5 dark:shadow-sm">
           <img
             src="/logo-linkmed.jpg"
             alt="LINKMED — Soluções Médicas"
-            className="h-28 w-auto object-contain"
+            className="h-24 w-auto object-contain"
           />
         </div>
+        <p className="text-[11px] font-medium tracking-wide text-muted-foreground">
+          Gestão da Qualidade & Assistência Técnica · RDC 665/22
+        </p>
       </CardHeader>
 
       <CardContent className="px-7 pb-8 pt-2">
@@ -121,12 +125,24 @@ export function LoginForm() {
               <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.5} />
               <Input
                 id="senha"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 autoComplete="current-password"
-                className="pl-10"
+                className="pl-10 pr-10"
                 {...register('senha')}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" strokeWidth={1.5} />
+                ) : (
+                  <Eye className="h-4 w-4" strokeWidth={1.5} />
+                )}
+              </button>
             </div>
             {errors.senha && (
               <p className="text-xs font-medium text-destructive">{errors.senha.message}</p>

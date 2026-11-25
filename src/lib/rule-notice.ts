@@ -141,14 +141,14 @@ function inferTitleAndHint(
     if (!overrides?.title) title = 'Regra de Estorno (ADM)';
     if (!hint) {
       hint =
-        'O estorno é exclusivo do perfil ADM e exige informar a justificativa e um nó já percorrido pela OS.';
+        'O estorno é exclusivo do setor Administrativo (ADM) e exige informar o motivo e uma etapa já percorrida pela OS.';
     }
   } else if (lower.includes('não é permitida no nó') || lower.includes('(transicao)')) {
     severity = overrides?.severity ?? 'blocked';
     if (!overrides?.title) title = 'Etapa Fora da Sequência da OS';
     if (!hint) {
       hint =
-        'AOS atual avançou ou encontra-se em outra etapa do fluxo v4. Utilize apenas as ações liberadas na seção "Próxima ação".';
+        'A OS atual avançou ou encontra-se em outra etapa do fluxo. Utilize apenas as ações liberadas na seção "Próxima ação".';
     }
   } else if (lower.includes('acesso ou transição não concluída') || lower.includes('estado inicial')) {
     severity = overrides?.severity ?? 'blocked';
@@ -183,9 +183,16 @@ function inferTitleAndHint(
       hint =
         'Salve o formulário exigido (ex.: REG-022 pelo ADM ou REG-034 pela AT) antes de avançar para a próxima etapa.';
     }
+  } else if (lower.includes('já existe uma os')) {
+    severity = overrides?.severity ?? 'blocked';
+    if (!overrides?.title) title = 'Número de OS Já Cadastrado';
+    if (!hint) {
+      hint =
+        'Cada Ordem de Serviço precisa de um número único no sistema. Verifique a numeração ou consulte a OS existente no painel de Equipamentos.';
+    }
   } else if (lower.includes('horário') || lower.includes('horario') || lower.includes('segunda a sexta')) {
     severity = overrides?.severity ?? 'info';
-    if (!overrides?.title) title = 'Fora da Janela de Horário Comercial';
+    if (!overrides?.title) title = 'Fora do Horário Comercial';
     if (!hint) {
       hint = 'O fluxo operacional funciona de segunda a sexta-feira, das 07:30 às 19:30 (horário do Recife/PE, exceto feriados).';
     }

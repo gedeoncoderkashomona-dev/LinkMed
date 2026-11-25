@@ -488,13 +488,13 @@ export default function NotificacoesPage() {
         </div>
       </div>
 
-      {/* Painel Oficial da Seção 5.2: Atividades Obrigatórias Diárias por Setor */}
-      <Card className="border-primary/25 bg-primary/5">
+      {/* Atividades Obrigatórias Diárias por Setor */}
+      <Card className="border-primary/20 bg-card">
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-sm text-primary">
               <Clock className="h-4 w-4" />
-              Atividades Obrigatórias Diárias por Setor (Seção 5.2 — Verificação no Fim do Dia)
+              Atividades Obrigatórias Diárias por Setor
             </CardTitle>
             <Badge variant="outline" className="font-mono text-[10px]">
               Notificação diária às 07:30h se pendente
@@ -577,7 +577,7 @@ export default function NotificacoesPage() {
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Regra Seção 5.2: Verificação no fim do dia. Se não realizadas, notifica às 07:30h do dia seguinte e repete diariamente até a conclusão.
+              Verificação diária no fim do expediente: atividades pendentes geram aviso automático às 07:30h do dia útil seguinte até a conclusão.
             </p>
           </div>
         </CardContent>

@@ -658,31 +658,37 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
     const existingList = await this.listNcs();
     const codigo = `NC-${ano}-${String(existingList.length + 1).padStart(3, '0')}`;
 
-    const { data, error } = await supabaseAdmin
-      .from('ncs')
-      .insert({
-        id,
-        codigo,
-        titulo: input.titulo,
-        descricao: input.descricao,
-        causa: input.causa ?? null,
-        acao_imediata: input.acaoImediata ?? null,
-        identificacao_equipamento: identEquip,
-        equipamento_nao_se_aplica: naoSeAplica,
-        elaborado_por: elaboradoPor,
-        revisado_por: revisadoPor,
-        aprovado_por: aprovadoPor,
-        origem: input.origem,
-        severidade: input.severidade,
-        status: 'aberta',
-        responsavel_id: input.responsavelId,
-        criado_por: input.criadoPor,
-      })
-      .select()
-      .single();
+    if (hasNcsTable !== false) {
+      const { data, error } = await supabaseAdmin
+        .from('ncs')
+        .insert({
+          id,
+          codigo,
+          titulo: input.titulo,
+          descricao: input.descricao,
+          causa: input.causa ?? null,
+          acao_imediata: input.acaoImediata ?? null,
+          identificacao_equipamento: identEquip,
+          equipamento_nao_se_aplica: naoSeAplica,
+          elaborado_por: elaboradoPor,
+          revisado_por: revisadoPor,
+          aprovado_por: aprovadoPor,
+          origem: input.origem,
+          severidade: input.severidade,
+          status: 'aberta',
+          responsavel_id: input.responsavelId,
+          criado_por: input.criadoPor,
+        })
+        .select()
+        .single();
 
-    if (!error && data) {
-      return toNc(data as NcRow);
+      if (!error && data) {
+        hasNcsTable = true;
+        return toNc(data as NcRow);
+      }
+      if (error?.code === 'PGRST205') {
+        hasNcsTable = false;
+      }
     }
 
     const payload: StoredNcPayload = {
@@ -790,20 +796,26 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
 
   async updateNcStatus(id: string, status: NcStatus): Promise<Nc | null> {
     const agora = new Date().toISOString();
-    const { data, error } = await supabaseAdmin
-      .from('ncs')
-      .update({
-        status,
-        updated_at: agora,
-        concluida_em: status === 'concluida' ? agora : null,
-      })
-      .eq('id', id)
-      .is('deleted_at', null)
-      .select()
-      .maybeSingle();
+    if (hasNcsTable !== false) {
+      const { data, error } = await supabaseAdmin
+        .from('ncs')
+        .update({
+          status,
+          updated_at: agora,
+          concluida_em: status === 'concluida' ? agora : null,
+        })
+        .eq('id', id)
+        .is('deleted_at', null)
+        .select()
+        .maybeSingle();
 
-    if (!error && data) {
-      return toNc(data as NcRow);
+      if (!error && data) {
+        hasNcsTable = true;
+        return toNc(data as NcRow);
+      }
+      if (error?.code === 'PGRST205') {
+        hasNcsTable = false;
+      }
     }
 
     const { data: storeRow } = await supabaseAdmin
@@ -862,38 +874,44 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
     const revisadoPor = input.revisadoPor?.trim() || 'Marina Lopes (Responsável Técnica)';
     const aprovadoPor = input.aprovadoPor?.trim() || 'Pedro Costa (Diretoria)';
 
-    const { data, error } = await supabaseAdmin
-      .from('trainings')
-      .insert({
-        id,
-        titulo: input.titulo,
-        tipo: input.tipo,
-        setor: input.setor,
-        instrutor: input.instrutor,
-        entidade: input.entidade,
-        carga_horaria: input.cargaHoraria,
-        data_realizacao: input.dataRealizacao,
-        validade_ate: input.validadeAte,
-        participantes: input.participantes,
-        observacoes: input.observacoes,
-        conteudo: input.conteudo ?? null,
-        local_treinamento: input.localTreinamento ?? 'Sala de Treinamento LinkMed',
-        horario_inicial: input.horarioInicial ?? '08:30',
-        horario_final: input.horarioFinal ?? '12:30',
-        avaliado_por: input.avaliadoPor ?? null,
-        data_avaliacao: input.dataAvaliacao ?? null,
-        assinatura_avaliador: input.assinaturaAvaliador ?? null,
-        avaliacoes_eficacia: input.avaliacoesEficacia ?? [],
-        elaborado_por: elaboradoPor,
-        revisado_por: revisadoPor,
-        aprovado_por: aprovadoPor,
-        criado_por: input.criadoPor,
-      })
-      .select('*, criador:users(nome_completo)')
-      .single();
+    if (hasTrainingsTable !== false) {
+      const { data, error } = await supabaseAdmin
+        .from('trainings')
+        .insert({
+          id,
+          titulo: input.titulo,
+          tipo: input.tipo,
+          setor: input.setor,
+          instrutor: input.instrutor,
+          entidade: input.entidade,
+          carga_horaria: input.cargaHoraria,
+          data_realizacao: input.dataRealizacao,
+          validade_ate: input.validadeAte,
+          participantes: input.participantes,
+          observacoes: input.observacoes,
+          conteudo: input.conteudo ?? null,
+          local_treinamento: input.localTreinamento ?? 'Sala de Treinamento LinkMed',
+          horario_inicial: input.horarioInicial ?? '08:30',
+          horario_final: input.horarioFinal ?? '12:30',
+          avaliado_por: input.avaliadoPor ?? null,
+          data_avaliacao: input.dataAvaliacao ?? null,
+          assinatura_avaliador: input.assinaturaAvaliador ?? null,
+          avaliacoes_eficacia: input.avaliacoesEficacia ?? [],
+          elaborado_por: elaboradoPor,
+          revisado_por: revisadoPor,
+          aprovado_por: aprovadoPor,
+          criado_por: input.criadoPor,
+        })
+        .select('*, criador:users(nome_completo)')
+        .single();
 
-    if (!error && data) {
-      return toTreinamento(data as unknown as TreinamentoRow);
+      if (!error && data) {
+        hasTrainingsTable = true;
+        return toTreinamento(data as unknown as TreinamentoRow);
+      }
+      if (error?.code === 'PGRST205') {
+        hasTrainingsTable = false;
+      }
     }
 
     const payload: StoredTrainingPayload = {
@@ -1021,20 +1039,26 @@ export class SupabaseOperacionalRepository implements OperacionalRepository {
   async updateTreinamentoEficacia(
     input: UpdateTreinamentoEficaciaInput,
   ): Promise<Treinamento | null> {
-    const { data, error } = await supabaseAdmin
-      .from('trainings')
-      .update({
-        avaliado_por: input.avaliadoPor,
-        data_avaliacao: input.dataAvaliacao,
-        assinatura_avaliador: input.assinaturaAvaliador,
-        avaliacoes_eficacia: input.avaliacoesEficacia,
-      })
-      .eq('id', input.id)
-      .select('*, criador:users(nome_completo)')
-      .maybeSingle();
+    if (hasTrainingsTable !== false) {
+      const { data, error } = await supabaseAdmin
+        .from('trainings')
+        .update({
+          avaliado_por: input.avaliadoPor,
+          data_avaliacao: input.dataAvaliacao,
+          assinatura_avaliador: input.assinaturaAvaliador,
+          avaliacoes_eficacia: input.avaliacoesEficacia,
+        })
+        .eq('id', input.id)
+        .select('*, criador:users(nome_completo)')
+        .maybeSingle();
 
-    if (!error && data) {
-      return toTreinamento(data as unknown as TreinamentoRow);
+      if (!error && data) {
+        hasTrainingsTable = true;
+        return toTreinamento(data as unknown as TreinamentoRow);
+      }
+      if (error?.code === 'PGRST205') {
+        hasTrainingsTable = false;
+      }
     }
 
     const { data: storeRow } = await supabaseAdmin

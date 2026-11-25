@@ -49,6 +49,9 @@ export function EquipamentosClient() {
 
   const [busca, setBusca] = React.useState('');
   const [filtroCor, setFiltroCor] = React.useState<TagColor | ''>('');
+  const [filtroSituacao, setFiltroSituacao] = React.useState<
+    'todas' | 'meu_setor' | 'andamento' | 'stand_by' | 'finalizadas'
+  >('todas');
   const [dossierOs, setDossierOs] = React.useState<string | null>(null);
   const [etiquetaPrint, setEtiquetaPrint] =
     React.useState<DadosEtiquetaEquipamento | null>(null);
@@ -121,10 +124,59 @@ export function EquipamentosClient() {
     return osFluxoPorNumero.get(selectedNumeroOs.trim().toUpperCase()) ?? null;
   }, [selectedNumeroOs, osFluxoPorNumero]);
 
+  const contagensSituacao = React.useMemo(() => {
+    let andamento = 0;
+    let standBy = 0;
+    let finalizadas = 0;
+    for (const os of ordensServico) {
+      const f = osFluxoPorNumero.get(os.numeroOs.trim().toUpperCase());
+      if (f?.estadoGeral === 'finalizada' || os.tagColor === 'GREEN' || os.tagColor === 'RED') {
+        finalizadas += 1;
+      } else if (f?.estadoGeral === 'stand_by' || os.tagColor === 'BLACK') {
+        standBy += 1;
+      } else if (f?.estadoGeral !== 'cancelada') {
+        andamento += 1;
+      }
+    }
+    return {
+      todas: ordensServico.length,
+      meu_setor: ordensPendentesMeuSetor.length,
+      andamento,
+      stand_by: standBy,
+      finalizadas,
+    };
+  }, [ordensServico, osFluxoPorNumero, ordensPendentesMeuSetor.length]);
+
   const osFiltradas = React.useMemo(() => {
     const q = busca.trim().toLowerCase();
     return ordensServico.filter((os) => {
       if (filtroCor && os.tagColor !== filtroCor) return false;
+      if (filtroSituacao !== 'todas') {
+        const f = osFluxoPorNumero.get(os.numeroOs.trim().toUpperCase());
+        if (filtroSituacao === 'meu_setor') {
+          if (!f || f.estadoGeral === 'finalizada' || f.estadoGeral === 'cancelada') return false;
+          if (setorUsuario ? f.setorPendente !== setorUsuario : f.setorPendente === 'NENHUM') {
+            return false;
+          }
+        } else if (filtroSituacao === 'finalizadas') {
+          if (!(f?.estadoGeral === 'finalizada' || os.tagColor === 'GREEN' || os.tagColor === 'RED')) {
+            return false;
+          }
+        } else if (filtroSituacao === 'stand_by') {
+          if (!(f?.estadoGeral === 'stand_by' || os.tagColor === 'BLACK')) return false;
+        } else if (filtroSituacao === 'andamento') {
+          if (
+            f?.estadoGeral === 'finalizada' ||
+            f?.estadoGeral === 'cancelada' ||
+            f?.estadoGeral === 'stand_by' ||
+            os.tagColor === 'GREEN' ||
+            os.tagColor === 'RED' ||
+            os.tagColor === 'BLACK'
+          ) {
+            return false;
+          }
+        }
+      }
       if (!q) return true;
       return (
         os.numeroOs.toLowerCase().includes(q) ||
@@ -134,7 +186,7 @@ export function EquipamentosClient() {
         os.marca.toLowerCase().includes(q)
       );
     });
-  }, [ordensServico, filtroCor, busca]);
+  }, [ordensServico, filtroCor, filtroSituacao, busca, osFluxoPorNumero, setorUsuario]);
 
   return (
     <div className="space-y-5">
@@ -172,10 +224,10 @@ export function EquipamentosClient() {
 
       {/* Pendências do setor atual */}
       {ordensPendentesMeuSetor.length > 0 && (
-        <div className="ios-card overflow-hidden border-emerald-500/25">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-gradient-to-r from-primary/12 via-primary/5 to-transparent px-4 py-3">
+        <div className="ios-card overflow-hidden border-primary/25">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-primary/[0.04] px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/25">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary">
                 <Bell className="h-4 w-4" strokeWidth={1.6} />
               </div>
               <div>
@@ -280,6 +332,43 @@ export function EquipamentosClient() {
 
       {/* Filtros + Fila de OS */}
       <div className="space-y-3.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              { id: 'todas', label: 'Todas', count: contagensSituacao.todas },
+              { id: 'meu_setor', label: 'Meu Setor', count: contagensSituacao.meu_setor },
+              { id: 'andamento', label: 'Em andamento', count: contagensSituacao.andamento },
+              { id: 'stand_by', label: 'Stand-by', count: contagensSituacao.stand_by },
+              { id: 'finalizadas', label: 'Finalizadas', count: contagensSituacao.finalizadas },
+            ] as const
+          ).map((chip) => {
+            const active = filtroSituacao === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setFiltroSituacao(chip.id)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                  active
+                    ? 'border-primary/40 bg-primary text-white shadow-soft'
+                    : 'border-border/75 bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground',
+                )}
+              >
+                <span>{chip.label}</span>
+                <span
+                  className={cn(
+                    'rounded-md px-1.5 py-0.2 text-[10px] font-semibold tabular-nums',
+                    active ? 'bg-white/20 text-white' : 'bg-muted text-foreground/80',
+                  )}
+                >
+                  {chip.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
         <div className="ios-card grid gap-3 p-3.5 sm:grid-cols-[1fr_260px]">
           <div className="relative">
             <Search
@@ -314,27 +403,44 @@ export function EquipamentosClient() {
           </div>
         ) : osFiltradas.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center gap-2 p-12 text-center">
-              <Tag className="h-7 w-7 text-muted-foreground/60" strokeWidth={1.5} />
-              <p className="text-sm font-semibold">Nenhuma Ordem de Serviço encontrada</p>
-              <p className="text-xs text-muted-foreground">
-                {busca || filtroCor
-                  ? 'Nenhuma OS corresponde aos filtros atuais.'
-                  : 'Cadastre uma inspeção no REG-022 para iniciar uma nova OS.'}
-              </p>
-              {(busca || filtroCor) && (
+            <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Tag className="h-5 w-5" strokeWidth={1.6} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-foreground">
+                  {busca || filtroCor || filtroSituacao !== 'todas'
+                    ? 'Nenhuma Ordem de Serviço encontrada com estes filtros'
+                    : 'Nenhuma Ordem de Serviço cadastrada ainda'}
+                </p>
+                <p className="max-w-md text-xs text-muted-foreground">
+                  {busca || filtroCor || filtroSituacao !== 'todas'
+                    ? 'Limpe os filtros ativos para visualizar todas as OS registradas.'
+                    : 'Cadastre uma inspeção no REG-022 (ADM) para iniciar o fluxo integrado entre ADM, Assistência Técnica e Almoxarifado.'}
+                </p>
+              </div>
+              {busca || filtroCor || filtroSituacao !== 'todas' ? (
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="mt-2"
                   onClick={() => {
                     setBusca('');
                     setFiltroCor('');
+                    setFiltroSituacao('todas');
                   }}
                 >
                   Limpar filtros
                 </Button>
+              ) : (
+                ['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
+                  <Link href="/formularios/inspecao-recebimento">
+                    <Button size="sm" className="gap-1.5">
+                      <FileText className="h-3.5 w-3.5" strokeWidth={1.6} />
+                      Iniciar Nova OS (REG-022)
+                    </Button>
+                  </Link>
+                )
               )}
             </CardContent>
           </Card>

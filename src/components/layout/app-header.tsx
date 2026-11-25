@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { useOsFlowList } from '@/hooks/use-operacional';
 import { cn } from '@/lib/utils';
 
+import { CommandPalette } from './command-palette';
 import { ThemeToggle } from './theme-toggle';
 import { UserMenu } from './user-menu';
 
@@ -47,11 +48,13 @@ export function AppHeader({ user, onOpenMobile }: Props) {
         <Menu className="h-5 w-5" strokeWidth={1.5} />
       </Button>
 
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         <p className="truncate text-[13px] font-medium text-muted-foreground sm:text-sm">
           Olá, <span className="font-semibold text-foreground">{user.nomeCompleto.split(' ')[0]}</span>
         </p>
       </div>
+
+      <CommandPalette user={user} />
 
       <Badge
         variant="outline"

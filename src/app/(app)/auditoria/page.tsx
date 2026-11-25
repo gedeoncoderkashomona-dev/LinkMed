@@ -609,18 +609,18 @@ export default function AuditoriaPage() {
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className="rounded-lg border border-border/80 bg-background p-3 shadow-2xs">
                           <p className="mb-1.5 font-semibold text-muted-foreground text-[11px]">
-                            Estado Anterior (dadosAntes)
+                            Registro Anterior
                           </p>
                           <pre className="max-h-56 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-muted-foreground">
                             {log.dadosAntes
                               ? JSON.stringify(log.dadosAntes, null, 2)
-                              : '— (Criação / Sem estado anterior)'}
+                              : '— (Criação inicial sem versão anterior)'}
                           </pre>
                         </div>
                         <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3 shadow-2xs">
                           <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300 text-[11px]">
                             <ShieldCheck className="h-3.5 w-3.5" />
-                            Estado Registrado Criptograficamente (dadosDepois)
+                            Registro Auditado (Imutável)
                           </p>
                           <pre className="max-h-56 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-foreground">
                             {log.dadosDepois ? JSON.stringify(log.dadosDepois, null, 2) : '—'}
@@ -629,7 +629,7 @@ export default function AuditoriaPage() {
                       </div>
                     ) : (
                       <p className="text-muted-foreground italic text-[11px]">
-                        Evento auditado registrado com sucesso. Nenhum payload diferencial de campo.
+                        Evento auditado registrado com sucesso, sem alterações adicionais de campos.
                       </p>
                     )}
                   </div>

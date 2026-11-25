@@ -139,7 +139,7 @@ export function alertaPulseiraAntiestatica(
     nivel: hora >= 17 ? 'danger' : 'warning',
     titulo: 'Teste diário da pulseira elétrica pendente (REG-040)',
     descricao:
-      'Atividade obrigatória diária da Assistência Técnica (Seção 5.2). Se não concluída no dia, gera notificação diária às 07:30h.',
+      'Atividade obrigatória diária da Assistência Técnica. Se não concluída no dia, gera notificação automática às 07:30h do dia seguinte.',
     href: '/formularios/pulseira-antiestatica',
     setorDestino: 'AT',
   };
@@ -208,7 +208,7 @@ export function verificarAtividadesObrigatoriasDiariasPorSetor(
         concluidaHoje: tempAlmoxConcluida,
         href: '/formularios/temperatura-umidade',
         mensagemNotificacao0730:
-          'Notificação 07:30h (Seção 5.2): Atividade diatória obrigatória pendente no Almoxarifado — Preencha o Controle de Temperatura e Umidade (REG-017).',
+          'Pendência diária (07:30h) no Almoxarifado: preencha o Controle de Temperatura e Umidade (REG-017).',
       },
     ];
 
@@ -238,7 +238,7 @@ export function verificarAtividadesObrigatoriasDiariasPorSetor(
       concluidaHoje: tempAtConcluida,
       href: '/formularios/temperatura-umidade',
       mensagemNotificacao0730:
-        'Notificação 07:30h (Seção 5.2): Atividade diária obrigatória pendente na Assistência Técnica — Preencha o Controle de Temperatura e Umidade (REG-017).',
+        'Pendência diária (07:30h) na Assistência Técnica: preencha o Controle de Temperatura e Umidade (REG-017).',
     },
     {
       codigo: 'REG-040',
@@ -247,7 +247,7 @@ export function verificarAtividadesObrigatoriasDiariasPorSetor(
       concluidaHoje: pulseiraConcluida,
       href: '/formularios/pulseira-antiestatica',
       mensagemNotificacao0730:
-        'Notificação 07:30h (Seção 5.2): Atividade diária obrigatória pendente na Assistência Técnica — Realize o Teste da Pulseira Elétrica (REG-040).',
+        'Pendência diária (07:30h) na Assistência Técnica: realize o Teste da Pulseira Elétrica (REG-040).',
     },
   ];
 
@@ -328,7 +328,7 @@ export function alertasCalibracao(registros: RegistroParaAlerta[], now: Date = n
         c.situacao === 'vencida'
           ? `Calibração vencida (REG-015): ${c.equipamento}`
           : `Calibração vence em ${c.diasRestantes} dia(s) (REG-015): ${c.equipamento}`,
-      descricao: `Nº de série ${c.numeroSerie || '—'} · validade ${c.validade.split('-').reverse().join('/')}.`,
+      descricao: `Nº de série ${c.numeroSerie || '—'} · validade ${c.validade.slice(0, 10).split('-').reverse().join('/')}.`,
       href: '/formularios/validade-calibracao',
     }));
 }

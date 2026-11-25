@@ -33,6 +33,7 @@ import {
   useFeriados,
   useSaveFeriado,
 } from '@/hooks/use-operacional';
+import { formatarDataCurtaBR } from '@/lib/utils';
 
 interface SgqSettings {
   prazoNcBaixaDias: number;
@@ -451,10 +452,10 @@ export default function ConfiguracoesPage() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <CalendarDays className="h-4 w-4 text-primary" />
-                Feriados e Janela Operacional das OS (R06 / Decisão D9)
+                Feriados e Janela Operacional das OS
               </CardTitle>
               <CardDescription>
-                Seg–Sex, 07:30 às 19:30 (America/Recife). Notificações geradas em feriados ficam retidas até a próxima abertura útil.
+                Segunda a sexta, 07:30 às 19:30 (horário do Recife/PE). Notificações geradas em feriados ficam retidas até a próxima abertura útil.
               </CardDescription>
             </div>
             <Badge variant={travaHorarioAtiva ? 'success' : 'warning'}>
@@ -535,7 +536,7 @@ export default function ConfiguracoesPage() {
                 >
                   <div className="min-w-0">
                     <p className="font-mono font-semibold text-foreground">
-                      {f.data.split('-').reverse().join('/')}
+                      {formatarDataCurtaBR(f.data)}
                     </p>
                     <p className="truncate text-[11px] text-muted-foreground">{f.descricao}</p>
                   </div>

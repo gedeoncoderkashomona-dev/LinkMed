@@ -68,8 +68,8 @@ const config: Config = {
       },
       boxShadow: {
         soft: '0 1px 2px 0 rgb(15 23 42 / 0.03)',
-        card: '0 1px 2px 0 rgb(15 23 42 / 0.04), 0 8px 24px -18px rgb(15 23 42 / 0.10)',
-        ios: '0 4px 24px -4px rgb(15 23 42 / 0.08), 0 1px 2px 0 rgb(15 23 42 / 0.04)',
+        card: '0 1px 2px 0 rgb(15 23 42 / 0.03), 0 4px 16px -12px rgb(15 23 42 / 0.07)',
+        ios: '0 12px 36px -10px rgb(15 23 42 / 0.14), 0 2px 6px -1px rgb(15 23 42 / 0.05)',
       },
       keyframes: {
         'accordion-down': {
@@ -84,11 +84,16 @@ const config: Config = {
           from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        'modal-in': {
+          from: { opacity: '0', transform: 'translate(-50%, -48%) scale(0.97)' },
+          to: { opacity: '1', transform: 'translate(-50%, -50%) scale(1)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
-        'fade-in': 'fade-in 0.2s ease-out',
+        'fade-in': 'fade-in 0.18s ease-out',
+        'modal-in': 'modal-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
       },
     },
   },

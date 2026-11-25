@@ -96,8 +96,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             position="top-right"
             richColors
             closeButton
-            expand
-            toastOptions={{ className: 'text-sm shadow-lg' }}
+            visibleToasts={4}
+            toastOptions={{
+              className:
+                'rounded-xl border border-border/80 bg-card/95 text-[13px] font-medium text-foreground shadow-ios backdrop-blur-xl',
+              descriptionClassName: 'text-[12px] text-muted-foreground',
+            }}
           />
         </Providers>
       </body>

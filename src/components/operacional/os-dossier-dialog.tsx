@@ -482,7 +482,7 @@ export function OsDossierDialog({ osChaveOuNumero, open, onOpenChange }: Props) 
                             {STATUS_REGISTRO_LABEL[rec.status]}
                           </Badge>
                           <span className="text-[11px] text-muted-foreground">
-                            Preenchido em {rec.dataRef.split('-').reverse().join('/')}
+                            Preenchido em {formatarDataCurtaBR(rec.dataRef)}
                             {rec.criadoPorNome ? ` por ${rec.criadoPorNome}` : ''}
                           </span>
                         </div>

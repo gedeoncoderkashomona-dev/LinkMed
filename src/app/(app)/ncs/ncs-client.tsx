@@ -608,7 +608,7 @@ export function NcsClient() {
             <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
-                  Governança Documental (REG 038 / REG 047 — Seção 5.3)
+                  Governança Documental (REG-038 / REG-047 · RDC 665/22)
                 </span>
                 {podeEditarGovernanca ? (
                   <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">

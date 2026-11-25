@@ -1,7 +1,7 @@
 'use client';
 
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { AlertTriangle, Building2, Info, Lock } from 'lucide-react';
+import { AlertTriangle, Building2, Info, ShieldAlert, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import {
@@ -24,86 +24,131 @@ export function RuleNoticeHost() {
     return null;
   }
 
-  const iconTone =
-    current.severity === 'blocked'
-      ? 'bg-red-50 text-red-600 ring-1 ring-red-200/70 dark:bg-red-950/50 dark:text-red-400 dark:ring-red-800/50'
-      : current.severity === 'info'
-        ? 'bg-emerald-50 text-primary ring-1 ring-emerald-200/70 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-800/50'
-        : 'bg-amber-50 text-amber-600 ring-1 ring-amber-200/70 dark:bg-amber-950/50 dark:text-amber-400 dark:ring-amber-800/50';
+  const isBlocked = current.severity === 'blocked';
+  const isInfo = current.severity === 'info';
 
-  const Icon =
-    current.severity === 'blocked'
-      ? Lock
-      : current.severity === 'info'
-        ? Info
-        : AlertTriangle;
+  const topAccent = isBlocked
+    ? 'bg-rose-500'
+    : isInfo
+      ? 'bg-primary'
+      : 'bg-amber-500';
+
+  const iconTone = isBlocked
+    ? 'bg-rose-500/10 text-rose-600 ring-1 ring-rose-500/20 dark:bg-rose-500/15 dark:text-rose-400'
+    : isInfo
+      ? 'bg-primary/10 text-primary ring-1 ring-primary/20 dark:bg-primary/15 dark:text-emerald-400'
+      : 'bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/25 dark:bg-amber-500/15 dark:text-amber-400';
+
+  const hintAccent = isBlocked
+    ? 'border-l-rose-500/60'
+    : isInfo
+      ? 'border-l-primary/60'
+      : 'border-l-amber-500/60';
+
+  const Icon = isBlocked ? ShieldAlert : isInfo ? Info : AlertTriangle;
 
   return (
-    <DialogPrimitive.Root open onOpenChange={() => {}}>
+    <DialogPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) dismissCurrentRuleNotice();
+      }}
+    >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay
-          className="fixed inset-0 z-[100] bg-slate-950/35 backdrop-blur-md transition-opacity data-[state=open]:animate-fade-in dark:bg-black/65"
-        />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[100] bg-slate-950/30 backdrop-blur-[6px] transition-opacity data-[state=open]:animate-fade-in dark:bg-black/60" />
         <DialogPrimitive.Content
-          onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
-          onInteractOutside={(e) => e.preventDefault()}
           className={cn(
-            'fixed left-1/2 top-1/2 z-[101] w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2',
-            'rounded-[24px] border border-border/80 bg-card/95 p-6 shadow-[0_24px_60px_-15px_rgba(15,23,42,0.3)]',
-            'backdrop-blur-2xl outline-none data-[state=open]:animate-fade-in',
-            'dark:border-emerald-500/25 dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.75)]',
+            'fixed left-1/2 top-1/2 z-[101] w-[calc(100vw-2rem)] max-w-[460px] -translate-x-1/2 -translate-y-1/2 overflow-hidden',
+            'rounded-2xl border border-border/80 bg-card/98 shadow-[0_24px_64px_-16px_rgba(15,23,42,0.24)]',
+            'backdrop-blur-2xl outline-none data-[state=open]:animate-modal-in',
+            'dark:border-emerald-500/20 dark:shadow-[0_24px_64px_-16px_rgba(0,0,0,0.75)]',
           )}
         >
-          <div className="flex flex-col items-center text-center">
-            <div
-              className={cn(
-                'mb-4 flex h-12 w-12 items-center justify-center rounded-2xl',
-                iconTone,
-              )}
-            >
-              <Icon className="h-6 w-6" strokeWidth={1.5} />
+          {/* Barra superior fina de severidade */}
+          <div className={cn('h-[3px] w-full', topAccent)} />
+
+          <div className="p-5 sm:p-6">
+            {/* Cabeçalho horizontal compacto e elegante */}
+            <div className="flex items-start gap-3.5">
+              <div
+                className={cn(
+                  'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+                  iconTone,
+                )}
+              >
+                <Icon className="h-5 w-5" strokeWidth={1.6} />
+              </div>
+
+              <div className="min-w-0 flex-1 pr-6">
+                {current.sectorLabel && (
+                  <div className="mb-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-primary/20 bg-primary/[0.07] px-2 py-0.5 text-[11px] font-medium text-primary dark:text-emerald-300">
+                    <Building2 className="h-3 w-3 shrink-0" strokeWidth={1.6} />
+                    <span className="truncate">{current.sectorLabel}</span>
+                  </div>
+                )}
+
+                <DialogPrimitive.Title className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">
+                  {current.title}
+                </DialogPrimitive.Title>
+
+                <DialogPrimitive.Description className="mt-1.5 text-[13.5px] leading-relaxed text-muted-foreground">
+                  {current.message}
+                </DialogPrimitive.Description>
+              </div>
+
+              <button
+                type="button"
+                onClick={dismissCurrentRuleNotice}
+                aria-label="Fechar aviso"
+                className="absolute right-4 top-5 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/75 transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" strokeWidth={1.6} />
+              </button>
             </div>
 
-            {current.sectorLabel && (
-              <div className="mb-2.5 inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium tracking-tight text-primary dark:text-emerald-300">
-                <Building2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
-                <span className="truncate">Responsável: {current.sectorLabel}</span>
-              </div>
-            )}
-
-            <DialogPrimitive.Title className="text-[17px] font-semibold leading-snug tracking-tight text-foreground">
-              {current.title}
-            </DialogPrimitive.Title>
-
-            <DialogPrimitive.Description className="mt-2.5 text-[14px] leading-relaxed text-muted-foreground">
-              {current.message}
-            </DialogPrimitive.Description>
-
             {current.hint && (
-              <div className="mt-4 w-full rounded-2xl border border-border/80 bg-muted/50 px-4 py-3 text-left">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  O que fazer para seguir
+              <div
+                className={cn(
+                  'mt-4 rounded-xl border border-border/70 border-l-[3px] bg-muted/40 px-3.5 py-2.5 text-left',
+                  hintAccent,
+                )}
+              >
+                <p className="text-[11px] font-semibold tracking-tight text-foreground/85">
+                  Como prosseguir
                 </p>
-                <p className="mt-1 text-[13px] leading-relaxed text-foreground">
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
                   {current.hint}
                 </p>
               </div>
             )}
 
-            <button
-              type="button"
-              autoFocus
-              onClick={dismissCurrentRuleNotice}
-              className={cn(
-                'mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl',
-                'bg-primary px-5 text-[15px] font-medium text-white',
-                'shadow-sm shadow-primary/20 transition-all hover:bg-primary/90 active:scale-[0.985]',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2',
+            {/* Rodapé limpo com ação principal */}
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+              {queue.length > 1 ? (
+                <span className="text-[11px] font-medium text-muted-foreground tabular-nums">
+                  Aviso 1 de {queue.length}
+                </span>
+              ) : (
+                <span className="text-[11px] text-muted-foreground/80">
+                  Controle Operacional · LINKMED
+                </span>
               )}
-            >
-              Entendi
-            </button>
+
+              <button
+                type="button"
+                autoFocus
+                onClick={dismissCurrentRuleNotice}
+                className={cn(
+                  'inline-flex h-9 min-w-[112px] items-center justify-center rounded-lg',
+                  'bg-primary px-5 text-[13px] font-medium text-white',
+                  'shadow-soft transition-all hover:bg-primary/90 active:scale-[0.985]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2',
+                )}
+              >
+                Entendi
+              </button>
+            </div>
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

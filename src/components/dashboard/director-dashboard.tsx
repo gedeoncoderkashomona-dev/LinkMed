@@ -246,13 +246,16 @@ export function DirectorDashboard({
 
   return (
     <div className="space-y-5">
-      {/* Cabeçalho compacto com gradiente esmeralda LinkMed + seletor de período */}
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-card to-emerald-500/10 p-4 shadow-xs sm:flex-row sm:items-center sm:p-5 dark:border-emerald-500/20">
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
-            Governança & Conformidade RDC 665/22
-          </p>
-          <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+      {/* Cabeçalho executivo thin + seletor de período */}
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-border/75 bg-card p-4 shadow-soft sm:flex-row sm:items-center sm:p-5 dark:border-emerald-500/15">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            <p className="text-[11px] font-medium tracking-wide text-primary">
+              Governança & Conformidade RDC 665/22
+            </p>
+          </div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg">
             Visão Executiva em Tempo Real
           </h2>
           <p className="text-xs text-muted-foreground">
@@ -260,10 +263,10 @@ export function DirectorDashboard({
           </p>
         </div>
 
-        <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-border/80 bg-background/90 p-1 text-xs shadow-2xs">
+        <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-border/75 bg-muted/40 p-1 text-xs">
           <span className="hidden items-center gap-1 px-2 text-[11px] font-medium text-muted-foreground sm:inline-flex">
             <Calendar className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Período:
+            Período
           </span>
           {(['30d', '90d', '12m'] as const).map((p) => (
             <button
@@ -273,8 +276,8 @@ export function DirectorDashboard({
               className={cn(
                 'ios-touch rounded-lg px-3 py-1.5 text-xs font-medium transition-all touch-manipulation',
                 periodo === p
-                  ? 'bg-primary text-white shadow-2xs'
-                  : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                  ? 'bg-card text-foreground shadow-soft ring-1 ring-border/70'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {p === '30d' ? '30 dias' : p === '90d' ? '90 dias' : '12 meses'}
@@ -283,20 +286,20 @@ export function DirectorDashboard({
         </div>
       </div>
 
-      {/* 4 Indicadores Executivos Reais (disposição exata preservada + brilho esmeralda) */}
+      {/* 4 Indicadores Executivos Reais (visual thin corporativo) */}
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-card via-card to-primary/[0.04] transition-all hover:border-primary/35">
+        <Card className="transition-colors hover:border-primary/30">
           <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
-            <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               POPs Vigentes
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-600 ring-1 ring-emerald-500/25 dark:text-emerald-400">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <ShieldCheck className="h-4 w-4" strokeWidth={1.6} />
             </div>
           </CardHeader>
           <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
                 {taxaConformidadePops}%
               </span>
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -312,21 +315,21 @@ export function DirectorDashboard({
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-card via-card to-sky-500/[0.04] transition-all hover:border-primary/35">
+        <Card className="transition-colors hover:border-primary/30">
           <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
-            <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Ordens no Período
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500/12 text-sky-600 ring-1 ring-sky-500/25 dark:text-sky-400">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-foreground/80">
               <Wrench className="h-4 w-4" strokeWidth={1.6} />
             </div>
           </CardHeader>
           <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
                 {ordensNoPeriodo.length} OS
               </span>
-              <span className="text-xs font-semibold text-primary tabular-nums">
+              <span className="text-xs font-medium text-primary tabular-nums">
                 {taxaConclusaoOs}% concluídas
               </span>
             </div>
@@ -337,18 +340,18 @@ export function DirectorDashboard({
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-card via-card to-violet-500/[0.04] transition-all hover:border-primary/35">
+        <Card className="transition-colors hover:border-primary/30">
           <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
-            <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Ciclo Médio (MTTR)
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/12 text-violet-600 ring-1 ring-violet-500/25 dark:text-violet-400">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-foreground/80">
               <Clock className="h-4 w-4" strokeWidth={1.6} />
             </div>
           </CardHeader>
           <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
                 {tempoMedioCiclo !== null ? `${tempoMedioCiclo} dias` : `${osEmFluxoPeriodo} ativas`}
               </span>
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -367,18 +370,18 @@ export function DirectorDashboard({
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-card via-card to-amber-500/[0.04] transition-all hover:border-primary/35">
+        <Card className="transition-colors hover:border-primary/30">
           <CardHeader className="flex flex-row items-center justify-between px-4 pb-2 pt-4">
-            <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Resolução de NCs
             </CardTitle>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/12 text-amber-600 ring-1 ring-amber-500/25 dark:text-amber-400">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
               <ShieldAlert className="h-4 w-4" strokeWidth={1.6} />
             </div>
           </CardHeader>
           <CardContent className="space-y-2 px-4 pb-4">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">
                 {taxaResolucaoNc}%
               </span>
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -437,7 +440,7 @@ export function DirectorDashboard({
                         {alturaConcluidas > 0 && (
                           <div
                             style={{ height: `${alturaConcluidas}%` }}
-                            className="relative w-3 rounded-t-md bg-gradient-to-t from-primary to-emerald-400 shadow-[0_0_12px_hsl(var(--primary)/0.28)] transition-all group-hover:brightness-110 sm:w-5"
+                            className="relative w-3 rounded-t-md bg-primary transition-all group-hover:bg-primary/85 sm:w-5"
                             title={`Concluídas em ${item.mes}: ${item.concluidas}`}
                           />
                         )}
@@ -523,7 +526,7 @@ export function DirectorDashboard({
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-border/80 bg-gradient-to-br from-muted/35 to-primary/[0.04] p-3.5 transition-colors hover:border-primary/30">
+            <div className="rounded-xl border border-border/75 bg-muted/25 p-3.5 transition-colors hover:border-primary/30">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">Assistência Técnica</span>
                 <Badge variant="outline">{metricasSetoriais.osPendentesAt} pendente(s)</Badge>
@@ -537,7 +540,7 @@ export function DirectorDashboard({
               </p>
             </div>
 
-            <div className="rounded-xl border border-border/80 bg-gradient-to-br from-muted/35 to-sky-500/[0.04] p-3.5 transition-colors hover:border-primary/30">
+            <div className="rounded-xl border border-border/75 bg-muted/25 p-3.5 transition-colors hover:border-primary/30">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">Metrologia (REG-030)</span>
                 <Badge variant="outline">{metricasSetoriais.calibAprovadas} aprovada(s)</Badge>
@@ -551,7 +554,7 @@ export function DirectorDashboard({
               </p>
             </div>
 
-            <div className="rounded-xl border border-border/80 bg-gradient-to-br from-muted/35 to-amber-500/[0.04] p-3.5 transition-colors hover:border-primary/30">
+            <div className="rounded-xl border border-border/75 bg-muted/25 p-3.5 transition-colors hover:border-primary/30">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">Recebimento & Peças</span>
                 <Badge variant={metricasSetoriais.osAguardandoPecas > 0 ? 'warning' : 'outline'}>
@@ -567,7 +570,7 @@ export function DirectorDashboard({
               </p>
             </div>
 
-            <div className="rounded-xl border border-border/80 bg-gradient-to-br from-muted/35 to-emerald-500/[0.05] p-3.5 transition-colors hover:border-primary/30">
+            <div className="rounded-xl border border-border/75 bg-muted/25 p-3.5 transition-colors hover:border-primary/30">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">Qualidade & Auditoria</span>
                 <Badge variant="success">Auditável</Badge>

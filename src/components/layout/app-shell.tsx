@@ -137,7 +137,7 @@ export function AppShell({ user, children }: Props) {
                 className="gap-1.5 text-xs"
               >
                 <Unlock className="h-3.5 w-3.5" />
-                Simular Horário Comercial (Modo Homologação)
+                Liberar Acesso Temporário
               </Button>
             </div>
           </CardContent>
@@ -160,14 +160,14 @@ export function AppShell({ user, children }: Props) {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 bg-amber-500/15 px-4 py-1.5 text-xs text-amber-900 dark:text-amber-200">
             <span className="flex items-center gap-1.5 font-medium">
               <Clock className="h-3.5 w-3.5" />
-              Modo de Teste em Homologação ativo (Fora do expediente 07:30h–19:30h · {statusHorario.horaAtualLabel})
+              Acesso temporário fora do expediente ativo (07:30h–19:30h · {statusHorario.horaAtualLabel})
             </span>
             <button
               type="button"
               onClick={desativarModoTesteHomologacao}
               className="underline font-semibold hover:opacity-80"
             >
-              Voltar ao bloqueio de horário (Testar Caso T14)
+              Reativar bloqueio de horário
             </button>
           </div>
         )}

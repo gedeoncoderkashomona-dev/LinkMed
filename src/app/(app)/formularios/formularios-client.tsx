@@ -149,7 +149,7 @@ export function FormulariosClient() {
             visivel: true,
             liberado: false,
             motivo:
-              'Decisão D8 (v4): o Item 5 (REG-009 / REG-035) requer uma OS iniciada no REG-022 e sem Etiqueta VERMELHA no histórico efetivo.',
+              'O Item 5 (REG-009 / REG-035) requer uma OS iniciada no REG-022 e sem Etiqueta VERMELHA no histórico efetivo.',
             osDestinoChave: null,
           };
         }
@@ -307,7 +307,7 @@ export function FormulariosClient() {
         </div>
         {user?.perfil !== 'estoquista' && (
           <p className="text-[11px] text-muted-foreground">
-            Sequência obrigatória POP-020 (v4):{' '}
+            Sequência operacional POP-020:{' '}
             <span className="font-mono font-medium text-foreground">
               REG-022 (ADM) → REG-016 (BRANCA) → REG-034 (AT) → REG-016 ↔ Item 5 (REG-009 / REG-035)
             </span>{' '}
@@ -316,14 +316,14 @@ export function FormulariosClient() {
         )}
       </div>
 
-      {/* Legenda Oficial das 10 Etiquetas do REG-016 (Auditoria Linkmed - Seção 4.1) */}
+      {/* Legenda Oficial das 10 Etiquetas do REG-016 */}
       {mostrarLegendaCores && (
-        <Card className="border-primary/25 bg-primary/5">
+        <Card className="border-primary/20 bg-primary/[0.03]">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center justify-between">
               <span className="flex items-center gap-2 text-primary">
                 <Tag className="h-4 w-4" />
-                Legenda Oficial das 10 Etiquetas de Status da OS (REG-016 · Seção 4.1)
+                Legenda Oficial das 10 Etiquetas de Status da OS (REG-016)
               </span>
               <Badge variant="outline" className="text-xs uppercase font-mono">
                 RDC 665/2022

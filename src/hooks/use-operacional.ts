@@ -183,7 +183,9 @@ export function useOsFlowList() {
     queryKey: ['os-flow'],
     queryFn: () =>
       fetchJson<{ ordens: OrdemServicoFluxoState[] }>('/api/os-flow?all=true'),
-    refetchInterval: 20_000,
+    staleTime: 30_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -194,7 +196,9 @@ export function useOsFlowDetail(numeroOs: string | null | undefined) {
     queryFn: () =>
       fetchJson<OsFlowDetailResponse>(`/api/os-flow?os=${encodeURIComponent(trimmed)}`),
     enabled: Boolean(trimmed),
-    refetchInterval: 15_000,
+    staleTime: 20_000,
+    refetchInterval: 45_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -216,11 +220,29 @@ export function useOsCommand() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: ['os-flow'] });
-      qc.invalidateQueries({
-        queryKey: ['os-flow', 'detail', variables.numeroOs.trim().toLowerCase()],
+    onSuccess: (data, variables) => {
+      const detailKey = ['os-flow', 'detail', variables.numeroOs.trim().toLowerCase()];
+      qc.setQueryData<OsFlowDetailResponse | undefined>(detailKey, (prev) => ({
+        os: data.os,
+        v4: {
+          estado: data.estado,
+          eventos: data.eventos,
+          notificacoes: data.notificacoes,
+          reg034Salvo: data.os.reg034Preenchido ?? prev?.v4?.reg034Salvo ?? false,
+          item5Preenchido: data.os.item5Preenchido ?? prev?.v4?.item5Preenchido ?? false,
+        },
+      }));
+      qc.setQueryData<{ ordens: OrdemServicoFluxoState[] } | undefined>(['os-flow'], (prev) => {
+        if (!prev?.ordens) return prev;
+        const normTarget = data.os.numeroOsNormalizado;
+        const exists = prev.ordens.some((o) => o.numeroOsNormalizado === normTarget);
+        return {
+          ordens: exists
+            ? prev.ordens.map((o) => (o.numeroOsNormalizado === normTarget ? data.os : o))
+            : [data.os, ...prev.ordens],
+        };
       });
+      qc.invalidateQueries({ queryKey: ['os-flow'] });
       qc.invalidateQueries({ queryKey: ['forms'] });
     },
     onError: (err, variables) => {
@@ -247,11 +269,34 @@ export function useConfirmOsNotification() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: ['os-flow'] });
-      qc.invalidateQueries({
-        queryKey: ['os-flow', 'detail', variables.numeroOs.trim().toLowerCase()],
+    onSuccess: (data, variables) => {
+      const detailKey = ['os-flow', 'detail', variables.numeroOs.trim().toLowerCase()];
+      qc.setQueryData<OsFlowDetailResponse | undefined>(detailKey, (prev) => {
+        if (!prev) return prev;
+        return {
+          os: data.os ?? prev.os,
+          v4: prev.v4
+            ? {
+                ...prev.v4,
+                notificacoes: prev.v4.notificacoes.map((n) =>
+                  n.id === data.notificacao.id ? data.notificacao : n,
+                ),
+              }
+            : prev.v4,
+        };
       });
+      if (data.os) {
+        const updatedOs = data.os;
+        qc.setQueryData<{ ordens: OrdemServicoFluxoState[] } | undefined>(['os-flow'], (prev) => {
+          if (!prev?.ordens) return prev;
+          return {
+            ordens: prev.ordens.map((o) =>
+              o.numeroOsNormalizado === updatedOs.numeroOsNormalizado ? updatedOs : o,
+            ),
+          };
+        });
+      }
+      qc.invalidateQueries({ queryKey: ['os-flow'] });
     },
   });
 }

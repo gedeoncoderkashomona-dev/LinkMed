@@ -59,6 +59,7 @@ import {
   useTreinamentos,
   useUpdateTreinamentoEficacia,
 } from '@/hooks/use-operacional';
+import { formatarDataCurtaBR } from '@/lib/utils';
 
 function criarAvaliacaoDefault(
   participante = '',
@@ -638,12 +639,12 @@ export function TreinamentosClient() {
                           <Calendar className="h-3.5 w-3.5" />
                           Data:{' '}
                           <strong>
-                            {t.dataRealizacao.split('-').reverse().join('/')}
+                            {formatarDataCurtaBR(t.dataRealizacao)}
                           </strong>
                         </p>
                         {t.validadeAte && (
                           <p className="mt-0.5 text-[11px]">
-                            Validade: {t.validadeAte.split('-').reverse().join('/')}
+                            Validade: {formatarDataCurtaBR(t.validadeAte)}
                           </p>
                         )}
                       </div>
@@ -671,7 +672,7 @@ export function TreinamentosClient() {
                       <span>
                         <strong>Avaliado por:</strong> {t.avaliadoPor}
                         {t.dataAvaliacao
-                          ? ` em ${t.dataAvaliacao.split('-').reverse().join('/')}`
+                          ? ` em ${formatarDataCurtaBR(t.dataAvaliacao)}`
                           : ''}
                       </span>
                     )}
@@ -1129,7 +1130,7 @@ export function TreinamentosClient() {
             <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">
-                  Governança Documental (REG-008 — Seção 5.3)
+                  Governança Documental (REG-008 · RDC 665/22)
                 </span>
                 {podeEditarGovernanca ? (
                   <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">

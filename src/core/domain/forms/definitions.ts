@@ -433,7 +433,7 @@ function secaoResponsaveis(resp: ResponsaveisDocumento = RESPONSAVEIS_PADRAO_AT)
   return {
     titulo: 'Responsáveis pelo Documento (Elaboração, Revisão e Aprovação)',
     descricao:
-      'Governança documental obrigatória conforme RDC 665/2022 (ANVISA) — Seção 5.3. Edição restrita à Qualidade e Diretoria.',
+      'Governança documental obrigatória conforme RDC 665/2022 (ANVISA). Edição restrita à Qualidade e Diretoria.',
     campos: [
       {
         name: 'elaborado_por',
@@ -611,7 +611,7 @@ export function verificarBloqueioItem5Reg016(contexto: {
     return {
       bloqueado: true,
       motivo:
-        'Item 5 (REG-009 / REG-035) bloqueado pela regra R01/D4: as etiquetas efetivas desta OS contêm VERMELHA (orçamento não aprovado). Caso tenha sido erro de lançamento, o ADM pode estornar para reabrir a etapa.',
+        'Item 5 (REG-009 / REG-035) bloqueado definitivamente: esta OS possui Etiqueta VERMELHA (orçamento não aprovado). Caso tenha sido erro de lançamento, o ADM pode estornar a etapa.',
     };
   }
 

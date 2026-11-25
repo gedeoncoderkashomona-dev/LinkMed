@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Bell,
+  Check,
   CheckCircle2,
   ClipboardCheck,
   Clock,
@@ -252,9 +253,25 @@ export function OsFlowPanel({
       setMostrarNaoEnviado(false);
       setJustificativaNaoEnviado('');
       const proxEtapa = NODE_LABEL_PT[res.estado.no] ?? res.estado.no;
-      toast.success('Fluxo da OS atualizado!', {
-        description: `${formatarCodigoOs(os.numeroOs)} · ${proxEtapa}`,
-      });
+      const setorProxLabel =
+        res.estado.setor === 'ADM'
+          ? 'Administrativo (ADM)'
+          : res.estado.setor === 'AT'
+            ? 'Assistência Técnica (AT)'
+            : res.estado.setor === 'ALMOXARIFADO'
+              ? 'Almoxarifado'
+              : null;
+      const mudouDeSetor = Boolean(res.estado.setor && setorUsuario && res.estado.setor !== setorUsuario);
+      toast.success(
+        res.estado.estadoGeral === 'finalizada'
+          ? `${formatarCodigoOs(os.numeroOs)} finalizada`
+          : mudouDeSetor && setorProxLabel
+            ? `${formatarCodigoOs(os.numeroOs)} encaminhada para ${setorProxLabel}`
+            : `${formatarCodigoOs(os.numeroOs)} atualizada`,
+        {
+          description: proxEtapa,
+        },
+      );
       onAtualizada?.(res.os);
     } catch (err) {
       const msg =
@@ -412,7 +429,7 @@ export function OsFlowPanel({
                               : 'bg-muted text-muted-foreground',
                         )}
                       >
-                        {concluida ? '✓' : step.id}
+                        {concluida ? <Check className="h-2.5 w-2.5" strokeWidth={2.75} /> : step.id}
                       </span>
                       <span className="truncate">{step.label}</span>
                     </div>

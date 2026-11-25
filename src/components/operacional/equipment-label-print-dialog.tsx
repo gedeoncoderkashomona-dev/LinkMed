@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { formatarDataCurtaBR } from '@/lib/utils';
 
 export interface DadosEtiquetaEquipamento {
   numeroOs: string;
@@ -51,9 +52,7 @@ export function EquipmentLabelPrintDialog({
   if (!dados) return null;
 
   const dataFormatada = dados.dataAnalise
-    ? dados.dataAnalise.includes('-')
-      ? dados.dataAnalise.slice(0, 10).split('-').reverse().join('/')
-      : dados.dataAnalise
+    ? formatarDataCurtaBR(dados.dataAnalise)
     : new Date().toLocaleDateString('pt-BR');
 
   function handlePrint() {
@@ -186,7 +185,7 @@ export function EquipmentLabelPrintDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Tag className="h-5 w-5 text-primary" />
-            Etiqueta de Identificação do Equipamento (Seção 5.4)
+            Etiqueta de Identificação do Equipamento
           </DialogTitle>
           <DialogDescription>
             Gerada automaticamente após a conclusão da análise técnica (Etiqueta CINZA), puxando os dados do Item 1 do REG 022.

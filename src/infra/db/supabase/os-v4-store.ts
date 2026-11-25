@@ -87,6 +87,9 @@ interface AuditRow<T> {
 
 let hasNativeV4TablesCache: boolean | null = null;
 let hasNativeFeriadoTableCache: boolean | null = null;
+let hasLegacyOsFluxoTableCache: boolean | null = null;
+let feriadosCache: { items: FeriadoRecord[]; expiresAt: number } | null = null;
+const FERIADOS_TTL_MS = 5 * 60_000;
 
 export function deterministicUuid(seed: string): string {
   const hex = createHash('sha256').update(seed).digest('hex');
@@ -141,6 +144,10 @@ async function detectNativeV4Tables(): Promise<boolean> {
 // ============================================================================
 
 export async function obterFeriadosV4(): Promise<FeriadoRecord[]> {
+  if (feriadosCache && feriadosCache.expiresAt > Date.now()) {
+    return feriadosCache.items;
+  }
+
   const mapa = new Map<string, FeriadoRecord>();
   for (const f of FERIADOS_PADRAO_RECIFE_PE) {
     mapa.set(f.data, { ...f });
@@ -186,7 +193,9 @@ export async function obterFeriadosV4(): Promise<FeriadoRecord[]> {
     }
   }
 
-  return Array.from(mapa.values()).sort((a, b) => a.data.localeCompare(b.data));
+  const items = Array.from(mapa.values()).sort((a, b) => a.data.localeCompare(b.data));
+  feriadosCache = { items, expiresAt: Date.now() + FERIADOS_TTL_MS };
+  return items;
 }
 
 export async function obterFeriadosDatasV4(): Promise<string[]> {
@@ -241,6 +250,7 @@ export async function adicionarFeriadoV4(params: {
     { onConflict: 'id' },
   );
 
+  feriadosCache = null;
   return registro;
 }
 
@@ -281,6 +291,7 @@ export async function removerFeriadoV4(params: {
     },
     { onConflict: 'id' },
   );
+  feriadosCache = null;
 }
 
 // ============================================================================
@@ -370,9 +381,37 @@ async function salvarMetaENotificacoesFallback(params: {
 }): Promise<void> {
   const norm = normalizarNumero(params.meta.numeroOs);
   const metaId = params.meta.id || deterministicUuid(`os_v4_meta:${norm}`);
-
   const metaRow = { ...params.meta, id: metaId };
-  const { error: metaErr } = await supabaseAdmin.from('audit_logs').upsert(
+
+  // 1. Insere eventos em lote primeiro para preservar lock otimista de versão (unique PK por seq)
+  if (params.novosEventos.length > 0) {
+    const eventRows = params.novosEventos.map(({ seq, evento }) => ({
+      id: deterministicUuid(`os_v4_event:${norm}:${seq}`),
+      usuario_id: evento.usuario.id || params.criadoPorFallback,
+      acao: String(seq),
+      entidade: '__db_os_v4_event__',
+      entidade_id: norm,
+      dados_antes: null,
+      dados_depois: { seq, evento },
+      ip: '127.0.0.1',
+      user_agent: 'regulaon-v4',
+      created_at: evento.em,
+    }));
+
+    const { error: evErr } = await supabaseAdmin.from('audit_logs').insert(eventRows);
+    if (evErr) {
+      if (evErr.code === '23505') {
+        throw new Recusado(
+          'versao',
+          'A OS mudou desde que você abriu. Recarregue a tela.',
+        );
+      }
+      throw new Error(`Falha ao gravar evento da OS: ${evErr.message}`);
+    }
+  }
+
+  // 2. Persiste metadados e notificações em paralelo (em lote)
+  const metaPromise = supabaseAdmin.from('audit_logs').upsert(
     {
       id: deterministicUuid(`os_v4_meta:${norm}`),
       usuario_id: params.meta.criadaPorId || params.criadoPorFallback,
@@ -387,52 +426,29 @@ async function salvarMetaENotificacoesFallback(params: {
     },
     { onConflict: 'id' },
   );
+
+  const notifPromise =
+    params.novasNotificacoes.length > 0
+      ? supabaseAdmin.from('audit_logs').upsert(
+          params.novasNotificacoes.map((notif) => ({
+            id: deterministicUuid(`os_v4_notif:${notif.id}`),
+            usuario_id: params.criadoPorFallback,
+            acao: notif.para,
+            entidade: '__db_os_v4_notif__',
+            entidade_id: norm,
+            dados_antes: null,
+            dados_depois: notif,
+            ip: '127.0.0.1',
+            user_agent: 'regulaon-v4',
+            created_at: notif.criadaEm,
+          })),
+          { onConflict: 'id' },
+        )
+      : Promise.resolve({ error: null });
+
+  const [{ error: metaErr }] = await Promise.all([metaPromise, notifPromise]);
   if (metaErr) {
     throw new Error(`Falha ao salvar metadados da OS: ${metaErr.message}`);
-  }
-
-  for (const { seq, evento } of params.novosEventos) {
-    const rowPk = deterministicUuid(`os_v4_event:${norm}:${seq}`);
-    const { error: evErr } = await supabaseAdmin.from('audit_logs').insert({
-      id: rowPk,
-      usuario_id: evento.usuario.id || params.criadoPorFallback,
-      acao: String(seq),
-      entidade: '__db_os_v4_event__',
-      entidade_id: norm,
-      dados_antes: null,
-      dados_depois: { seq, evento },
-      ip: '127.0.0.1',
-      user_agent: 'regulaon-v4',
-      created_at: evento.em,
-    });
-    if (evErr) {
-      if (evErr.code === '23505') {
-        throw new Recusado(
-          'versao',
-          'A OS mudou desde que você abriu. Recarregue a tela.',
-        );
-      }
-      throw new Error(`Falha ao gravar evento da OS: ${evErr.message}`);
-    }
-  }
-
-  for (const notif of params.novasNotificacoes) {
-    const notifPk = deterministicUuid(`os_v4_notif:${notif.id}`);
-    await supabaseAdmin.from('audit_logs').upsert(
-      {
-        id: notifPk,
-        usuario_id: params.criadoPorFallback,
-        acao: notif.para,
-        entidade: '__db_os_v4_notif__',
-        entidade_id: norm,
-        dados_antes: null,
-        dados_depois: notif,
-        ip: '127.0.0.1',
-        user_agent: 'regulaon-v4',
-        created_at: notif.criadaEm,
-      },
-      { onConflict: 'id' },
-    );
   }
 }
 
@@ -593,33 +609,34 @@ export async function carregarOsV4PorNumero(
   }
 
   if (!meta) {
-    const { data: metaRow } = await supabaseAdmin
-      .from('audit_logs')
-      .select('dados_depois')
-      .eq('entidade', '__db_os_v4_meta__')
-      .eq('entidade_id', norm)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const [{ data: metaRow }, { data: evRows }, notifList] = await Promise.all([
+      supabaseAdmin
+        .from('audit_logs')
+        .select('dados_depois')
+        .eq('entidade', '__db_os_v4_meta__')
+        .eq('entidade_id', norm)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('audit_logs')
+        .select('dados_depois')
+        .eq('entidade', '__db_os_v4_event__')
+        .eq('entidade_id', norm)
+        .order('created_at', { ascending: true }),
+      lerNotificacoesDeAudit(norm),
+    ]);
 
     if (metaRow?.dados_depois) {
       const parsed = metaRow.dados_depois as { meta?: OsV4PersistidaMeta };
       if (parsed.meta) {
         meta = parsed.meta;
-        const { data: evRows } = await supabaseAdmin
-          .from('audit_logs')
-          .select('dados_depois')
-          .eq('entidade', '__db_os_v4_event__')
-          .eq('entidade_id', norm)
-          .order('created_at', { ascending: true });
-
         eventos = ((evRows ?? []) as Array<AuditRow<{ seq: number; evento: Evento }>>)
           .map((r) => r.dados_depois)
           .filter((d): d is { seq: number; evento: Evento } => Boolean(d?.evento))
           .sort((a, b) => a.seq - b.seq)
           .map((d) => d.evento);
-
-        notificacoes = await lerNotificacoesDeAudit(norm);
+        notificacoes = notifList;
       }
     }
   }
@@ -830,85 +847,188 @@ async function processarLembretesDevidosDaOs(params: {
 
 export async function listarOrdensV4(): Promise<OrdemServicoFluxoState[]> {
   const { operacionalRepository } = getRepositories();
-  const formRecords = await operacionalRepository.listFormRecords({ limit: 500 }).catch(() => []);
-
-  const numerosMap = new Map<string, string>();
-
-  // 1. Nativo (se existir)
   const native = await detectNativeV4Tables();
-  if (native) {
-    const { data } = await supabaseAdmin
-      .from('os')
-      .select('numero, numero_normalizado')
-      .order('criada_em', { ascending: false })
-      .limit(200);
-    for (const r of (data ?? []) as Array<{ numero: string; numero_normalizado: string }>) {
-      numerosMap.set(r.numero_normalizado, r.numero);
+
+  // Carrega todos os dados necessários em lote paralelo (elimina N+1 por OS)
+  const [formRecords, metaRes, eventsRes, notifsRes, legacyAuditRes, nativeOsRes, legacyTableRes] =
+    await Promise.all([
+      operacionalRepository.listFormRecords({ limit: 500 }).catch(() => [] as FormRecord[]),
+      supabaseAdmin
+        .from('audit_logs')
+        .select('entidade_id, dados_depois, created_at')
+        .eq('entidade', '__db_os_v4_meta__')
+        .order('created_at', { ascending: false })
+        .limit(300),
+      supabaseAdmin
+        .from('audit_logs')
+        .select('entidade_id, dados_depois')
+        .eq('entidade', '__db_os_v4_event__')
+        .order('created_at', { ascending: true })
+        .limit(4000),
+      supabaseAdmin
+        .from('audit_logs')
+        .select('entidade_id, dados_depois, created_at')
+        .eq('entidade', '__db_os_v4_notif__')
+        .order('created_at', { ascending: false })
+        .limit(1500),
+      supabaseAdmin
+        .from('audit_logs')
+        .select('entidade_id, dados_depois')
+        .eq('entidade', '__db_os_fluxo__')
+        .order('created_at', { ascending: false })
+        .limit(300),
+      native
+        ? supabaseAdmin
+            .from('os')
+            .select('numero, numero_normalizado')
+            .order('criada_em', { ascending: false })
+            .limit(200)
+        : Promise.resolve({ data: null, error: null }),
+      hasLegacyOsFluxoTableCache !== false
+        ? supabaseAdmin
+            .from('os_fluxo')
+            .select('numero_os, estado')
+            .order('updated_at', { ascending: false })
+            .limit(150)
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+  if (legacyTableRes.error && isMissingSchemaError(legacyTableRes.error)) {
+    hasLegacyOsFluxoTableCache = false;
+  } else if (!legacyTableRes.error && hasLegacyOsFluxoTableCache === null) {
+    hasLegacyOsFluxoTableCache = true;
+  }
+
+  // Agrupa metas v4 em memória (mais recente vence)
+  const metaByNorm = new Map<string, OsV4PersistidaMeta>();
+  for (const r of (metaRes.data ?? []) as Array<AuditRow<{ meta?: OsV4PersistidaMeta }>>) {
+    const m = r.dados_depois?.meta;
+    if (!m?.numeroOs) continue;
+    const norm = normalizarNumero(m.numeroOs);
+    if (!metaByNorm.has(norm)) metaByNorm.set(norm, m);
+  }
+
+  // Agrupa eventos v4 por OS em memória
+  const eventsByNorm = new Map<string, Array<{ seq: number; evento: Evento }>>();
+  for (const r of (eventsRes.data ?? []) as Array<AuditRow<{ seq: number; evento: Evento }>>) {
+    const d = r.dados_depois;
+    if (!d?.evento || !r.entidade_id) continue;
+    const list = eventsByNorm.get(r.entidade_id) ?? [];
+    list.push(d);
+    eventsByNorm.set(r.entidade_id, list);
+  }
+
+  // Agrupa notificações v4 por OS em memória
+  const notifsByNorm = new Map<string, NotificacaoV4Persistida[]>();
+  for (const r of (notifsRes.data ?? []) as Array<AuditRow<NotificacaoV4Persistida>>) {
+    const n = r.dados_depois;
+    if (!n?.id || !n.numeroOs) continue;
+    const norm = r.entidade_id || normalizarNumero(n.numeroOs);
+    const list = notifsByNorm.get(norm) ?? [];
+    list.push(n);
+    notifsByNorm.set(norm, list);
+  }
+
+  // Monta todas as OS já em formato v4 em memória (0 roundtrips extras!)
+  const ordensMontadas = new Map<string, OrdemServicoFluxoState>();
+  const lembretesTasks: Array<Promise<void>> = [];
+
+  for (const [norm, meta] of metaByNorm.entries()) {
+    const eventos = (eventsByNorm.get(norm) ?? [])
+      .sort((a, b) => a.seq - b.seq)
+      .map((d) => d.evento);
+    const notificacoes = (notifsByNorm.get(norm) ?? []).sort(
+      (a, b) => new Date(b.criadaEm).getTime() - new Date(a.criadaEm).getTime(),
+    );
+    const estado = estadoDe(eventos);
+    const { reg034Salvo, item5Preenchido } = verificarFlagsFormulariosOs(
+      meta.numeroOs,
+      formRecords,
+    );
+
+    const buildAndStore = (todasNotifs: NotificacaoV4Persistida[]) => {
+      const fluxoState = buildOrdemServicoFluxoFromV4({
+        meta,
+        eventos,
+        notificacoes: todasNotifs.map(toLegacyNotificacao),
+        reg034Salvo,
+        item5Preenchido,
+      });
+      ordensMontadas.set(norm, fluxoState);
+    };
+
+    // Verifica em CPU se há algum lembrete de 7 dias realmente vencido antes de tocar no banco
+    const agora = new Date();
+    const temLembretePendente =
+      estado.estadoGeral !== 'finalizada' &&
+      estado.estadoGeral !== 'cancelada' &&
+      notificacoes.some((n) => {
+        if (n.ehLembrete || n.confirmadaEm) return false;
+        const entrega = new Date(n.entregarEm);
+        if (entrega.getTime() > agora.getTime()) return false;
+        const ult = n.ultimoLembreteEm ? new Date(n.ultimoLembreteEm) : undefined;
+        return lembreteDevido(entrega, false, estado, agora, ult);
+      });
+
+    if (temLembretePendente) {
+      lembretesTasks.push(
+        processarLembretesDevidosDaOs({ meta, estado, notificacoes })
+          .catch(() => [] as NotificacaoV4Persistida[])
+          .then((gerados) => {
+            const todas = [...gerados, ...notificacoes].sort(
+              (a, b) => new Date(b.criadaEm).getTime() - new Date(a.criadaEm).getTime(),
+            );
+            buildAndStore(todas);
+          }),
+      );
+    } else {
+      buildAndStore(notificacoes);
     }
   }
 
-  // 2. Fallback v4 metas em audit_logs
-  const { data: v4Metas } = await supabaseAdmin
-    .from('audit_logs')
-    .select('entidade_id, dados_depois')
-    .eq('entidade', '__db_os_v4_meta__')
-    .order('created_at', { ascending: false })
-    .limit(200);
-  for (const r of (v4Metas ?? []) as Array<AuditRow<{ meta?: OsV4PersistidaMeta }>>) {
-    const num = r.dados_depois?.meta?.numeroOs;
-    if (num) numerosMap.set(normalizarNumero(num), num);
-  }
+  // Detecta OS que ainda só existem no formato nativo, legado ou REG-022 sem meta v4
+  const faltantes = new Map<string, string>();
+  const registrarSeFaltante = (num?: string | null) => {
+    if (!num) return;
+    const norm = normalizarNumero(num);
+    if (!norm || ordensMontadas.has(norm) || metaByNorm.has(norm) || faltantes.has(norm)) return;
+    faltantes.set(norm, num);
+  };
 
-  // 3. Legado `os_fluxo`
-  const { data: legacyTableRows, error: legacyErr } = await supabaseAdmin
-    .from('os_fluxo')
-    .select('numero_os, estado')
-    .order('updated_at', { ascending: false })
-    .limit(150);
-  if (!legacyErr && legacyTableRows) {
-    for (const r of legacyTableRows as Array<{ numero_os?: string; estado?: OrdemServicoFluxoState }>) {
-      const num = r.estado?.numeroOs ?? r.numero_os;
-      if (num) {
-        const norm = normalizarNumero(num);
-        if (!numerosMap.has(norm)) numerosMap.set(norm, num);
-      }
+  for (const r of (nativeOsRes.data ?? []) as Array<{ numero: string; numero_normalizado: string }>) {
+    registrarSeFaltante(r.numero);
+  }
+  if (!legacyTableRes.error && legacyTableRes.data) {
+    for (const r of legacyTableRes.data as Array<{ numero_os?: string; estado?: OrdemServicoFluxoState }>) {
+      registrarSeFaltante(r.estado?.numeroOs ?? r.numero_os);
     }
   }
-
-  // 4. Legado `__db_os_fluxo__`
-  const { data: legacyAuditRows } = await supabaseAdmin
-    .from('audit_logs')
-    .select('entidade_id, dados_depois')
-    .eq('entidade', '__db_os_fluxo__')
-    .order('created_at', { ascending: false })
-    .limit(200);
-  for (const r of (legacyAuditRows ?? []) as Array<AuditRow<OrdemServicoFluxoState>>) {
-    const num = r.dados_depois?.numeroOs;
-    if (num) {
-      const norm = normalizarNumero(num);
-      if (!numerosMap.has(norm)) numerosMap.set(norm, num);
-    }
+  for (const r of (legacyAuditRes.data ?? []) as Array<AuditRow<OrdemServicoFluxoState>>) {
+    registrarSeFaltante(r.dados_depois?.numeroOs);
   }
-
-  // 5. Fallback adicional: OS iniciadas apenas via registro REG-022 em form_records
   for (const r of formRecords) {
     if (r.tipo !== 'inspecao-recebimento') continue;
-    const num = String(r.dados?.numero_os ?? '').trim();
-    if (!num) continue;
-    const norm = normalizarNumero(num);
-    if (!numerosMap.has(norm)) numerosMap.set(norm, num);
+    registrarSeFaltante(String(r.dados?.numero_os ?? '').trim());
   }
 
-  const resultados = await Promise.all(
-    Array.from(numerosMap.values()).map((num) =>
-      carregarOsV4PorNumero(num, formRecords).catch(() => null),
-    ),
-  );
+  if (lembretesTasks.length > 0) {
+    await Promise.all(lembretesTasks);
+  }
 
-  return resultados
-    .filter((r): r is OsV4Carregada => r !== null)
-    .map((r) => r.fluxoState)
-    .sort((a, b) => new Date(b.atualizadaEm).getTime() - new Date(a.atualizadaEm).getTime());
+  if (faltantes.size > 0) {
+    const extras = await Promise.all(
+      Array.from(faltantes.values()).map((num) =>
+        carregarOsV4PorNumero(num, formRecords).catch(() => null),
+      ),
+    );
+    for (const ex of extras) {
+      if (ex) ordensMontadas.set(normalizarNumero(ex.meta.numeroOs), ex.fluxoState);
+    }
+  }
+
+  return Array.from(ordensMontadas.values()).sort(
+    (a, b) => new Date(b.atualizadaEm).getTime() - new Date(a.atualizadaEm).getTime(),
+  );
 }
 
 export async function existeNumeroOsV4(
@@ -1216,41 +1336,44 @@ export async function executarComandoOsV4(params: {
     item5Preenchido: atual.item5Preenchido,
   });
 
-  await persistirOsFluxoNoServidor({
-    estado: fluxoState,
-    usuarioId: params.usuarioId,
-    ip: params.ip,
-    userAgent: params.userAgent,
-    acao: `os_v4.${params.comando.tipo.toLowerCase()}`,
-    createdAt: agora.toISOString(),
-  }).catch(() => undefined);
-
-  // Sincroniza registro de REG-016 sempre que o fluxo avança/estorna/corrige/cancela
-  try {
-    const { operacionalRepository } = getRepositories();
-    const reg016Existente = await operacionalRepository.findLatestFormRecordByOs(
-      'etapas-manutencao',
-      atual.meta.numeroOs,
-    );
-    const syncPayload = buildReg016DadosFromOsFluxo({
-      os: fluxoState,
-      dadosExistentes: reg016Existente?.dados ?? null,
-      reg022Dados: params.reg022DadosFallback ?? null,
-    });
-    if (reg016Existente || estadoFinal.no !== 'AGUARDA_REG016') {
-      await operacionalRepository.upsertFormRecordByOs(
-        'etapas-manutencao',
-        atual.meta.numeroOs,
-        {
-          subtipo: reg016Existente?.subtipo ?? null,
-          ...syncPayload,
-          criadoPor: params.usuarioId,
-        },
-      );
-    }
-  } catch {
-    // Nunca impede a transição principal do fluxo v4
-  }
+  // Persiste espelho legado e sincroniza REG-016 em paralelo para reduzir latência do comando
+  await Promise.all([
+    persistirOsFluxoNoServidor({
+      estado: fluxoState,
+      usuarioId: params.usuarioId,
+      ip: params.ip,
+      userAgent: params.userAgent,
+      acao: `os_v4.${params.comando.tipo.toLowerCase()}`,
+      createdAt: agora.toISOString(),
+    }).catch(() => undefined),
+    (async () => {
+      try {
+        const { operacionalRepository } = getRepositories();
+        const reg016Existente = await operacionalRepository.findLatestFormRecordByOs(
+          'etapas-manutencao',
+          atual.meta.numeroOs,
+        );
+        const syncPayload = buildReg016DadosFromOsFluxo({
+          os: fluxoState,
+          dadosExistentes: reg016Existente?.dados ?? null,
+          reg022Dados: params.reg022DadosFallback ?? null,
+        });
+        if (reg016Existente || estadoFinal.no !== 'AGUARDA_REG016') {
+          await operacionalRepository.upsertFormRecordByOs(
+            'etapas-manutencao',
+            atual.meta.numeroOs,
+            {
+              subtipo: reg016Existente?.subtipo ?? null,
+              ...syncPayload,
+              criadoPor: params.usuarioId,
+            },
+          );
+        }
+      } catch {
+        // Nunca impede a transição principal do fluxo v4
+      }
+    })(),
+  ]);
 
   return {
     meta: atual.meta,

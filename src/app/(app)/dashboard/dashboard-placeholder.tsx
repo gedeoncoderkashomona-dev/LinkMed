@@ -176,18 +176,18 @@ export function DashboardPlaceholder() {
 
       {/* Alerta Direto de Continuidade do Processo para o Setor Logado */}
       {ordensPendentesMeuSetor.length > 0 && (
-        <div className="ios-card overflow-hidden border-emerald-500/25">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-gradient-to-r from-primary/12 via-primary/5 to-transparent px-4 py-3">
+        <div className="ios-card overflow-hidden border-primary/25">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-primary/[0.04] px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/25">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/12 text-primary">
                 <Bell className="h-4 w-4" strokeWidth={1.6} />
               </div>
               <div>
                 <p className="text-[13px] font-semibold text-foreground">
-                  Para Fazer Agora ({ordensPendentesMeuSetor.length} OS aguardando seu setor)
+                  Para Fazer Agora · {ordensPendentesMeuSetor.length} OS aguardando seu setor
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  Retome diretamente da etapa atual com os dados herdados automaticamente.
+                  Retome diretamente da etapa atual com todos os dados herdados automaticamente.
                 </p>
               </div>
             </div>
@@ -412,14 +412,41 @@ export function DashboardPlaceholder() {
                   ))}
                 </div>
               ) : ordensServico.length === 0 ? (
-                <div className="py-6 text-center text-xs text-muted-foreground">
-                  Nenhuma Ordem de Serviço registrada ainda.{' '}
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border/80 bg-muted/20 px-5 py-7 text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Wrench className="h-5 w-5" strokeWidth={1.6} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-foreground">
+                      Pronto para iniciar novas Ordens de Serviço
+                    </p>
+                    <p className="max-w-md text-xs text-muted-foreground">
+                      O fluxo integrado POP-020 conecta Recebimento (ADM), Higienização e Análise (AT) e Separação de Peças (Almoxarifado) em tempo real.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-md border border-border/75 bg-card px-2 py-0.5 font-medium text-foreground">
+                      1. REG-022 (ADM)
+                    </span>
+                    <ArrowRight className="h-3 w-3" />
+                    <span className="rounded-md border border-border/75 bg-card px-2 py-0.5 font-medium text-foreground">
+                      2. REG-034 (AT)
+                    </span>
+                    <ArrowRight className="h-3 w-3" />
+                    <span className="rounded-md border border-border/75 bg-card px-2 py-0.5 font-medium text-foreground">
+                      3. REG-016 (Etiquetas)
+                    </span>
+                    <ArrowRight className="h-3 w-3" />
+                    <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-300">
+                      4. Etiqueta Verde
+                    </span>
+                  </div>
                   {['adm', 'diretor', 'gestor'].includes(user?.perfil ?? '') && (
-                    <Link
-                      href="/formularios/inspecao-recebimento"
-                      className="font-semibold text-primary underline"
-                    >
-                      Iniciar Inspeção de Recebimento (REG-022)
+                    <Link href="/formularios/inspecao-recebimento" className="mt-1">
+                      <Button size="sm" className="gap-1.5">
+                        <Plus className="h-4 w-4" />
+                        Iniciar Nova OS (REG-022)
+                      </Button>
                     </Link>
                   )}
                 </div>

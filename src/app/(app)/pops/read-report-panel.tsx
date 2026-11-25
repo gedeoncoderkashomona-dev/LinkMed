@@ -209,7 +209,10 @@ export function ReadReportPanel({
           </p>
           <div className="space-y-1.5">
             {data.pendentes.length === 0 && (
-              <p className="text-xs text-muted-foreground">Todos já leram. 🎉</p>
+              <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                Leitura confirmada por toda a equipe.
+              </p>
             )}
             {data.pendentes.map((u) => (
               <div

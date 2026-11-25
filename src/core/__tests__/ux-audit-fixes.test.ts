@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import type { FormRecord } from '@/core/domain/entities/operacional';
@@ -13,6 +15,7 @@ import {
 import { obterConteudoPop } from '@/core/domain/pops/pop-catalog-content';
 import { gerarPdfPopCompleto } from '@/core/domain/pops/pop-pdf-generator';
 import { traduzirMensagemZod } from '@/lib/http/api-handler';
+import { isRuleErrorMessage } from '@/lib/rule-notice';
 import { formatarCodigoOs, formatarDataCurtaBR } from '@/lib/utils';
 
 const ATOR_ADM: AtorAcaoOS = {
@@ -205,5 +208,45 @@ describe('Auditorias UX/UI & Português — Avisos de OS, POPs e Zod', () => {
     expect(formatarCodigoOs('303030')).toBe('OS 303030');
     expect(formatarCodigoOs('OS-2026-0101')).toBe('OS-2026-0101');
     expect(formatarCodigoOs('os 2060')).toBe('OS 2060');
+  });
+
+  it('garante ausência de emojis informais e jargões internos de especificação na interface', () => {
+    const emojiRe = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+    const jargonRe =
+      /(Seção\s+\d+\.\d+|Caso\s+T\d|Decisão\s+D\d|Regra\s+R\d|RN-\d|\(dadosAntes\)|\(dadosDepois\)|Modo Homologação|OS-ATUAL|AOS atual|diatória)/i;
+
+    const walk = (dir: string): string[] => {
+      const out: string[] = [];
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) out.push(...walk(full));
+        else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.test.ts')) {
+          out.push(full);
+        }
+      }
+      return out;
+    };
+
+    const violacoes: string[] = [];
+    for (const file of walk(join(process.cwd(), 'src'))) {
+      const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+      lines.forEach((line, idx) => {
+        const withoutComments = line
+          .replace(/\/\*.*?\*\//g, '')
+          .replace(/\/\/.*$/, '');
+        if (/^\s*(\*|\{\/\*)/.test(withoutComments)) return;
+        if (emojiRe.test(withoutComments)) violacoes.push(`EMOJI ${file}:${idx + 1}`);
+        if (jargonRe.test(withoutComments)) violacoes.push(`JARGON ${file}:${idx + 1}`);
+      });
+    }
+
+    expect(violacoes).toEqual([]);
+  });
+
+  it('isRuleErrorMessage classifica corretamente erros operacionais para o pop-up moderno', () => {
+    expect(isRuleErrorMessage('Já existe uma OS com este número (303030).')).toBe(true);
+    expect(isRuleErrorMessage('Item 5 bloqueado definitivamente: esta OS possui Etiqueta VERMELHA.')).toBe(true);
+    expect(isRuleErrorMessage('A OS mudou desde que você abriu. Recarregue a tela.')).toBe(true);
+    expect(isRuleErrorMessage('Erro genérico de rede')).toBe(false);
   });
 });

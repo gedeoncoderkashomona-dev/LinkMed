@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Award,
   Bug,
+  Check,
   CheckCircle2,
   ClipboardList,
   Eye,
@@ -96,7 +97,7 @@ import {
   useUpdateFormRecord,
 } from '@/hooks/use-operacional';
 import { isRuleErrorMessage, showRuleNotice } from '@/lib/rule-notice';
-import { cn } from '@/lib/utils';
+import { cn, formatarDataCurtaBR } from '@/lib/utils';
 
 const FORMS_COM_OS = new Set([
   'inspecao-recebimento',
@@ -841,7 +842,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
               variant="outline"
               onClick={() =>
                 setEtiquetaPrintDados({
-                  numeroOs: String(dados.numero_os || osContextoAtual?.numeroOs || 'OS-ATUAL'),
+                  numeroOs: String(dados.numero_os || osContextoAtual?.numeroOs || '—'),
                   cliente: String(dados.cliente || osContextoAtual?.cliente || '—'),
                   equipamento: String(dados.equipamento || osContextoAtual?.equipamento || '—'),
                   marca: String(dados.marca || osContextoAtual?.marca || '—'),
@@ -856,7 +857,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
               className="gap-1.5 border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
             >
               <Printer className="h-3.5 w-3.5" />
-              Imprimir Etiqueta de Identificação (Seção 5.4)
+              Imprimir Etiqueta de Identificação
             </Button>
           )}
           <span className="text-xs text-muted-foreground">Avaliação em tempo real:</span>
@@ -866,11 +867,11 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
         </div>
       </div>
 
-      {/* Cabeçalho Oficial de Governança: Elaboração, Revisão e Aprovação (Seção 5.3) */}
+      {/* Cabeçalho Oficial de Governança: Elaboração, Revisão e Aprovação */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs">
           <span className="font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">
-            Governança Documental e Assinaturas (Seção 5.3 · RDC 665/22)
+            Governança Documental e Assinaturas (RDC 665/22)
           </span>
           {podeEditarGovernanca ? (
             <Badge variant="outline" className="gap-1 border-primary/40 text-primary text-[10px]">
@@ -1003,7 +1004,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                 </CardTitle>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Seção 3.1: Ao abrir o REG 015, todos os instrumentos da LinkMed e suas validades já ficam visíveis. Faça upload do Certificado de Calibração (PDF) de cada instrumento ou inclua novos equipamentos abaixo.
+                Todos os instrumentos de medição da LinkMed e suas validades de calibração aparecem consolidados abaixo. Anexe o Certificado de Calibração (PDF) ou inclua novos equipamentos.
               </p>
             </div>
             <Button
@@ -1064,11 +1065,11 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                           {inst.certificado}
                         </td>
                         <td className="p-2.5 font-mono">
-                          {inst.dataCalibracao.split('-').reverse().join('/')}
+                          {formatarDataCurtaBR(inst.dataCalibracao)}
                         </td>
                         <td className="p-2.5 text-center">{inst.frequenciaMeses}m</td>
                         <td className="p-2.5 font-mono font-bold">
-                          {inst.validade ? inst.validade.split('-').reverse().join('/') : '—'}
+                          {inst.validade ? formatarDataCurtaBR(inst.validade) : '—'}
                         </td>
                         <td className="p-2.5">
                           {vencida ? (
@@ -1193,7 +1194,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                 Já existe uma OS com este número ({osDuplicadaNoReg022.numeroOs})!
               </p>
               <p className="text-[11px]">
-                Seção 7.4: Não é permitido cadastrar mais de uma OS com o mesmo número (inclusive canceladas ou finalizadas).
+                Cada Ordem de Serviço precisa ter numeração única (inclusive para OS canceladas ou finalizadas).
               </p>
             </div>
           </div>
@@ -1589,7 +1590,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                         : 'bg-primary/15 text-primary',
                     )}
                   >
-                    {secaoCompleta ? '✓' : idx + 1}
+                    {secaoCompleta ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : idx + 1}
                   </span>
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -1642,7 +1643,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                     <Lock className="h-5 w-5 shrink-0 text-rose-600" />
                     <div>
                       <p className="font-bold">
-                        Item 5 (REG 009 / REG 035) Bloqueado — Regra da Seção 3.2
+                        Item 5 (REG-009 / REG-035) Bloqueado
                       </p>
                       <p className="mt-0.5 text-[11px]">
                         {bloqueioItem5.motivo}
@@ -1778,8 +1779,9 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                                   </button>
                                 )}
                                 {preenchido && !erroCampo && (
-                                  <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                                    ✓ Preenchido
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                    <Check className="h-3 w-3" strokeWidth={2.2} />
+                                    Preenchido
                                   </span>
                                 )}
                               </div>
@@ -2007,7 +2009,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                       <p className="text-muted-foreground">
                         Data ref.:{' '}
                         <strong>
-                          {rec.dataRef.split('-').reverse().join('/')}
+                          {formatarDataCurtaBR(rec.dataRef)}
                         </strong>
                         {identificacaoExtra ? ` · ${identificacaoExtra}` : ''}
                         {rec.criadoPorNome ? ` · por ${rec.criadoPorNome}` : ''}
@@ -2064,7 +2066,7 @@ export function FormDetailClient({ tipo }: { tipo: string }) {
                 </DialogTitle>
                 <DialogDescription>
                   Registrado em{' '}
-                  {registroDetalhe.dataRef.split('-').reverse().join('/')} por{' '}
+                  {formatarDataCurtaBR(registroDetalhe.dataRef)} por{' '}
                   {registroDetalhe.criadoPorNome ?? 'Usuário'} ·{' '}
                   {STATUS_REGISTRO_LABEL[registroDetalhe.status]}
                 </DialogDescription>

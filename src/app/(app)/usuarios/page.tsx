@@ -138,7 +138,7 @@ export default function UsuariosPage() {
             Gestão de Colaboradores
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Usuários cadastrados e seus respectivos perfis regulatórios da RDC 665/22 (RN-01).
+            Usuários cadastrados e seus respectivos perfis regulatórios da RDC 665/22.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -189,6 +189,7 @@ export default function UsuariosPage() {
             <option value="todos">Todos os perfis ({users?.length ?? 0})</option>
             <option value="diretor">Diretor</option>
             <option value="gestor">Gestor da Qualidade / RT</option>
+            <option value="adm">Administrativo (ADM)</option>
             <option value="tecnico">Técnico de Assistência</option>
             <option value="estoquista">Estoquista / Almoxarifado</option>
           </SelectNative>
@@ -409,7 +410,7 @@ export default function UsuariosPage() {
               Cadastrar Novo Colaborador
             </DialogTitle>
             <DialogDescription>
-              Cadastro restrito à Direção (RN-01). O acesso é liberado imediatamente com o perfil atribuído.
+              Cadastro exclusivo da Diretoria. O acesso é liberado imediatamente com o perfil atribuído.
             </DialogDescription>
           </DialogHeader>
 

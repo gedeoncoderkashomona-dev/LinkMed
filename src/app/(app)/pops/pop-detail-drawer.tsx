@@ -453,7 +453,7 @@ export function PopDetailDrawer({ popId, initialTab = 'procedimento', onClose }:
             <div className="space-y-2 rounded-xl border border-border/80 bg-muted/20 p-4 text-xs">
               <div className="flex items-center justify-between">
                 <span className="font-semibold uppercase tracking-wider text-[11px] text-muted-foreground">
-                  Governança Documental (RDC 665/2022 — Seção 5.3)
+                  Governança Documental (RDC 665/2022)
                 </span>
                 {podeEditarGov && (
                   <Button
