@@ -796,9 +796,9 @@ export const FORM_DEFS: FormDef[] = [
         ],
       },
       {
-        titulo: '5. Item 5 — Etapa Final da Manutenção por Marca (REG 009 / REG 035)',
+        titulo: '5. Item 5 — Etapa Final da Manutenção por Marca (REG-009 / REG-035)',
         descricao:
-          'Decisões D4/D8: Liberado sempre que não houver Etiqueta VERMELHA efetiva. Obrigatório antes de finalizar o serviço (Etiqueta VERDE) pela LinkMed ou quando o envio à fábrica não ocorrer.',
+          'Liberado sempre que não houver Etiqueta VERMELHA efetiva. Obrigatório antes de finalizar o serviço (Etiqueta VERDE) pela LinkMed ou quando o envio à fábrica não ocorrer.',
         campos: [
           {
             name: 'item5_marca',

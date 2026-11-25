@@ -70,8 +70,8 @@ export interface OsFlowPanelProps {
 
 const TRANSPORTE_OPTIONS = [
   { value: 'TRANSPORTADORA_LINKMED', label: 'Transportadora LinkMed' },
+  { value: 'TRANSPORTADORA_CLIENTE', label: 'Transportadora / Portador do Cliente' },
   { value: 'CORREIOS', label: 'Correios' },
-  { value: 'CLIENTE', label: 'Portador / Cliente' },
 ] as const;
 
 const ESTADO_GERAL_LABEL: Record<string, string> = {
